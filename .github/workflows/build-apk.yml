@@ -44,7 +44,7 @@ jobs:
       - name: Rename APK
         run: |
           SRC=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
-          DEST="DeepCopy-v1.0.${{ github.run_number }}.apk"
+          DEST="DeepCopy-v1.1.${{ github.run_number }}.apk"
           cp "$SRC" "$DEST"
           echo "APK_PATH=$DEST" >> "$GITHUB_ENV"
           ls -lh "$DEST"
@@ -53,8 +53,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="v1.0.${{ github.run_number }}"
-          NOTES="DeepCopy AI debug APK — build ${{ github.run_number }}"
+          TAG="v1.1.${{ github.run_number }}"
+          NOTES="DeepCopy AI debug APK — build ${{ github.run_number }} (auditor de crédito)"
           # Replace if a previous failed/partial release left the tag.
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release delete "$TAG" --yes --cleanup-tag
