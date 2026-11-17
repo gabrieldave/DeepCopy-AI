@@ -1,0 +1,62 @@
+# Built application files
+*.apk
+*.ap_
+*.aab
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+release/
+
+# Gradle files
+.gradle/
+build/
+**/build/
+
+# Local configuration (API keys, SDK path)
+local.properties
+*.local
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+.navigation/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Keystore files
+*.jks
+*.keystore
+*.p12
+
+# Log / OS
+*.log
+.DS_Store
+Thumbs.db
+
+# NDK
+obj/
+
+# Secrets
+.env
+.env.*
+secrets.env
+*.pem
+*.key
+
+# Gradle wrapper binary (CI installs Gradle via setup-gradle)
+gradle/wrapper/gradle-wrapper.jar
+
+# Misc
+*.hprof
+.kotlin/
