@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DeepCopy AI</string>
+    <string name="app_tagline">Transcribe y copia para cualquier IA</string>
+    <string name="select_media">Seleccionar audio o video</string>
+    <string name="api_key_hint">Pega tu API Key de Deepgram</string>
+    <string name="save">Guardar</string>
+    <string name="cancel">Cancelar</string>
+    <string name="copied">¡Transcripción copiada al portapapeles!</string>
+    <string name="copy_plain">Copiar Texto Puro</string>
+    <string name="copy_with_prompt">Copiar + Prompt IA</string>
+    <string name="send_to_ai">Enviar a IA</string>
+    <string name="diarize">Diarize</string>
+    <string name="mode_auto">Auto (ES/EN)</string>
+    <string name="mode_multi">Spanglish/Multi</string>
+    <string name="settings_title">API Key Deepgram</string>
+    <string name="extracting">Extrayendo audio…</string>
+    <string name="transcribing">Subiendo / transcribiendo con Nova-3…</string>
+    <string name="ready">Listo</string>
+    <string name="error_no_key">Configura tu API Key de Deepgram (ícono de llave)</string>
+    <string name="error_generic">Error al transcribir</string>
+</resources>

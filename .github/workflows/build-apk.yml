@@ -1,0 +1,65 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Assemble debug APK
+        env:
+          DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+        run: gradle assembleDebug
+
+      - name: Rename APK
+        run: |
+          SRC=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          DEST="DeepCopy-v1.1.${{ github.run_number }}.apk"
+          cp "$SRC" "$DEST"
+          echo "APK_PATH=$DEST" >> "$GITHUB_ENV"
+          ls -lh "$DEST"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v1.1.${{ github.run_number }}"
+          NOTES="DeepCopy AI debug APK — build ${{ github.run_number }} (auditor de crédito)"
+          # Replace if a previous failed/partial release left the tag.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release delete "$TAG" --yes --cleanup-tag
+          fi
+          gh release create "$TAG" "$APK_PATH" \
+            --title "DeepCopy AI $TAG" \
+            --notes "$NOTES" \
+            --latest
