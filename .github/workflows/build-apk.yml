@@ -22,7 +22,13 @@ jobs:
           java-version: "17"
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -49,6 +55,10 @@ jobs:
         run: |
           TAG="v1.0.${{ github.run_number }}"
           NOTES="DeepCopy AI debug APK — build ${{ github.run_number }}"
+          # Replace if a previous failed/partial release left the tag.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release delete "$TAG" --yes --cleanup-tag
+          fi
           gh release create "$TAG" "$APK_PATH" \
             --title "DeepCopy AI $TAG" \
             --notes "$NOTES" \
