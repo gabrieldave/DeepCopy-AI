@@ -33,8 +33,9 @@ android {
         applicationId = "com.blackeye.deepcopy"
         minSdk = 26
         targetSdk = 35
-        versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
-        versionName = "1.0.${System.getenv("GITHUB_RUN_NUMBER") ?: "1"}"
+        val runNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
+        versionCode = if (runNumber != null) 100 + runNumber else 2
+        versionName = "1.1.${runNumber ?: 2}"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

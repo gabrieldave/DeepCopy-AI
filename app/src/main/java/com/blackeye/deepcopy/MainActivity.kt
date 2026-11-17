@@ -97,6 +97,15 @@ sealed class UiPhase {
     data class Error(val message: String) : UiPhase()
 }
 
+data class PreFlightState(
+    val uri: Uri,
+    val fileName: String,
+    val durationSeconds: Double,
+    val estimate: BillingManager.CostEstimate,
+    val hardStopMessage: String?,
+    val needsGiantConfirm: Boolean
+)
+
 class MainActivity : ComponentActivity() {
 
     private var pendingShareUri by mutableStateOf<Uri?>(null)
@@ -178,38 +187,154 @@ private fun DeepCopyApp(
     var transcriptText by remember { mutableStateOf("") }
     var promptMenu by remember { mutableStateOf(false) }
 
-    val picker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) {
-            scope.launch {
-                runTranscription(
-                    context = context,
-                    uri = uri,
-                    apiKey = apiKey,
-                    mode = languageMode,
-                    diarize = diarize,
-                    onPhase = { phase = it },
-                    onText = { transcriptText = it },
-                    snackbar = snackbar
-                )
+    var creditExpanded by remember { mutableStateOf(true) }
+    var creditRefreshing by remember { mutableStateOf(false) }
+    var balanceSnapshot by remember {
+        mutableStateOf<DeepgramBillingClient.BalanceSnapshot?>(null)
+    }
+    var appSpent by remember { mutableStateOf(BillingManager.getAppSpent(context)) }
+    var includeDiarizeCost by remember {
+        mutableStateOf(BillingManager.getIncludeDiarizeCost(context))
+    }
+    var autoTranscribeOnShare by remember {
+        mutableStateOf(BillingManager.getAutoTranscribeOnShare(context))
+    }
+    var initialCredit by remember { mutableStateOf(BillingManager.getInitialCredit(context)) }
+    var appCap by remember { mutableStateOf(BillingManager.getAppCap(context)) }
+    var minReserve by remember { mutableStateOf(BillingManager.getMinReserve(context)) }
+
+    var preFlight by remember { mutableStateOf<PreFlightState?>(null) }
+    var showHistory by remember { mutableStateOf(false) }
+    var showCostSettings by remember { mutableStateOf(false) }
+    var giantConfirm by remember { mutableStateOf<PreFlightState?>(null) }
+    var historyEntries by remember { mutableStateOf(BillingManager.loadHistory(context)) }
+
+    fun refreshBalance() {
+        scope.launch {
+            creditRefreshing = true
+            val snap = withContext(Dispatchers.IO) {
+                DeepgramBillingClient.fetchOfficialBalance(context, apiKey)
             }
+            balanceSnapshot = snap
+            appSpent = BillingManager.getAppSpent(context)
+            creditRefreshing = false
         }
+    }
+
+    fun buildPreFlight(
+        uri: Uri,
+        mode: LanguageMode = languageMode,
+        diarizeOn: Boolean = diarize,
+        includeDiarize: Boolean = includeDiarizeCost,
+        officialBalance: Double? = balanceSnapshot?.balanceUsd
+    ): PreFlightState {
+        val probe = BillingManager.probeMedia(context, uri)
+        val estimate = BillingManager.estimate(
+            durationSeconds = probe.durationSeconds,
+            mode = mode,
+            diarizeEnabled = diarizeOn,
+            includeDiarizeInEstimate = includeDiarize
+        )
+        val stop = BillingManager.checkHardStop(
+            context = context,
+            estimatedUsd = estimate.estimatedUsd,
+            officialBalance = officialBalance
+        )
+        val hardMsg = when (stop) {
+            is BillingManager.HardStop.ReserveBreach ->
+                "Bloqueado: saldo oficial tras el gasto " +
+                    "(${BillingManager.formatUsd(stop.remainingAfter, 2)}) " +
+                    "quedaría bajo la reserva de ${BillingManager.formatUsd(stop.reserve, 2)}."
+            is BillingManager.HardStop.AppCapBreach ->
+                "Bloqueado: gasto app proyectado " +
+                    "(${BillingManager.formatUsd(stop.projectedSpent, 4)}) " +
+                    "supera el tope de ${BillingManager.formatUsd(stop.cap, 2)}."
+            BillingManager.HardStop.Ok -> null
+        }
+        return PreFlightState(
+            uri = uri,
+            fileName = probe.displayName,
+            durationSeconds = probe.durationSeconds,
+            estimate = estimate,
+            hardStopMessage = hardMsg,
+            needsGiantConfirm = BillingManager.isGiantFile(estimate.estimatedUsd)
+        )
+    }
+
+    fun startTranscription(uri: Uri, fileName: String) {
+        scope.launch {
+            runTranscription(
+                context = context,
+                uri = uri,
+                fileName = fileName,
+                apiKey = apiKey,
+                mode = languageMode,
+                diarize = diarize,
+                onPhase = { phase = it },
+                onText = { transcriptText = it },
+                onBalance = { balanceSnapshot = it },
+                onAppSpent = { appSpent = it },
+                onHistoryChanged = { historyEntries = it },
+                snackbar = snackbar
+            )
+        }
+    }
+
+    fun confirmPreFlight(pf: PreFlightState) {
+        if (pf.needsGiantConfirm) {
+            giantConfirm = pf
+            return
+        }
+        preFlight = null
+        startTranscription(pf.uri, pf.fileName)
+    }
+
+    LaunchedEffect(Unit) {
+        refreshBalance()
     }
 
     LaunchedEffect(shareNonce, shareUri) {
         val uri = shareUri ?: return@LaunchedEffect
         onShareConsumed()
-        runTranscription(
-            context = context,
-            uri = uri,
-            apiKey = apiKey,
-            mode = languageMode,
-            diarize = diarize,
-            onPhase = { phase = it },
-            onText = { transcriptText = it },
-            snackbar = snackbar
-        )
+        if (apiKey.isBlank()) {
+            showKeyDialog = true
+            Toast.makeText(
+                context,
+                context.getString(R.string.error_no_key),
+                Toast.LENGTH_LONG
+            ).show()
+            return@LaunchedEffect
+        }
+        val modeSnap = languageMode
+        val diarizeSnap = diarize
+        val includeSnap = includeDiarizeCost
+        val balSnap = balanceSnapshot?.balanceUsd
+        val autoSnap = autoTranscribeOnShare
+        val pf = withContext(Dispatchers.IO) {
+            buildPreFlight(uri, modeSnap, diarizeSnap, includeSnap, balSnap)
+        }
+        if (autoSnap && pf.hardStopMessage == null && !pf.needsGiantConfirm) {
+            startTranscription(pf.uri, pf.fileName)
+        } else {
+            preFlight = pf
+        }
+    }
+
+    val picker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            val modeSnap = languageMode
+            val diarizeSnap = diarize
+            val includeSnap = includeDiarizeCost
+            val balSnap = balanceSnapshot?.balanceUsd
+            scope.launch {
+                val pf = withContext(Dispatchers.IO) {
+                    buildPreFlight(uri, modeSnap, diarizeSnap, includeSnap, balSnap)
+                }
+                preFlight = pf
+            }
+        }
     }
 
     Scaffold(
@@ -255,7 +380,49 @@ private fun DeepCopyApp(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            CreditControlPanel(
+                state = CreditUiState(
+                    expanded = creditExpanded,
+                    refreshing = creditRefreshing,
+                    snapshot = balanceSnapshot,
+                    appSpent = appSpent,
+                    initialCredit = initialCredit,
+                    includeDiarizeCost = includeDiarizeCost,
+                    languageMode = languageMode
+                ),
+                onToggleExpand = { creditExpanded = !creditExpanded },
+                onRefresh = { refreshBalance() },
+                onOpenHistory = {
+                    historyEntries = BillingManager.loadHistory(context)
+                    showHistory = true
+                },
+                onOpenCostSettings = { showCostSettings = true }
+            )
+
             StatusCard(phase = phase)
+
+            preFlight?.let { pf ->
+                PreFlightCard(
+                    fileName = pf.fileName,
+                    durationLabel = BillingManager.formatDuration(pf.durationSeconds),
+                    modeLabel = when (pf.estimate.mode) {
+                        LanguageMode.AUTO -> "Auto"
+                        LanguageMode.MULTI -> "Spanglish"
+                    } + if (pf.estimate.includeDiarize) " + Diarize" else "",
+                    estimatedUsd = pf.estimate.estimatedUsd,
+                    hardStopMessage = pf.hardStopMessage,
+                    autoTranscribe = autoTranscribeOnShare,
+                    autoTranscribeEnabled = pf.hardStopMessage == null,
+                    onAutoTranscribeChange = { enabled ->
+                        if (enabled && pf.hardStopMessage != null) return@PreFlightCard
+                        autoTranscribeOnShare = enabled
+                        BillingManager.setAutoTranscribeOnShare(context, enabled)
+                    },
+                    onConfirm = { confirmPreFlight(pf) },
+                    onDismiss = { preFlight = null },
+                    busy = phase is UiPhase.Extracting || phase is UiPhase.Transcribing
+                )
+            }
 
             ControlsCard(
                 languageMode = languageMode,
@@ -320,6 +487,74 @@ private fun DeepCopyApp(
                 ApiKeyStore.set(context, value)
                 apiKey = ApiKeyStore.get(context)
                 showKeyDialog = false
+                refreshBalance()
+            }
+        )
+    }
+
+    if (showCostSettings) {
+        CostSettingsDialog(
+            initialCredit = initialCredit,
+            appCap = appCap,
+            minReserve = minReserve,
+            includeDiarize = includeDiarizeCost,
+            onDismiss = { showCostSettings = false },
+            onSave = { credit, cap, reserve, include ->
+                BillingManager.setInitialCredit(context, credit)
+                BillingManager.setAppCap(context, cap)
+                BillingManager.setMinReserve(context, reserve)
+                BillingManager.setIncludeDiarizeCost(context, include)
+                initialCredit = credit
+                appCap = cap
+                minReserve = reserve
+                includeDiarizeCost = include
+                showCostSettings = false
+            }
+        )
+    }
+
+    if (showHistory) {
+        CostHistorySheet(
+            entries = historyEntries,
+            onDismiss = { showHistory = false },
+            onCopyTranscript = { text ->
+                copyToClipboard(context, text)
+                scope.launch {
+                    snackbar.showSnackbar(context.getString(R.string.copied))
+                }
+            }
+        )
+    }
+
+    giantConfirm?.let { pf ->
+        AlertDialog(
+            onDismissRequest = { giantConfirm = null },
+            containerColor = Card,
+            titleContentColor = OnBg,
+            textContentColor = OnBg,
+            title = { Text("Archivo de alto costo") },
+            text = {
+                Text(
+                    "Este archivo cuesta ~${BillingManager.formatUsd(pf.estimate.estimatedUsd, 4)} " +
+                        "(umbral ${BillingManager.formatUsd(BillingManager.GIANT_FILE_THRESHOLD_USD, 2)}). " +
+                        "¿Confirmas la transcripción?"
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        giantConfirm = null
+                        preFlight = null
+                        startTranscription(pf.uri, pf.fileName)
+                    }
+                ) {
+                    Text("Sí, transcribir", color = Accent)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { giantConfirm = null }) {
+                    Text("Cancelar", color = Muted)
+                }
             }
         )
     }
@@ -632,11 +867,15 @@ private fun copyToClipboard(context: android.content.Context, text: String) {
 private suspend fun runTranscription(
     context: android.content.Context,
     uri: Uri,
+    fileName: String,
     apiKey: String,
     mode: LanguageMode,
     diarize: Boolean,
     onPhase: (UiPhase) -> Unit,
     onText: (String) -> Unit,
+    onBalance: (DeepgramBillingClient.BalanceSnapshot) -> Unit,
+    onAppSpent: (Double) -> Unit,
+    onHistoryChanged: (List<BillingManager.HistoryEntry>) -> Unit,
     snackbar: SnackbarHostState
 ) {
     if (apiKey.isBlank()) {
@@ -645,7 +884,14 @@ private suspend fun runTranscription(
     }
 
     var extracted: AudioExtractor.ExtractedAudio? = null
+    var balanceBefore: Double? = null
     try {
+        val beforeSnap = withContext(Dispatchers.IO) {
+            DeepgramBillingClient.fetchOfficialBalance(context, apiKey)
+        }
+        onBalance(beforeSnap)
+        balanceBefore = beforeSnap.balanceUsd
+
         onPhase(UiPhase.Extracting)
         extracted = withContext(Dispatchers.IO) {
             AudioExtractor.prepareAudio(context, uri)
@@ -661,6 +907,29 @@ private suspend fun runTranscription(
                 diarize = diarize
             )
         }
+
+        val duration = result.durationSeconds ?: 0.0
+        val cost = BillingManager.actualCost(duration, mode, diarize)
+        BillingManager.addAppSpent(context, cost)
+        onAppSpent(BillingManager.getAppSpent(context))
+
+        val afterSnap = withContext(Dispatchers.IO) {
+            DeepgramBillingClient.fetchOfficialBalance(context, apiKey)
+        }
+        onBalance(afterSnap)
+
+        val entry = BillingManager.newHistoryEntry(
+            fileName = fileName,
+            durationSeconds = duration,
+            mode = mode,
+            diarize = diarize,
+            appCostUsd = cost,
+            balanceBefore = balanceBefore,
+            balanceAfter = afterSnap.balanceUsd,
+            transcript = result.transcript
+        )
+        BillingManager.appendHistory(context, entry)
+        onHistoryChanged(BillingManager.loadHistory(context))
 
         onText(result.transcript)
         onPhase(UiPhase.Done(result))
