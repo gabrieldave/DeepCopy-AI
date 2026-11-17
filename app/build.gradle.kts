@@ -34,8 +34,9 @@ android {
         minSdk = 26
         targetSdk = 35
         val runNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
-        versionCode = if (runNumber != null) 100 + runNumber else 2
-        versionName = "1.1.${runNumber ?: 2}"
+        // Local fallback bumped when project files change; CI uses 100 + run_number.
+        versionCode = if (runNumber != null) 100 + runNumber else 3
+        versionName = "1.1.${runNumber ?: 3}"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -46,6 +47,19 @@ android {
         )
     }
 
+    val releaseKeystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+    signingConfigs {
+        create("release") {
+            if (!releaseKeystorePath.isNullOrBlank()) {
+                storeFile = file(releaseKeystorePath)
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                // Misma contraseña para store y key (secreto ANDROID_KEYSTORE_PASSWORD).
+                keyPassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -53,6 +67,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (!releaseKeystorePath.isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
         debug {
             isMinifyEnabled = false
