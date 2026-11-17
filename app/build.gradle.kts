@@ -1,28 +1,10 @@
 import java.util.Properties
+import kotlin.math.max
 
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
-}
-
-fun escapeBuildConfigString(value: String): String =
-    value
-        .replace("\\", "\\\\")
-        .replace("\"", "\\\"")
-        .replace("\n", "\\n")
-        .replace("\r", "\\r")
-        .replace("$", "\\$")
-
-fun resolveDeepgramApiKey(): String {
-    System.getenv("DEEPGRAM_API_KEY")?.takeIf { it.isNotBlank() }?.let { return it }
-    val localProps = rootProject.file("local.properties")
-    if (localProps.exists()) {
-        val props = Properties()
-        localProps.inputStream().use { props.load(it) }
-        props.getProperty("DEEPGRAM_API_KEY")?.takeIf { it.isNotBlank() }?.let { return it }
-    }
-    return ""
 }
 
 android {
@@ -33,46 +15,69 @@ android {
         applicationId = "com.blackeye.deepcopy"
         minSdk = 26
         targetSdk = 35
-        val runNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
-        // Local fallback bumped when project files change; CI uses 100 + run_number.
-        versionCode = if (runNumber != null) 100 + runNumber else 3
-        versionName = "1.1.${runNumber ?: 3}"
+
+        // Fuente de verdad local; CI nunca baja de este piso.
+        val localVersionCode = 107
+        val localVersionName = "1.1.7"
+        val ciCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 100 + it }
+        versionCode = max(localVersionCode, ciCode ?: 0)
+        versionName = if (ciCode != null && ciCode > localVersionCode) {
+            "1.1.${ciCode - 100}"
+        } else {
+            localVersionName
+        }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField(
-            "String",
-            "DEFAULT_DEEPGRAM_KEY",
-            "\"${escapeBuildConfigString(resolveDeepgramApiKey())}\""
-        )
+        // APK comercial: cero llaves quemadas. BYOK solo en almacén cifrado del dispositivo.
+        buildConfigField("String", "DEFAULT_DEEPGRAM_KEY", "\"\"")
     }
 
-    val releaseKeystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
     signingConfigs {
         create("release") {
-            if (!releaseKeystorePath.isNullOrBlank()) {
-                storeFile = file(releaseKeystorePath)
-                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            val ciPassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            if (!ciPassword.isNullOrBlank()) {
+                val ciPath = System.getenv("ANDROID_KEYSTORE_PATH")
+                require(!ciPath.isNullOrBlank()) {
+                    "ANDROID_KEYSTORE_PATH requerido cuando ANDROID_KEYSTORE_PASSWORD está definido"
+                }
+                storeFile = file(ciPath)
+                storePassword = ciPassword
                 keyAlias = System.getenv("ANDROID_KEY_ALIAS")
-                // Misma contraseña para store y key (secreto ANDROID_KEYSTORE_PASSWORD).
-                keyPassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyPassword = ciPassword
+            } else {
+                val propsFile = file(
+                    "${System.getProperty("user.home")}/.blackeye-keys/android/keystore.properties"
+                )
+                if (propsFile.exists()) {
+                    val props = Properties()
+                    propsFile.inputStream().use { props.load(it) }
+                    storeFile = file(props.getProperty("storeFile"))
+                    storePassword = props.getProperty("storePassword")
+                    keyAlias = props.getProperty("keyAlias")
+                    keyPassword = props.getProperty("keyPassword")
+                }
             }
         }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            if (!releaseKeystorePath.isNullOrBlank()) {
-                signingConfig = signingConfigs.getByName("release")
+            val releaseSigning = signingConfigs.getByName("release")
+            if (releaseSigning.storeFile != null) {
+                signingConfig = releaseSigning
             }
         }
         debug {
             isMinifyEnabled = false
+            // Tampoco quemar llaves en debug.
+            buildConfigField("String", "DEFAULT_DEEPGRAM_KEY", "\"\"")
         }
     }
 
@@ -109,6 +114,8 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("androidx.annotation:annotation:1.9.1")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

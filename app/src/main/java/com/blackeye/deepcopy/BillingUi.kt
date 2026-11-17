@@ -61,7 +61,8 @@ data class CreditUiState(
     val appSpent: Double = 0.0,
     val initialCredit: Double = BillingManager.DEFAULT_INITIAL_CREDIT,
     val includeDiarizeCost: Boolean = true,
-    val languageMode: LanguageMode = LanguageMode.AUTO
+    val languageMode: LanguageMode = LanguageMode.AUTO,
+    val localUsage: BillingManager.LocalUsage = BillingManager.LocalUsage(0, 0.0, 0, 0.0)
 )
 
 @Composable
@@ -73,9 +74,12 @@ fun CreditControlPanel(
     onOpenCostSettings: () -> Unit
 ) {
     val official = state.snapshot?.balanceUsd
+    // Sin saldo oficial (member/403/sin project_id/401/sin red): UI local limpia.
+    val localOnly = official == null
     val remainingForBar = official ?: (state.initialCredit - state.appSpent)
     val progress = (remainingForBar / state.initialCredit).toFloat().coerceIn(0f, 1f)
     val barColor = when {
+        localOnly -> Accent
         remainingForBar > 50.0 -> Accent
         remainingForBar >= 15.0 -> Amber
         else -> Red
@@ -105,13 +109,17 @@ fun CreditControlPanel(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "Control de Crédito \$200 USD",
+                    if (localOnly) "Uso local (sesión / mes)" else "Control de Crédito \$200 USD",
                     color = OnBg,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp
                 )
                 Text(
-                    "Auditor Nova-3 · reserva y tope activos",
+                    if (localOnly) {
+                        "API sin billing · contador confiable en dispositivo"
+                    } else {
+                        "Auditor Nova-3 · reserva y tope activos"
+                    },
                     color = Muted,
                     fontSize = 11.sp
                 )
@@ -146,77 +154,83 @@ fun CreditControlPanel(
 
         AnimatedVisibility(visible = state.expanded) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                when (state.snapshot?.status) {
-                    DeepgramBillingClient.BillingScopeStatus.MEMBER_KEY_NO_BILLING_SCOPE -> {
-                        Text(
-                            state.snapshot.message
-                                ?: "API Key sin permiso billing:read (rol Member).",
-                            color = Amber,
-                            fontSize = 12.sp
-                        )
-                    }
-                    DeepgramBillingClient.BillingScopeStatus.UNAUTHORIZED -> {
-                        Text(
-                            state.snapshot.message ?: "API Key no autorizada (401)",
-                            color = Red,
-                            fontSize = 12.sp
-                        )
-                    }
-                    DeepgramBillingClient.BillingScopeStatus.ERROR -> {
-                        Text(
-                            state.snapshot.message ?: "Error al consultar saldo",
-                            color = Red,
-                            fontSize = 12.sp
-                        )
-                    }
-                    else -> Unit
+                // Solo 401 real con llave presente; nunca project_id técnico en rojo.
+                if (state.snapshot?.status == DeepgramBillingClient.BillingScopeStatus.UNAUTHORIZED) {
+                    Text(
+                        "API Key rechazada por Deepgram. Usa Reemplazar en el ícono de llave.",
+                        color = Amber,
+                        fontSize = 12.sp
+                    )
                 }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    MetricColumn(
-                        modifier = Modifier.weight(1f),
-                        title = "Saldo Oficial",
-                        value = when {
-                            official != null -> BillingManager.formatUsd(official, 2)
-                            state.snapshot?.status ==
-                                DeepgramBillingClient.BillingScopeStatus.MEMBER_KEY_NO_BILLING_SCOPE ->
-                                "N/D Key Member"
-                            else -> "—"
-                        }
+                if (localOnly || official == null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        MetricColumn(
+                            modifier = Modifier.weight(1f),
+                            title = "Transcripciones (mes)",
+                            value = state.localUsage.monthTranscriptions.toString()
+                        )
+                        MetricColumn(
+                            modifier = Modifier.weight(1f),
+                            title = "Minutos (mes)",
+                            value = String.format("%.1f min", state.localUsage.monthMinutes)
+                        )
+                        MetricColumn(
+                            modifier = Modifier.weight(1f),
+                            title = "Sesión",
+                            value = "${state.localUsage.sessionTranscriptions} · " +
+                                String.format("%.1f min", state.localUsage.sessionMinutes)
+                        )
+                    }
+                    Text(
+                        "Gastado app ${BillingManager.formatUsd(state.appSpent, 4)}",
+                        color = Muted,
+                        fontSize = 12.sp
                     )
-                    MetricColumn(
-                        modifier = Modifier.weight(1f),
-                        title = "Gastado",
-                        value = buildString {
-                            if (officialSpent != null) {
-                                append("Oficial ")
-                                append(BillingManager.formatUsd(officialSpent, 2))
-                                append("\n")
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        MetricColumn(
+                            modifier = Modifier.weight(1f),
+                            title = "Saldo Oficial",
+                            value = BillingManager.formatUsd(official, 2)
+                        )
+                        MetricColumn(
+                            modifier = Modifier.weight(1f),
+                            title = "Gastado",
+                            value = buildString {
+                                if (officialSpent != null) {
+                                    append("Oficial ")
+                                    append(BillingManager.formatUsd(officialSpent, 2))
+                                    append("\n")
+                                }
+                                append("App ")
+                                append(BillingManager.formatUsd(state.appSpent, 4))
                             }
-                            append("App ")
-                            append(BillingManager.formatUsd(state.appSpent, 4))
-                        }
-                    )
-                    MetricColumn(
-                        modifier = Modifier.weight(1f),
-                        title = "Δ Oficial−App",
-                        value = delta?.let { BillingManager.formatUsd(it, 4) } ?: "—"
+                        )
+                        MetricColumn(
+                            modifier = Modifier.weight(1f),
+                            title = "Δ Oficial−App",
+                            value = delta?.let { BillingManager.formatUsd(it, 4) } ?: "—"
+                        )
+                    }
+
+                    Text(
+                        "Te alcanza para ~${String.format("%.1f", hoursLeft)} horas de video al ritmo actual",
+                        color = Muted,
+                        fontSize = 12.sp
                     )
                 }
-
-                Text(
-                    "Te alcanza para ~${String.format("%.1f", hoursLeft)} horas de video al ritmo actual",
-                    color = Muted,
-                    fontSize = 12.sp
-                )
 
                 TextButton(onClick = onOpenHistory) {
                     Icon(Icons.Default.History, contentDescription = null, tint = Accent)
                     Spacer(Modifier.size(6.dp))
-                    Text("Ver Historial de Costos", color = Accent)
+                    Text("Historial de grabaciones", color = Accent)
                 }
             }
         }
@@ -331,6 +345,8 @@ fun PreFlightCard(
 fun CostHistorySheet(
     entries: List<BillingManager.HistoryEntry>,
     onDismiss: () -> Unit,
+    onOpen: (BillingManager.HistoryEntry) -> Unit,
+    onDelete: (BillingManager.HistoryEntry) -> Unit,
     onCopyTranscript: (String) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -346,18 +362,26 @@ fun CostHistorySheet(
                 .padding(bottom = 32.dp)
         ) {
             Text(
-                "Historial de Costos",
+                "Historial de grabaciones",
                 color = OnBg,
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp
             )
             Spacer(Modifier.height(12.dp))
             if (entries.isEmpty()) {
-                Text("Sin transcripciones registradas aún.", color = Muted)
+                Text("Sin grabaciones aún. Las transcripciones se guardan solas.", color = Muted)
             } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.height(420.dp)
+                ) {
                     items(entries, key = { it.id }) { entry ->
-                        HistoryRow(entry = entry, onCopy = { onCopyTranscript(entry.transcript) })
+                        HistoryRow(
+                            entry = entry,
+                            onOpen = { onOpen(entry) },
+                            onDelete = { onDelete(entry) },
+                            onCopy = { onCopyTranscript(entry.transcript) }
+                        )
                     }
                 }
             }
@@ -368,6 +392,8 @@ fun CostHistorySheet(
 @Composable
 private fun HistoryRow(
     entry: BillingManager.HistoryEntry,
+    onOpen: () -> Unit,
+    onDelete: () -> Unit,
     onCopy: () -> Unit
 ) {
     Column(
@@ -389,8 +415,16 @@ private fun HistoryRow(
             color = Muted,
             fontSize = 12.sp
         )
-        TextButton(onClick = onCopy, enabled = entry.transcript.isNotBlank()) {
-            Text("Recuperar / copiar texto", color = Accent)
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            TextButton(onClick = onOpen) {
+                Text("Abrir", color = Accent)
+            }
+            TextButton(onClick = onCopy, enabled = entry.transcript.isNotBlank()) {
+                Text("Copiar", color = Accent)
+            }
+            TextButton(onClick = onDelete) {
+                Text("Borrar", color = Red)
+            }
         }
     }
 }

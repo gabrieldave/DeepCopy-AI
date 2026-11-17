@@ -6,7 +6,7 @@
     <string name="api_key_hint">Pega tu API Key de Deepgram</string>
     <string name="save">Guardar</string>
     <string name="cancel">Cancelar</string>
-    <string name="copied">¡Transcripción copiada al portapapeles!</string>
+    <string name="copied">Copiado</string>
     <string name="copy_plain">Copiar Texto Puro</string>
     <string name="copy_with_prompt">Copiar + Prompt IA</string>
     <string name="send_to_ai">Enviar a IA</string>

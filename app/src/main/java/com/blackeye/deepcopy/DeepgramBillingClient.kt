@@ -8,7 +8,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Cliente de saldo oficial Deepgram (projects + balances).
- * No crash ante 403 Member / 401; estados tipados para la UI.
+ * Sin project_id / 403 billing: falla cerrado a modo local — nunca errores rojos técnicos.
  */
 object DeepgramBillingClient {
 
@@ -24,7 +24,8 @@ object DeepgramBillingClient {
 
     enum class BillingScopeStatus {
         OK,
-        MEMBER_KEY_NO_BILLING_SCOPE,
+        /** Key sin billing:read o sin project_id — UI usa contador local, sin rojo. */
+        LOCAL_USAGE_ONLY,
         UNAUTHORIZED,
         ERROR
     }
@@ -38,21 +39,29 @@ object DeepgramBillingClient {
 
     fun fetchOfficialBalance(context: Context, apiKey: String): BalanceSnapshot {
         if (apiKey.isBlank()) {
+            // Sin llave: modo local silencioso (no simular 401 de billing).
             return BalanceSnapshot(
-                status = BillingScopeStatus.UNAUTHORIZED,
+                status = BillingScopeStatus.LOCAL_USAGE_ONLY,
                 projectId = null,
                 balanceUsd = null,
-                message = "API Key vacía"
+                message = null
             )
         }
 
-        val projectId = resolveProjectId(context, apiKey)
-            ?: return BalanceSnapshot(
-                status = BillingScopeStatus.ERROR,
+        val projectResult = resolveProjectId(context, apiKey)
+        val projectId = projectResult.projectId
+        if (projectId == null) {
+            // 403 / sin permiso / sin project_id → silencioso, contador local.
+            return BalanceSnapshot(
+                status = when (projectResult.httpCode) {
+                    401 -> BillingScopeStatus.UNAUTHORIZED
+                    else -> BillingScopeStatus.LOCAL_USAGE_ONLY
+                },
                 projectId = null,
                 balanceUsd = null,
-                message = "No se pudo obtener project_id"
+                message = null
             )
+        }
 
         val request = Request.Builder()
             .url("https://api.deepgram.com/v1/projects/$projectId/balances")
@@ -77,36 +86,41 @@ object DeepgramBillingClient {
                         status = BillingScopeStatus.UNAUTHORIZED,
                         projectId = projectId,
                         balanceUsd = null,
-                        message = "API Key inválida o sin acceso (401)"
+                        message = null
                     )
                     403 -> BalanceSnapshot(
-                        status = BillingScopeStatus.MEMBER_KEY_NO_BILLING_SCOPE,
+                        status = BillingScopeStatus.LOCAL_USAGE_ONLY,
                         projectId = projectId,
                         balanceUsd = null,
-                        message = "API Key sin permiso billing:read (rol Member). " +
-                            "Usando auditoría local exacta; usa una llave Admin en Deepgram " +
-                            "para ver saldo oficial en vivo."
+                        message = null
                     )
                     else -> BalanceSnapshot(
-                        status = BillingScopeStatus.ERROR,
+                        status = BillingScopeStatus.LOCAL_USAGE_ONLY,
                         projectId = projectId,
                         balanceUsd = null,
-                        message = "Balances ${response.code}: ${raw.take(200)}"
+                        message = null
                     )
                 }
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             BalanceSnapshot(
-                status = BillingScopeStatus.ERROR,
+                status = BillingScopeStatus.LOCAL_USAGE_ONLY,
                 projectId = projectId,
                 balanceUsd = null,
-                message = e.message ?: "Error de red al consultar saldo"
+                message = null
             )
         }
     }
 
-    private fun resolveProjectId(context: Context, apiKey: String): String? {
-        BillingManager.getProjectId(context)?.let { return it }
+    private data class ProjectResolve(
+        val projectId: String?,
+        val httpCode: Int?
+    )
+
+    private fun resolveProjectId(context: Context, apiKey: String): ProjectResolve {
+        BillingManager.getProjectId(context)?.let {
+            return ProjectResolve(projectId = it, httpCode = 200)
+        }
 
         val request = Request.Builder()
             .url(PROJECTS_URL)
@@ -118,12 +132,14 @@ object DeepgramBillingClient {
             client.newCall(request).execute().use { response ->
                 val raw = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
-                    if (response.code == 401 || response.code == 403) return null
-                    return null
+                    return ProjectResolve(projectId = null, httpCode = response.code)
                 }
                 val root = JSONObject(raw)
-                val projects = root.optJSONArray("projects") ?: return null
-                if (projects.length() == 0) return null
+                val projects = root.optJSONArray("projects")
+                    ?: return ProjectResolve(projectId = null, httpCode = response.code)
+                if (projects.length() == 0) {
+                    return ProjectResolve(projectId = null, httpCode = response.code)
+                }
                 val first = projects.getJSONObject(0)
                 val id = first.optString("project_id")
                     .ifBlank { first.optString("projectId") }
@@ -132,10 +148,10 @@ object DeepgramBillingClient {
                 if (id != null) {
                     BillingManager.setProjectId(context, id)
                 }
-                id
+                ProjectResolve(projectId = id, httpCode = response.code)
             }
         } catch (_: Exception) {
-            null
+            ProjectResolve(projectId = null, httpCode = null)
         }
     }
 
@@ -147,11 +163,9 @@ object DeepgramBillingClient {
             val b = balances.getJSONObject(i)
             val units = b.optString("units", b.optString("unit", "")).lowercase()
             if (units == "usd" || units.isBlank()) {
-                // amount puede venir como number o string
                 val amount = when {
                     b.has("amount") && !b.isNull("amount") -> {
-                        val rawAmount = b.get("amount")
-                        when (rawAmount) {
+                        when (val rawAmount = b.get("amount")) {
                             is Number -> rawAmount.toDouble()
                             is String -> rawAmount.toDoubleOrNull() ?: 0.0
                             else -> b.optDouble("amount", 0.0)
