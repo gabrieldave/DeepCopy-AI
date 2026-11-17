@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.DeepCopyAI" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@color/deepcopy_bg</item>
+        <item name="android:navigationBarColor">@color/deepcopy_bg</item>
+        <item name="android:windowBackground">@color/deepcopy_bg</item>
+        <item name="android:colorPrimary">@color/deepcopy_accent</item>
+    </style>
+</resources>

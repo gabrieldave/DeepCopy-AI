@@ -1,0 +1,5 @@
+## Copia a local.properties (ignorado por git) y ajusta rutas/keys.
+## Nunca commits local.properties.
+
+sdk.dir=/Users/YOU/Library/Android/sdk
+# DEEPGRAM_API_KEY=
