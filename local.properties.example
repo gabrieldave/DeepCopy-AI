@@ -1,5 +1,5 @@
-## Copia a local.properties (ignorado por git) y ajusta rutas/keys.
+## Copia a local.properties (ignorado por git) y ajusta la ruta del SDK.
 ## Nunca commits local.properties.
+## BYOK: la API Key NO va aquí ni en BuildConfig; se cifra en el dispositivo.
 
-sdk.dir=/Users/YOU/Library/Android/sdk
-# DEEPGRAM_API_KEY=
+sdk.dir=/opt/homebrew/share/android-commandlinetools

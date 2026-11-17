@@ -48,21 +48,35 @@ jobs:
 
       - name: Assemble release APK
         env:
-          DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
+          # BYOK: nunca inyectar DEEPGRAM_API_KEY en BuildConfig/release.
           ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/release.jks
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: gradle assembleRelease
 
-      - name: Rename APK
+      - name: Resolve versionName from APK
+        id: ver
         run: |
           SRC=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
           test -n "$SRC"
-          DEST="DeepCopy-v1.1.${{ github.run_number }}.apk"
+          # aapt2 dump badging → versionName / versionCode reales (piso 107 en build.gradle.kts)
+          AAPT2=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort | tail -n 1)
+          BADGING=$("$AAPT2" dump badging "$SRC" | head -n 1)
+          VNAME=$(echo "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
+          VCODE=$(echo "$BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")
+          echo "versionName=$VNAME" >> "$GITHUB_OUTPUT"
+          echo "versionCode=$VCODE" >> "$GITHUB_OUTPUT"
+          DEST="DeepCopy-v${VNAME}.apk"
           cp "$SRC" "$DEST"
           echo "APK_PATH=$DEST" >> "$GITHUB_ENV"
+          echo "Resolved versionCode=$VCODE versionName=$VNAME"
           ls -lh "$DEST"
+          # Guardrail: nunca publicar por debajo del piso comercial 107
+          if [ "${VCODE:-0}" -lt 107 ]; then
+            echo "versionCode $VCODE < 107 — abort"
+            exit 1
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -75,9 +89,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="v1.1.${{ github.run_number }}"
-          NOTES="DeepCopy AI release APK firmado — build ${{ github.run_number }} (auditor de crédito)"
-          # Replace if a previous failed/partial release left the tag.
+          TAG="v${{ steps.ver.outputs.versionName }}"
+          NOTES="DeepCopy AI release APK firmado — ${TAG} (versionCode ${{ steps.ver.outputs.versionCode }}, BYOK cifrado, sin llaves en APK)"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release delete "$TAG" --yes --cleanup-tag
           fi

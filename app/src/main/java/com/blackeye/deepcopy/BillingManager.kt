@@ -27,6 +27,11 @@ object BillingManager {
     private const val KEY_AUTO_TRANSCRIBE = "auto_transcribe_on_share"
     private const val KEY_PROJECT_ID = "deepgram_project_id"
     private const val KEY_APP_SPENT = "app_spent_usd"
+    private const val KEY_MONTH_KEY = "usage_month_key"
+    private const val KEY_MONTH_TRANSCRIPTIONS = "usage_month_transcriptions"
+    private const val KEY_MONTH_SECONDS = "usage_month_seconds"
+    private const val KEY_SESSION_TRANSCRIPTIONS = "usage_session_transcriptions"
+    private const val KEY_SESSION_SECONDS = "usage_session_seconds"
     private const val HISTORY_FILE = "billing_history.json"
 
     const val RATE_AUTO_PER_MIN = 0.0043
@@ -67,12 +72,20 @@ object BillingManager {
         val balanceBefore: Double?,
         val balanceAfter: Double?,
         val officialDeltaUsd: Double?,
-        val transcript: String
+        val transcript: String,
+        val audioPath: String? = null
     ) {
         val formattedWhen: String
             get() = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
                 .format(Date(timestampMs))
     }
+
+    data class LocalUsage(
+        val monthTranscriptions: Int,
+        val monthMinutes: Double,
+        val sessionTranscriptions: Int,
+        val sessionMinutes: Double
+    )
 
     fun probeMedia(context: Context, uri: Uri): MediaProbe {
         val name = resolveDisplayName(context, uri)
@@ -229,6 +242,45 @@ object BillingManager {
         prefs(context).edit().putFloat(KEY_APP_SPENT, next.toFloat()).apply()
     }
 
+    fun recordLocalUsage(context: Context, durationSeconds: Double) {
+        ensureCurrentMonth(context)
+        val p = prefs(context)
+        p.edit()
+            .putInt(KEY_MONTH_TRANSCRIPTIONS, p.getInt(KEY_MONTH_TRANSCRIPTIONS, 0) + 1)
+            .putFloat(
+                KEY_MONTH_SECONDS,
+                p.getFloat(KEY_MONTH_SECONDS, 0f) + durationSeconds.toFloat()
+            )
+            .putInt(KEY_SESSION_TRANSCRIPTIONS, p.getInt(KEY_SESSION_TRANSCRIPTIONS, 0) + 1)
+            .putFloat(
+                KEY_SESSION_SECONDS,
+                p.getFloat(KEY_SESSION_SECONDS, 0f) + durationSeconds.toFloat()
+            )
+            .apply()
+    }
+
+    fun getLocalUsage(context: Context): LocalUsage {
+        ensureCurrentMonth(context)
+        val p = prefs(context)
+        return LocalUsage(
+            monthTranscriptions = p.getInt(KEY_MONTH_TRANSCRIPTIONS, 0),
+            monthMinutes = p.getFloat(KEY_MONTH_SECONDS, 0f).toDouble() / 60.0,
+            sessionTranscriptions = p.getInt(KEY_SESSION_TRANSCRIPTIONS, 0),
+            sessionMinutes = p.getFloat(KEY_SESSION_SECONDS, 0f).toDouble() / 60.0
+        )
+    }
+
+    private fun ensureCurrentMonth(context: Context) {
+        val current = SimpleDateFormat("yyyy-MM", Locale.US).format(Date())
+        val p = prefs(context)
+        if (p.getString(KEY_MONTH_KEY, null) == current) return
+        p.edit()
+            .putString(KEY_MONTH_KEY, current)
+            .putInt(KEY_MONTH_TRANSCRIPTIONS, 0)
+            .putFloat(KEY_MONTH_SECONDS, 0f)
+            .apply()
+    }
+
     fun officialSpent(context: Context, officialBalance: Double?): Double? {
         if (officialBalance == null) return null
         return getInitialCredit(context) - officialBalance
@@ -244,6 +296,15 @@ object BillingManager {
     fun appendHistory(context: Context, entry: HistoryEntry) {
         val list = loadHistory(context).toMutableList()
         list.add(0, entry)
+        saveHistory(context, list.sortedByDescending { it.timestampMs })
+    }
+
+    fun deleteHistory(context: Context, id: String) {
+        val list = loadHistory(context).filterNot { it.id == id }
+        val removed = loadHistory(context).firstOrNull { it.id == id }
+        removed?.audioPath?.let { path ->
+            runCatching { File(path).delete() }
+        }
         saveHistory(context, list)
     }
 
@@ -267,11 +328,12 @@ object BillingManager {
                             balanceBefore = o.optDoubleOrNull("balanceBefore"),
                             balanceAfter = o.optDoubleOrNull("balanceAfter"),
                             officialDeltaUsd = o.optDoubleOrNull("officialDeltaUsd"),
-                            transcript = o.optString("transcript")
+                            transcript = o.optString("transcript"),
+                            audioPath = o.optString("audioPath").takeIf { it.isNotBlank() }
                         )
                     )
                 }
-            }
+            }.sortedByDescending { it.timestampMs }
         }.getOrElse { emptyList() }
     }
 
@@ -283,7 +345,8 @@ object BillingManager {
         appCostUsd: Double,
         balanceBefore: Double?,
         balanceAfter: Double?,
-        transcript: String
+        transcript: String,
+        audioPath: String? = null
     ): HistoryEntry {
         val delta = if (balanceBefore != null && balanceAfter != null) {
             balanceBefore - balanceAfter
@@ -301,7 +364,8 @@ object BillingManager {
             balanceBefore = balanceBefore,
             balanceAfter = balanceAfter,
             officialDeltaUsd = delta,
-            transcript = transcript
+            transcript = transcript,
+            audioPath = audioPath
         )
     }
 
@@ -324,10 +388,18 @@ object BillingManager {
                     if (e.officialDeltaUsd != null) put("officialDeltaUsd", e.officialDeltaUsd)
                     else put("officialDeltaUsd", JSONObject.NULL)
                     put("transcript", e.transcript)
+                    if (e.audioPath != null) put("audioPath", e.audioPath)
+                    else put("audioPath", JSONObject.NULL)
                 }
             )
         }
-        historyFile(context).writeText(arr.toString())
+        val target = historyFile(context)
+        val tmp = File(context.filesDir, "$HISTORY_FILE.tmp")
+        tmp.writeText(arr.toString())
+        if (!tmp.renameTo(target)) {
+            tmp.copyTo(target, overwrite = true)
+            tmp.delete()
+        }
     }
 
     private fun historyFile(context: Context): File =

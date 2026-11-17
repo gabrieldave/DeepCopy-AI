@@ -71,11 +71,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 private val Bg = Color(0xFF0B0F17)
 private val Card = Color(0xFF151C28)
@@ -114,6 +116,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        ingestMigrationKey(intent)
         handleShareIntent(intent)
         setContent {
             DeepCopyTheme {
@@ -129,7 +132,17 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        ingestMigrationKey(intent)
         handleShareIntent(intent)
+    }
+
+    private fun ingestMigrationKey(intent: Intent?) {
+        ApiKeyStore.ingestMigrationFile(this)
+        if (intent == null) return
+        val raw = intent.getStringExtra(ApiKeyStore.MIGRATE_INTENT_EXTRA)
+        if (ApiKeyStore.ingestMigrationExtra(this, raw)) {
+            intent.removeExtra(ApiKeyStore.MIGRATE_INTENT_EXTRA)
+        }
     }
 
     private fun handleShareIntent(intent: Intent?) {
@@ -180,12 +193,14 @@ private fun DeepCopyApp(
     val snackbar = remember { SnackbarHostState() }
 
     var apiKey by remember { mutableStateOf(ApiKeyStore.get(context)) }
+    var apiKeyStatus by remember { mutableStateOf(ApiKeyStore.statusLabel(context)) }
     var showKeyDialog by remember { mutableStateOf(false) }
     var languageMode by remember { mutableStateOf(LanguageMode.AUTO) }
     var diarize by remember { mutableStateOf(false) }
     var phase by remember { mutableStateOf<UiPhase>(UiPhase.Idle) }
     var transcriptText by remember { mutableStateOf("") }
     var promptMenu by remember { mutableStateOf(false) }
+    var copyFeedback by remember { mutableStateOf(false) }
 
     var creditExpanded by remember { mutableStateOf(true) }
     var creditRefreshing by remember { mutableStateOf(false) }
@@ -193,6 +208,7 @@ private fun DeepCopyApp(
         mutableStateOf<DeepgramBillingClient.BalanceSnapshot?>(null)
     }
     var appSpent by remember { mutableStateOf(BillingManager.getAppSpent(context)) }
+    var localUsage by remember { mutableStateOf(BillingManager.getLocalUsage(context)) }
     var includeDiarizeCost by remember {
         mutableStateOf(BillingManager.getIncludeDiarizeCost(context))
     }
@@ -212,12 +228,25 @@ private fun DeepCopyApp(
     fun refreshBalance() {
         scope.launch {
             creditRefreshing = true
+            val key = ApiKeyStore.get(context)
+            apiKey = key
+            apiKeyStatus = ApiKeyStore.statusLabel(context)
             val snap = withContext(Dispatchers.IO) {
-                DeepgramBillingClient.fetchOfficialBalance(context, apiKey)
+                DeepgramBillingClient.fetchOfficialBalance(context, key)
             }
             balanceSnapshot = snap
             appSpent = BillingManager.getAppSpent(context)
+            localUsage = BillingManager.getLocalUsage(context)
+            historyEntries = BillingManager.loadHistory(context)
             creditRefreshing = false
+        }
+    }
+
+    fun notifyCopied() {
+        copyFeedback = true
+        scope.launch {
+            snackbar.showSnackbar(context.getString(R.string.copied))
+            copyFeedback = false
         }
     }
 
@@ -273,7 +302,10 @@ private fun DeepCopyApp(
                 onPhase = { phase = it },
                 onText = { transcriptText = it },
                 onBalance = { balanceSnapshot = it },
-                onAppSpent = { appSpent = it },
+                onAppSpent = {
+                    appSpent = it
+                    localUsage = BillingManager.getLocalUsage(context)
+                },
                 onHistoryChanged = { historyEntries = it },
                 snackbar = snackbar
             )
@@ -388,7 +420,8 @@ private fun DeepCopyApp(
                     appSpent = appSpent,
                     initialCredit = initialCredit,
                     includeDiarizeCost = includeDiarizeCost,
-                    languageMode = languageMode
+                    languageMode = languageMode,
+                    localUsage = localUsage
                 ),
                 onToggleExpand = { creditExpanded = !creditExpanded },
                 onRefresh = { refreshBalance() },
@@ -450,18 +483,16 @@ private fun DeepCopyApp(
                     onTextChange = { transcriptText = it },
                     promptMenuExpanded = promptMenu,
                     onPromptMenuChange = { promptMenu = it },
+                    copyFeedback = copyFeedback,
                     onCopyPlain = {
                         copyToClipboard(context, transcriptText)
-                        scope.launch {
-                            snackbar.showSnackbar(context.getString(R.string.copied))
-                        }
+                        notifyCopied()
                     },
                     onCopyWithPrompt = { prefix ->
                         copyToClipboard(context, prefix + transcriptText)
+                        // Cierra el menú pero conserva ResultCard y botones reutilizables.
                         promptMenu = false
-                        scope.launch {
-                            snackbar.showSnackbar(context.getString(R.string.copied))
-                        }
+                        notifyCopied()
                     },
                     onSendToAi = {
                         val send = Intent(Intent.ACTION_SEND).apply {
@@ -481,13 +512,21 @@ private fun DeepCopyApp(
 
     if (showKeyDialog) {
         ApiKeyDialog(
-            initial = apiKey,
+            statusLabel = apiKeyStatus,
             onDismiss = { showKeyDialog = false },
-            onSave = { value ->
+            onReplace = { value ->
                 ApiKeyStore.set(context, value)
                 apiKey = ApiKeyStore.get(context)
+                apiKeyStatus = ApiKeyStore.statusLabel(context)
                 showKeyDialog = false
                 refreshBalance()
+            },
+            onClear = {
+                ApiKeyStore.clear(context)
+                apiKey = ""
+                apiKeyStatus = null
+                showKeyDialog = false
+                balanceSnapshot = null
             }
         )
     }
@@ -517,11 +556,19 @@ private fun DeepCopyApp(
         CostHistorySheet(
             entries = historyEntries,
             onDismiss = { showHistory = false },
+            onOpen = { entry ->
+                transcriptText = entry.transcript
+                promptMenu = false
+                phase = UiPhase.Idle
+                showHistory = false
+            },
+            onDelete = { entry ->
+                BillingManager.deleteHistory(context, entry.id)
+                historyEntries = BillingManager.loadHistory(context)
+            },
             onCopyTranscript = { text ->
                 copyToClipboard(context, text)
-                scope.launch {
-                    snackbar.showSnackbar(context.getString(R.string.copied))
-                }
+                notifyCopied()
             }
         )
     }
@@ -716,6 +763,7 @@ private fun ResultCard(
     onTextChange: (String) -> Unit,
     promptMenuExpanded: Boolean,
     onPromptMenuChange: (Boolean) -> Unit,
+    copyFeedback: Boolean,
     onCopyPlain: () -> Unit,
     onCopyWithPrompt: (String) -> Unit,
     onSendToAi: () -> Unit
@@ -728,7 +776,16 @@ private fun ResultCard(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Transcripción", color = Muted, fontSize = 12.sp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Transcripción", color = Muted, fontSize = 12.sp)
+            if (copyFeedback) {
+                Text("Copiado", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
         SelectionContainer {
             OutlinedTextField(
                 value = text,
@@ -753,6 +810,7 @@ private fun ResultCard(
             )
         }
 
+        // Botones siempre montados mientras haya texto; reutilizables tras cada copia.
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             ActionButton(
                 icon = Icons.Default.ContentCopy,
@@ -819,11 +877,14 @@ private fun ActionButton(
 
 @Composable
 private fun ApiKeyDialog(
-    initial: String,
+    statusLabel: String?,
     onDismiss: () -> Unit,
-    onSave: (String) -> Unit
+    onReplace: (String) -> Unit,
+    onClear: () -> Unit
 ) {
-    var value by remember { mutableStateOf(initial) }
+    var replacing by remember { mutableStateOf(statusLabel == null) }
+    var value by remember { mutableStateOf("") }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Card,
@@ -831,29 +892,60 @@ private fun ApiKeyDialog(
         textContentColor = OnBg,
         title = { Text(stringResource(R.string.settings_title)) },
         text = {
-            OutlinedTextField(
-                value = value,
-                onValueChange = { value = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                placeholder = { Text(stringResource(R.string.api_key_hint), color = Muted) },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Accent,
-                    unfocusedBorderColor = Color(0xFF243044),
-                    focusedTextColor = OnBg,
-                    unfocusedTextColor = OnBg,
-                    cursorColor = Accent
-                )
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (statusLabel != null && !replacing) {
+                    Text(statusLabel, color = Accent, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "La clave está cifrada en el dispositivo. No se puede volver a ver completa.",
+                        color = Muted,
+                        fontSize = 13.sp
+                    )
+                } else {
+                    // Sin ojito: siempre enmascarada; nunca prellenar con llaves del estudio.
+                    OutlinedTextField(
+                        value = value,
+                        onValueChange = { value = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        placeholder = {
+                            Text(stringResource(R.string.api_key_hint), color = Muted)
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Accent,
+                            unfocusedBorderColor = Color(0xFF243044),
+                            focusedTextColor = OnBg,
+                            unfocusedTextColor = OnBg,
+                            cursorColor = Accent
+                        )
+                    )
+                }
+            }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(value) }) {
-                Text(stringResource(R.string.save), color = Accent)
+            if (statusLabel != null && !replacing) {
+                TextButton(onClick = { replacing = true; value = "" }) {
+                    Text("Reemplazar", color = Accent)
+                }
+            } else {
+                TextButton(
+                    onClick = { onReplace(value) },
+                    enabled = value.isNotBlank()
+                ) {
+                    Text(stringResource(R.string.save), color = Accent)
+                }
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel), color = Muted)
+            Row {
+                if (statusLabel != null) {
+                    TextButton(onClick = onClear) {
+                        Text("Borrar", color = Color(0xFFF87171))
+                    }
+                }
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.cancel), color = Muted)
+                }
             }
         }
     )
@@ -911,12 +1003,25 @@ private suspend fun runTranscription(
         val duration = result.durationSeconds ?: 0.0
         val cost = BillingManager.actualCost(duration, mode, diarize)
         BillingManager.addAppSpent(context, cost)
+        BillingManager.recordLocalUsage(context, duration)
         onAppSpent(BillingManager.getAppSpent(context))
 
         val afterSnap = withContext(Dispatchers.IO) {
             DeepgramBillingClient.fetchOfficialBalance(context, apiKey)
         }
         onBalance(afterSnap)
+
+        val persistedAudio = extracted?.let { audio ->
+            runCatching {
+                val dest = File(
+                    context.filesDir,
+                    "recordings/rec_${System.currentTimeMillis()}_${audio.file.name}"
+                )
+                dest.parentFile?.mkdirs()
+                audio.file.copyTo(dest, overwrite = true)
+                dest.absolutePath
+            }.getOrNull()
+        }
 
         val entry = BillingManager.newHistoryEntry(
             fileName = fileName,
@@ -926,7 +1031,8 @@ private suspend fun runTranscription(
             appCostUsd = cost,
             balanceBefore = balanceBefore,
             balanceAfter = afterSnap.balanceUsd,
-            transcript = result.transcript
+            transcript = result.transcript,
+            audioPath = persistedAudio
         )
         BillingManager.appendHistory(context, entry)
         onHistoryChanged(BillingManager.loadHistory(context))
