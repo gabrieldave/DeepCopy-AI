@@ -2862,11 +2862,6 @@ private fun AppearanceSection(
                 }
             }
         }
-        Text(
-            themeId.label,
-            color = Muted,
-            fontSize = 12.sp
-        )
     }
 }
 
@@ -2921,10 +2916,11 @@ private fun buildServicesSummary(
     ).count { !keyMasks[it].isNullOrBlank() }
     val mins = (groqRemainingSeconds / 60.0).coerceAtLeast(0.0)
     val primary = autoPrimary?.shortName() ?: "Groq"
+    val readyLabel = if (ready == 1) "1 servicio listo" else "$ready servicios listos"
     return if (primary == "Groq" || !keyMasks[SttProvider.GROQ_FREE].isNullOrBlank()) {
-        "Groq: ${String.format("%.0f", mins)} min disponibles · $ready servicios listos"
+        "Groq: ${String.format("%.0f", mins)} min disponibles · $readyLabel"
     } else {
-        "$primary listo · $ready servicios listos"
+        "$primary listo · $readyLabel"
     }
 }
 
