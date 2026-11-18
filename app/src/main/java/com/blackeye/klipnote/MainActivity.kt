@@ -699,11 +699,25 @@ private fun KlipNoteApp(
                 MainTab.Capturar -> {
                     TopAppBar(
                         title = {
-                            Text(
-                                text = stringResource(R.string.app_name),
-                                fontWeight = FontWeight.Bold,
-                                color = OnBg
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.app_name),
+                                    fontWeight = FontWeight.Bold,
+                                    color = OnBg,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "· ${BuildConfig.VERSION_NAME}",
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 13.sp,
+                                    color = Muted,
+                                    maxLines = 1
+                                )
+                            }
                         },
                         actions = {
                             ActiveMotorPill(
@@ -1764,9 +1778,9 @@ private fun AiStudyActionsSection(
                 label = {
                     Text(
                         if (replyInSpanish) {
-                            "🇲🇽 Responder en Español"
+                            "🌐 Salida: Español"
                         } else {
-                            "🌐 Idioma original"
+                            "🎞️ Idioma del video"
                         },
                         fontSize = 11.sp,
                         maxLines = 1
