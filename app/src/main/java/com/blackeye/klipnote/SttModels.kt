@@ -8,6 +8,15 @@ enum class LanguageMode {
 }
 
 @Keep
+sealed class RoutingSelection {
+    @Keep
+    data object Auto : RoutingSelection()
+
+    @Keep
+    data class Manual(val provider: SttProvider) : RoutingSelection()
+}
+
+@Keep
 data class TranscriptionResult(
     val transcript: String,
     val durationSeconds: Double?,
@@ -17,8 +26,21 @@ data class TranscriptionResult(
     val providerLabel: String = "Deepgram",
     val costUsd: Double = 0.0,
     val elapsedMs: Long = 0L,
-    val hopLog: List<String> = emptyList()
-)
+    val hopLog: List<String> = emptyList(),
+    val routingSelection: RoutingSelection = RoutingSelection.Auto,
+    val levelIndex: Int = 0
+) {
+    fun resultBadge(): String {
+        val secs = elapsedMs / 1000.0
+        val cost = BillingManager.formatUsd(costUsd, 2)
+        return when (routingSelection) {
+            is RoutingSelection.Auto ->
+                "⚡ Auto · $providerLabel • ${String.format("%.1fs", secs)} • $cost"
+            is RoutingSelection.Manual ->
+                "🧪 Prueba · $providerLabel • ${String.format("%.1fs", secs)} • $cost"
+        }
+    }
+}
 
 @Keep
 enum class SttProvider {
@@ -116,3 +138,26 @@ fun SttProvider.displayName(): String = when (this) {
     SttProvider.DEEPGRAM -> "Deepgram"
     SttProvider.PAID_FALLBACK -> "Respaldo Pagado"
 }
+
+fun SttProvider.levelIndex(): Int = when (this) {
+    SttProvider.GROQ_FREE -> 1
+    SttProvider.INWORLD -> 2
+    SttProvider.ASSEMBLY_AI -> 3
+    SttProvider.DEEPGRAM -> 4
+    SttProvider.PAID_FALLBACK -> 5
+}
+
+fun SttProvider.chipLabel(): String = when (this) {
+    SttProvider.GROQ_FREE -> "1 · Groq"
+    SttProvider.INWORLD -> "2 · Inworld"
+    SttProvider.ASSEMBLY_AI -> "3 · AssemblyAI"
+    SttProvider.DEEPGRAM -> "4 · Deepgram"
+    SttProvider.PAID_FALLBACK -> "5 · Pagado"
+}
+
+/** Falla exclusiva de Modo Prueba: no hay failover silencioso. */
+class ManualRouteException(
+    val provider: SttProvider,
+    message: String,
+    cause: Throwable? = null
+) : Exception(message, cause)

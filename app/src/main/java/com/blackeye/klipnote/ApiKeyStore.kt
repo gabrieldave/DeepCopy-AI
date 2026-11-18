@@ -8,12 +8,22 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Bóveda BYOK multi-proveedor (AndroidKeyStore + AES/GCM).
  * Nunca expone la clave completa en UI; migra plaintext legado y Deepgram one-shot.
  */
 object ApiKeyStore {
+    private val _revision = MutableStateFlow(0L)
+    /** Sube en cada set/clear/project/endpoint/engine — UI de Motores/Cuotas se sincroniza. */
+    val revision: StateFlow<Long> = _revision.asStateFlow()
+
+    private fun bumpRevision() {
+        _revision.value = _revision.value + 1L
+    }
     private const val LEGACY_PREFS = "deepcopy_secure_prefs"
     private const val ENCRYPTED_PREFS = "klipnote_encrypted_prefs"
     private const val LEGACY_ENCRYPTED_PREFS = "deepcopy_encrypted_prefs"
@@ -37,6 +47,9 @@ object ApiKeyStore {
     private const val LEGACY_MIGRATE_FILE = ".deepcopy_migrate_once"
 
     private val migrated = AtomicBoolean(false)
+
+    @Volatile
+    private var encryptedPrefsCache: SharedPreferences? = null
 
     @Keep
     enum class ProviderSlot {
@@ -69,11 +82,12 @@ object ApiKeyStore {
         return encryptedPrefs(context).getString(KEY_PAID_ENDPOINT, null)?.trim().orEmpty()
     }
 
-    fun setPaidFallbackEndpoint(context: Context, value: String) {
+    fun setPaidFallbackEndpoint(context: Context, value: String, notify: Boolean = true) {
         migrateIfNeeded(context)
         encryptedPrefs(context).edit()
             .putString(KEY_PAID_ENDPOINT, value.trim())
             .apply()
+        if (notify) bumpRevision()
     }
 
     fun getPaidFallbackEngine(context: Context): PaidFallbackEngine {
@@ -83,11 +97,16 @@ object ApiKeyStore {
             .getOrDefault(PaidFallbackEngine.GROQ_PAID)
     }
 
-    fun setPaidFallbackEngine(context: Context, engine: PaidFallbackEngine) {
+    fun setPaidFallbackEngine(
+        context: Context,
+        engine: PaidFallbackEngine,
+        notify: Boolean = true
+    ) {
         migrateIfNeeded(context)
         encryptedPrefs(context).edit()
             .putString(KEY_PAID_ENGINE, engine.name)
             .apply()
+        if (notify) bumpRevision()
     }
 
     fun getDeepgramProjectId(context: Context): String? {
@@ -101,6 +120,14 @@ object ApiKeyStore {
         val trimmed = projectId.trim()
         encryptedPrefs(context).edit().putString(KEY_DEEPGRAM_PROJECT, trimmed).apply()
         BillingManager.setProjectId(context, trimmed)
+        bumpRevision()
+    }
+
+    fun clearDeepgramProjectId(context: Context) {
+        migrateIfNeeded(context)
+        encryptedPrefs(context).edit().remove(KEY_DEEPGRAM_PROJECT).apply()
+        BillingManager.setProjectId(context, "")
+        bumpRevision()
     }
 
     /** Compat: Deepgram como get/set/clear/hasStored legacy. */
@@ -205,6 +232,7 @@ object ApiKeyStore {
                 .remove(KEY_DEEPGRAM)
                 .apply()
         }
+        bumpRevision()
     }
 
     private fun clearSlot(context: Context, slot: ProviderSlot) {
@@ -219,6 +247,7 @@ object ApiKeyStore {
                 .remove(KEY_DEEPGRAM)
                 .apply()
         }
+        bumpRevision()
     }
 
     private fun keyFor(slot: ProviderSlot): String = when (slot) {
@@ -299,16 +328,23 @@ object ApiKeyStore {
         if (value.length <= 4) value else value.takeLast(4)
 
     private fun encryptedPrefs(context: Context): SharedPreferences {
-        val masterKey = MasterKey.Builder(context.applicationContext)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-        return EncryptedSharedPreferences.create(
-            context.applicationContext,
-            ENCRYPTED_PREFS,
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
+        encryptedPrefsCache?.let { return it }
+        synchronized(this) {
+            encryptedPrefsCache?.let { return it }
+            val app = context.applicationContext
+            val masterKey = MasterKey.Builder(app)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            val prefs = EncryptedSharedPreferences.create(
+                app,
+                ENCRYPTED_PREFS,
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+            encryptedPrefsCache = prefs
+            return prefs
+        }
     }
 
     private fun legacyEncryptedPrefs(context: Context): SharedPreferences {

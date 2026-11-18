@@ -14,10 +14,13 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -78,8 +81,75 @@ data class CreditUiState(
     val inworldRemainingSeconds: Double = BillingManager.INWORLD_MONTHLY_SECONDS,
     val inworldUsedMinutesEditable: String = "0",
     val assemblyRemainingSeconds: Double = BillingManager.ASSEMBLY_POOL_SECONDS,
-    val assemblyUsedHoursEditable: String = "0"
+    val assemblyUsedHoursEditable: String = "0",
+    val routingSelection: RoutingSelection = RoutingSelection.Auto
 )
+
+@Composable
+fun RoutingModeChips(
+    selection: RoutingSelection,
+    keyMasks: Map<SttProvider, String?>,
+    onSelectAuto: () -> Unit,
+    onSelectManual: (SttProvider) -> Unit,
+    onOpenKeys: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                FilterChip(
+                    selected = selection is RoutingSelection.Auto,
+                    onClick = onSelectAuto,
+                    label = { Text("⚡ Auto (Cascada)") },
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = Color(0xFF0F1623),
+                        labelColor = Muted,
+                        selectedContainerColor = Accent.copy(alpha = 0.22f),
+                        selectedLabelColor = Accent
+                    )
+                )
+            }
+            items(SttProvider.entries.toList(), key = { it.name }) { provider ->
+                val selected = selection is RoutingSelection.Manual &&
+                    selection.provider == provider
+                FilterChip(
+                    selected = selected,
+                    onClick = {
+                        if (keyMasks[provider].isNullOrBlank()) {
+                            onOpenKeys()
+                        } else {
+                            onSelectManual(provider)
+                        }
+                    },
+                    label = { Text(provider.chipLabel()) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = Color(0xFF0F1623),
+                        labelColor = Muted,
+                        selectedContainerColor = Accent.copy(alpha = 0.22f),
+                        selectedLabelColor = Accent
+                    )
+                )
+            }
+        }
+        if (selection is RoutingSelection.Manual) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "📌 Modo Prueba: ${selection.provider.displayName()}",
+                    color = Accent,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = onSelectAuto) {
+                    Text("Volver a Auto", color = Accent)
+                }
+            }
+        }
+    }
+}
 
 @Composable
 fun CreditControlPanel(
@@ -92,7 +162,8 @@ fun CreditControlPanel(
     onAllowPaidChange: (Boolean) -> Unit,
     onInworldUsedMinutesSave: (Double) -> Unit,
     onAssemblyUsedHoursSave: (Double) -> Unit,
-    onOpenKeys: () -> Unit
+    onOpenKeys: () -> Unit,
+    onProbeProvider: (SttProvider) -> Unit = {}
 ) {
     val official = state.snapshot?.balanceUsd
     val localOnly = official == null
@@ -174,7 +245,10 @@ fun CreditControlPanel(
                     provider = SttProvider.GROQ_FREE,
                     status = state.providerStatuses.firstOrNull { it.provider == SttProvider.GROQ_FREE },
                     keyMask = state.keyMasks[SttProvider.GROQ_FREE],
-                    onOpenKeys = onOpenKeys
+                    pinned = state.routingSelection is RoutingSelection.Manual &&
+                        state.routingSelection.provider == SttProvider.GROQ_FREE,
+                    onOpenKeys = onOpenKeys,
+                    onProbe = { onProbeProvider(SttProvider.GROQ_FREE) }
                 )
                 MotorQuotaCard(
                     level = "2",
@@ -186,7 +260,10 @@ fun CreditControlPanel(
                     provider = SttProvider.INWORLD,
                     status = state.providerStatuses.firstOrNull { it.provider == SttProvider.INWORLD },
                     keyMask = state.keyMasks[SttProvider.INWORLD],
-                    onOpenKeys = onOpenKeys
+                    pinned = state.routingSelection is RoutingSelection.Manual &&
+                        state.routingSelection.provider == SttProvider.INWORLD,
+                    onOpenKeys = onOpenKeys,
+                    onProbe = { onProbeProvider(SttProvider.INWORLD) }
                 )
                 MotorQuotaCard(
                     level = "3",
@@ -199,7 +276,10 @@ fun CreditControlPanel(
                     provider = SttProvider.ASSEMBLY_AI,
                     status = state.providerStatuses.firstOrNull { it.provider == SttProvider.ASSEMBLY_AI },
                     keyMask = state.keyMasks[SttProvider.ASSEMBLY_AI],
-                    onOpenKeys = onOpenKeys
+                    pinned = state.routingSelection is RoutingSelection.Manual &&
+                        state.routingSelection.provider == SttProvider.ASSEMBLY_AI,
+                    onOpenKeys = onOpenKeys,
+                    onProbe = { onProbeProvider(SttProvider.ASSEMBLY_AI) }
                 )
                 MotorQuotaCard(
                     level = "4",
@@ -213,7 +293,10 @@ fun CreditControlPanel(
                     provider = SttProvider.DEEPGRAM,
                     status = state.providerStatuses.firstOrNull { it.provider == SttProvider.DEEPGRAM },
                     keyMask = state.keyMasks[SttProvider.DEEPGRAM],
+                    pinned = state.routingSelection is RoutingSelection.Manual &&
+                        state.routingSelection.provider == SttProvider.DEEPGRAM,
                     onOpenKeys = onOpenKeys,
+                    onProbe = { onProbeProvider(SttProvider.DEEPGRAM) },
                     barColor = barColor
                 )
                 MotorQuotaCard(
@@ -224,7 +307,10 @@ fun CreditControlPanel(
                     provider = SttProvider.PAID_FALLBACK,
                     status = state.providerStatuses.firstOrNull { it.provider == SttProvider.PAID_FALLBACK },
                     keyMask = state.keyMasks[SttProvider.PAID_FALLBACK],
-                    onOpenKeys = onOpenKeys
+                    pinned = state.routingSelection is RoutingSelection.Manual &&
+                        state.routingSelection.provider == SttProvider.PAID_FALLBACK,
+                    onOpenKeys = onOpenKeys,
+                    onProbe = { onProbeProvider(SttProvider.PAID_FALLBACK) }
                 )
 
                 QuotaAdjustEditor(
@@ -318,7 +404,9 @@ private fun MotorQuotaCard(
     provider: SttProvider,
     status: ProviderStatus?,
     keyMask: String?,
+    pinned: Boolean,
     onOpenKeys: () -> Unit,
+    onProbe: () -> Unit,
     barColor: Color = Accent
 ) {
     val hasKey = !keyMask.isNullOrBlank()
@@ -352,7 +440,6 @@ private fun MotorQuotaCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(Color(0xFF0F1623))
-            .clickable(onClick = onOpenKeys)
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -360,7 +447,15 @@ private fun MotorQuotaCard(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("Nivel $level · $title", color = OnBg, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+            Text(
+                "Nivel $level · $title",
+                color = OnBg,
+                fontWeight = FontWeight.Medium,
+                fontSize = 13.sp,
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(onClick = onOpenKeys)
+            )
             Text(
                 "$emoji $healthLabel",
                 color = tint,
@@ -390,6 +485,18 @@ private fun MotorQuotaCard(
             color = barColor,
             trackColor = Color(0xFF151C28)
         )
+        if (hasKey) {
+            TextButton(
+                onClick = onProbe,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    if (pinned) "📌 FIJADO" else "Probar",
+                    color = Accent,
+                    fontWeight = if (pinned) FontWeight.SemiBold else FontWeight.Normal
+                )
+            }
+        }
     }
 }
 
@@ -679,257 +786,6 @@ fun CostSettingsDialog(
             }
         }
     )
-}
-
-@Composable
-fun MultiProviderKeysDialog(
-    groqMask: String?,
-    inworldMask: String?,
-    assemblyMask: String?,
-    deepgramMask: String?,
-    deepgramProjectId: String,
-    paidMask: String?,
-    paidEndpoint: String,
-    paidEngine: PaidFallbackEngine,
-    onDismiss: () -> Unit,
-    onSaveGroq: (String) -> Unit,
-    onClearGroq: () -> Unit,
-    onSaveInworld: (String) -> Unit,
-    onClearInworld: () -> Unit,
-    onSaveAssembly: (String) -> Unit,
-    onClearAssembly: () -> Unit,
-    onSaveDeepgram: (String) -> Unit,
-    onClearDeepgram: () -> Unit,
-    onSaveDeepgramProjectId: (String) -> Unit,
-    onSavePaid: (String, String, PaidFallbackEngine) -> Unit,
-    onClearPaid: () -> Unit
-) {
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = CardBg,
-        titleContentColor = OnBg,
-        textContentColor = OnBg,
-        title = { Text("API Keys (BYOK cifrado)") },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 280.dp, max = 480.dp)
-                    .verticalScroll(rememberScrollState())
-                    .imePadding(),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                KeySlotRow(
-                    title = "1 · Groq Free",
-                    mask = groqMask,
-                    onSave = onSaveGroq,
-                    onClear = onClearGroq
-                )
-                KeySlotRow(
-                    title = "2 · Inworld Free (Basic Base64)",
-                    mask = inworldMask,
-                    onSave = onSaveInworld,
-                    onClear = onClearInworld
-                )
-                KeySlotRow(
-                    title = "3 · AssemblyAI",
-                    mask = assemblyMask,
-                    onSave = onSaveAssembly,
-                    onClear = onClearAssembly
-                )
-                DeepgramKeySlot(
-                    mask = deepgramMask,
-                    projectId = deepgramProjectId,
-                    onSaveKey = onSaveDeepgram,
-                    onClearKey = onClearDeepgram,
-                    onSaveProjectId = onSaveDeepgramProjectId
-                )
-                PaidKeySlot(
-                    mask = paidMask,
-                    endpoint = paidEndpoint,
-                    engine = paidEngine,
-                    onSave = onSavePaid,
-                    onClear = onClearPaid
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cerrar", color = Accent) }
-        },
-        dismissButton = {}
-    )
-}
-
-@Composable
-private fun KeySlotRow(
-    title: String,
-    mask: String?,
-    onSave: (String) -> Unit,
-    onClear: () -> Unit
-) {
-    var replacing by remember(mask) { mutableStateOf(mask == null) }
-    var value by remember { mutableStateOf("") }
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(title, color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-        if (mask != null && !replacing) {
-            Text(mask, color = Accent, fontWeight = FontWeight.SemiBold)
-            Row {
-                TextButton(onClick = { replacing = true; value = "" }) {
-                    Text("Reemplazar", color = Accent)
-                }
-                TextButton(onClick = onClear) {
-                    Text("Borrar", color = Red)
-                }
-            }
-        } else {
-            OutlinedTextField(
-                value = value,
-                onValueChange = { value = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                placeholder = { Text("Pega API key…", color = Muted) },
-                colors = fieldColors()
-            )
-            TextButton(
-                onClick = { onSave(value); replacing = false; value = "" },
-                enabled = value.isNotBlank()
-            ) {
-                Text("Guardar", color = Accent)
-            }
-        }
-    }
-}
-
-@Composable
-private fun DeepgramKeySlot(
-    mask: String?,
-    projectId: String,
-    onSaveKey: (String) -> Unit,
-    onClearKey: () -> Unit,
-    onSaveProjectId: (String) -> Unit
-) {
-    var replacing by remember(mask) { mutableStateOf(mask == null) }
-    var value by remember { mutableStateOf("") }
-    var projectText by remember(projectId) { mutableStateOf(projectId) }
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("4 · Deepgram", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-        if (mask != null && !replacing) {
-            Text(mask, color = Accent, fontWeight = FontWeight.SemiBold)
-            Row {
-                TextButton(onClick = { replacing = true; value = "" }) {
-                    Text("Reemplazar", color = Accent)
-                }
-                TextButton(onClick = onClearKey) {
-                    Text("Borrar", color = Red)
-                }
-            }
-        } else {
-            OutlinedTextField(
-                value = value,
-                onValueChange = { value = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                placeholder = { Text("Pega API key Deepgram…", color = Muted) },
-                colors = fieldColors()
-            )
-            TextButton(
-                onClick = { onSaveKey(value); replacing = false; value = "" },
-                enabled = value.isNotBlank()
-            ) {
-                Text("Guardar key", color = Accent)
-            }
-        }
-        OutlinedTextField(
-            value = projectText,
-            onValueChange = { projectText = it },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            label = { Text("Project ID (opcional)") },
-            placeholder = { Text("Deepgram project_id", color = Muted) },
-            colors = fieldColors()
-        )
-        TextButton(
-            onClick = { onSaveProjectId(projectText) },
-            enabled = projectText.isNotBlank()
-        ) {
-            Text("Guardar Project ID", color = Accent)
-        }
-    }
-}
-
-@Composable
-private fun PaidKeySlot(
-    mask: String?,
-    endpoint: String,
-    engine: PaidFallbackEngine,
-    onSave: (String, String, PaidFallbackEngine) -> Unit,
-    onClear: () -> Unit
-) {
-    var replacing by remember(mask) { mutableStateOf(mask == null) }
-    var value by remember { mutableStateOf("") }
-    var endpointText by remember { mutableStateOf(endpoint) }
-    var engineSel by remember { mutableStateOf(engine) }
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("5 · Respaldo Pagado", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = { engineSel = PaidFallbackEngine.GROQ_PAID }) {
-                Text(
-                    "Groq Paid",
-                    color = if (engineSel == PaidFallbackEngine.GROQ_PAID) Accent else Muted
-                )
-            }
-            TextButton(onClick = { engineSel = PaidFallbackEngine.MICROSOFT_MAI }) {
-                Text(
-                    "Microsoft MAI",
-                    color = if (engineSel == PaidFallbackEngine.MICROSOFT_MAI) Accent else Muted
-                )
-            }
-        }
-        if (mask != null && !replacing) {
-            Text(mask, color = Accent, fontWeight = FontWeight.SemiBold)
-            Text(endpoint.ifBlank { "(sin endpoint)" }, color = Muted, fontSize = 11.sp)
-            Row {
-                TextButton(onClick = { replacing = true; value = "" }) {
-                    Text("Reemplazar", color = Accent)
-                }
-                TextButton(onClick = onClear) {
-                    Text("Borrar", color = Red)
-                }
-            }
-        } else {
-            OutlinedTextField(
-                value = value,
-                onValueChange = { value = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                placeholder = { Text("API key pagada…", color = Muted) },
-                colors = fieldColors()
-            )
-            if (engineSel == PaidFallbackEngine.MICROSOFT_MAI) {
-                OutlinedTextField(
-                    value = endpointText,
-                    onValueChange = { endpointText = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    placeholder = { Text("Endpoint Azure / OpenAI-compat", color = Muted) },
-                    colors = fieldColors()
-                )
-            }
-            TextButton(
-                onClick = {
-                    onSave(value, endpointText, engineSel)
-                    replacing = false
-                    value = ""
-                },
-                enabled = value.isNotBlank()
-            ) {
-                Text("Guardar", color = Accent)
-            }
-        }
-    }
 }
 
 @Composable

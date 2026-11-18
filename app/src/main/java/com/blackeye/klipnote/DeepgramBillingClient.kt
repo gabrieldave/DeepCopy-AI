@@ -117,11 +117,39 @@ object DeepgramBillingClient {
         val httpCode: Int?
     )
 
+    /**
+     * Auto-vincula Project ID tras guardar la key Deepgram (o si existe key y falta project).
+     * Persiste vía ApiKeyStore. Si [forceNetwork]=false y ya hay project, no llama a la API.
+     */
+    fun ensureProjectIdLinked(
+        context: Context,
+        apiKey: String,
+        forceNetwork: Boolean = false
+    ): String? {
+        if (apiKey.isBlank()) return null
+        if (!forceNetwork) {
+            ApiKeyStore.getDeepgramProjectId(context)?.let { return it }
+        }
+        val resolved = fetchProjectIdFromApi(apiKey)
+        val id = resolved.projectId
+        if (id != null) {
+            ApiKeyStore.setDeepgramProjectId(context, id)
+        }
+        return id
+    }
+
     private fun resolveProjectId(context: Context, apiKey: String): ProjectResolve {
-        BillingManager.getProjectId(context)?.let {
+        ApiKeyStore.getDeepgramProjectId(context)?.let {
             return ProjectResolve(projectId = it, httpCode = 200)
         }
+        val fetched = fetchProjectIdFromApi(apiKey)
+        if (fetched.projectId != null) {
+            ApiKeyStore.setDeepgramProjectId(context, fetched.projectId)
+        }
+        return fetched
+    }
 
+    private fun fetchProjectIdFromApi(apiKey: String): ProjectResolve {
         val request = Request.Builder()
             .url(PROJECTS_URL)
             .addHeader("Authorization", "Token $apiKey")
@@ -145,9 +173,6 @@ object DeepgramBillingClient {
                     .ifBlank { first.optString("projectId") }
                     .ifBlank { first.optString("id") }
                     .takeIf { it.isNotBlank() }
-                if (id != null) {
-                    BillingManager.setProjectId(context, id)
-                }
                 ProjectResolve(projectId = id, httpCode = response.code)
             }
         } catch (_: Exception) {
