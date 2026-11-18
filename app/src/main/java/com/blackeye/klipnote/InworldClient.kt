@@ -138,9 +138,9 @@ object InworldClient {
                 health = if (remaining > 0) ProviderHealth.ACTIVE_FREE else ProviderHealth.PAUSED_LIMIT,
                 label = "Inworld Free",
                 detail = if (remaining > 0) {
-                    "ACTIVO · ${String.format("%.0fm", remaining / 60.0)}/mes"
+                    "ACTIVO · ${String.format("%.0fm", remaining / 60.0)} bolsa"
                 } else {
-                    "LÍMITE MENSUAL"
+                    "BOLSA AGOTADA"
                 },
                 remainingSeconds = remaining
             )

@@ -49,7 +49,7 @@ object SttRouter {
             }
             SttProvider.INWORLD -> {
                 val m = BillingManager.getInworldRemainingSeconds(context) / 60.0
-                "Inworld Free (${String.format("%.0fm", m)}/mes)"
+                "Inworld Free (${String.format("%.0fm", m)} bolsa)"
             }
             SttProvider.ASSEMBLY_AI -> {
                 val h = BillingManager.getAssemblyRemainingSeconds(context) / 3600.0
@@ -274,7 +274,7 @@ object SttRouter {
         if (provider == SttProvider.INWORLD &&
             BillingManager.getInworldRemainingSeconds(context) <= 0.0
         ) {
-            return "400m/mes agotados"
+            return "400m bolsa agotados"
         }
         if (provider == SttProvider.ASSEMBLY_AI &&
             BillingManager.getAssemblyRemainingSeconds(context) <= 0.0
