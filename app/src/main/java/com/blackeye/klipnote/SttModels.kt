@@ -38,6 +38,8 @@ enum class PaidFallbackEngine {
 @Keep
 enum class ProviderHealth {
     ACTIVE_FREE,
+    /** Llave guardada en ApiKeyStore; ping de red aún no corrido o pendiente. */
+    KEY_READY,
     PAUSED_LIMIT,
     OFFER_ENDED,
     NO_KEY,

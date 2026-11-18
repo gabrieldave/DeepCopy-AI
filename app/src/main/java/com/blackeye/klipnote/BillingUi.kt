@@ -9,11 +9,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -67,6 +71,7 @@ data class CreditUiState(
     val localUsage: BillingManager.LocalUsage = BillingManager.LocalUsage(0, 0.0, 0, 0.0),
     val routeChain: String = "",
     val providerStatuses: List<ProviderStatus> = emptyList(),
+    val keyMasks: Map<SttProvider, String?> = emptyMap(),
     val allowPaidFallback: Boolean = false,
     val verifyingOffers: Boolean = false,
     val groqRemainingSeconds: Double = BillingManager.GROQ_DAILY_SECONDS,
@@ -166,7 +171,10 @@ fun CreditControlPanel(
                     progress = (state.groqRemainingSeconds / BillingManager.GROQ_DAILY_SECONDS)
                         .toFloat()
                         .coerceIn(0f, 1f),
-                    status = state.providerStatuses.firstOrNull { it.provider == SttProvider.GROQ_FREE }
+                    provider = SttProvider.GROQ_FREE,
+                    status = state.providerStatuses.firstOrNull { it.provider == SttProvider.GROQ_FREE },
+                    keyMask = state.keyMasks[SttProvider.GROQ_FREE],
+                    onOpenKeys = onOpenKeys
                 )
                 MotorQuotaCard(
                     level = "2",
@@ -175,7 +183,10 @@ fun CreditControlPanel(
                     progress = (state.inworldRemainingSeconds / BillingManager.INWORLD_MONTHLY_SECONDS)
                         .toFloat()
                         .coerceIn(0f, 1f),
-                    status = state.providerStatuses.firstOrNull { it.provider == SttProvider.INWORLD }
+                    provider = SttProvider.INWORLD,
+                    status = state.providerStatuses.firstOrNull { it.provider == SttProvider.INWORLD },
+                    keyMask = state.keyMasks[SttProvider.INWORLD],
+                    onOpenKeys = onOpenKeys
                 )
                 MotorQuotaCard(
                     level = "3",
@@ -185,7 +196,10 @@ fun CreditControlPanel(
                     progress = (state.assemblyRemainingSeconds / BillingManager.ASSEMBLY_POOL_SECONDS)
                         .toFloat()
                         .coerceIn(0f, 1f),
-                    status = state.providerStatuses.firstOrNull { it.provider == SttProvider.ASSEMBLY_AI }
+                    provider = SttProvider.ASSEMBLY_AI,
+                    status = state.providerStatuses.firstOrNull { it.provider == SttProvider.ASSEMBLY_AI },
+                    keyMask = state.keyMasks[SttProvider.ASSEMBLY_AI],
+                    onOpenKeys = onOpenKeys
                 )
                 MotorQuotaCard(
                     level = "4",
@@ -196,7 +210,10 @@ fun CreditControlPanel(
                         "Uso local · ${BillingManager.formatUsd(state.appSpent, 4)} gastado app"
                     },
                     progress = progress,
+                    provider = SttProvider.DEEPGRAM,
                     status = state.providerStatuses.firstOrNull { it.provider == SttProvider.DEEPGRAM },
+                    keyMask = state.keyMasks[SttProvider.DEEPGRAM],
+                    onOpenKeys = onOpenKeys,
                     barColor = barColor
                 )
                 MotorQuotaCard(
@@ -204,7 +221,10 @@ fun CreditControlPanel(
                     title = "Respaldo Pagado",
                     detail = if (state.allowPaidFallback) "Habilitado" else "Modo \$0 Estricto",
                     progress = if (state.allowPaidFallback) 1f else 0f,
-                    status = state.providerStatuses.firstOrNull { it.provider == SttProvider.PAID_FALLBACK }
+                    provider = SttProvider.PAID_FALLBACK,
+                    status = state.providerStatuses.firstOrNull { it.provider == SttProvider.PAID_FALLBACK },
+                    keyMask = state.keyMasks[SttProvider.PAID_FALLBACK],
+                    onOpenKeys = onOpenKeys
                 )
 
                 QuotaAdjustEditor(
@@ -295,17 +315,27 @@ private fun MotorQuotaCard(
     title: String,
     detail: String,
     progress: Float,
+    provider: SttProvider,
     status: ProviderStatus?,
+    keyMask: String?,
+    onOpenKeys: () -> Unit,
     barColor: Color = Accent
 ) {
-    val health = status?.health ?: ProviderHealth.NO_KEY
-    val isInworld = status?.provider == SttProvider.INWORLD
+    val hasKey = !keyMask.isNullOrBlank()
+    // Regla estricta: con llave en ApiKeyStore NUNCA mostrar SIN KEY.
+    val health = when {
+        !hasKey -> ProviderHealth.NO_KEY
+        status == null || status.health == ProviderHealth.NO_KEY -> ProviderHealth.KEY_READY
+        else -> status.health
+    }
+    val isInworld = provider == SttProvider.INWORLD
     val (emoji, healthLabel, tint) = when (health) {
         ProviderHealth.ACTIVE_FREE -> Triple(
             "🟢",
             if (isInworld) "ACTIVO 400m/mes" else "ACTIVO (Gratis)",
             Accent
         )
+        ProviderHealth.KEY_READY -> Triple("🟢", "KEY LISTA", Accent)
         ProviderHealth.PAUSED_LIMIT -> Triple(
             "🟡",
             if (isInworld) "LÍMITE MENSUAL" else "EN PAUSA / LÍMITE DIARIO",
@@ -316,11 +346,13 @@ private fun MotorQuotaCard(
         ProviderHealth.NO_KEY -> Triple("⚪", "SIN KEY", Muted)
         ProviderHealth.UNKNOWN -> Triple("⚪", status?.detail ?: "—", Muted)
     }
+    val maskLine = if (hasKey) "Key $keyMask" else "SIN KEY"
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(Color(0xFF0F1623))
+            .clickable(onClick = onOpenKeys)
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -329,12 +361,26 @@ private fun MotorQuotaCard(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text("Nivel $level · $title", color = OnBg, fontWeight = FontWeight.Medium, fontSize = 13.sp)
-            Text("$emoji $healthLabel", color = tint, fontSize = 11.sp)
+            Text(
+                "$emoji $healthLabel",
+                color = tint,
+                fontSize = 11.sp,
+                modifier = Modifier.clickable(onClick = onOpenKeys)
+            )
         }
+        Text(
+            maskLine,
+            color = if (hasKey) Accent else Muted,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.clickable(onClick = onOpenKeys)
+        )
         Text(detail, color = Muted, fontSize = 12.sp)
-        status?.detail?.takeIf { it.isNotBlank() && it != healthLabel }?.let {
-            Text(it, color = Muted, fontSize = 11.sp)
-        }
+        status?.detail
+            ?.takeIf { it.isNotBlank() && it != healthLabel && !it.startsWith("SIN KEY") }
+            ?.let {
+                Text(it, color = Muted, fontSize = 11.sp)
+            }
         LinearProgressIndicator(
             progress = { progress },
             modifier = Modifier
@@ -485,8 +531,10 @@ fun CostHistorySheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(max = 560.dp)
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 32.dp)
+                .imePadding()
         ) {
             Text(
                 "Historial de grabaciones",
@@ -500,7 +548,9 @@ fun CostHistorySheet(
             } else {
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.height(420.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 480.dp)
                 ) {
                     items(entries, key = { it.id }) { entry ->
                         HistoryRow(
@@ -576,7 +626,14 @@ fun CostSettingsDialog(
         textContentColor = OnBg,
         title = { Text("Ajustes de costos") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState())
+                    .imePadding(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 MoneyField("Crédito inicial USD", creditText) { creditText = it }
                 MoneyField("Tope app USD", capText) { capText = it }
                 MoneyField("Reserva mínima USD", reserveText) { reserveText = it }
@@ -630,6 +687,7 @@ fun MultiProviderKeysDialog(
     inworldMask: String?,
     assemblyMask: String?,
     deepgramMask: String?,
+    deepgramProjectId: String,
     paidMask: String?,
     paidEndpoint: String,
     paidEngine: PaidFallbackEngine,
@@ -642,6 +700,7 @@ fun MultiProviderKeysDialog(
     onClearAssembly: () -> Unit,
     onSaveDeepgram: (String) -> Unit,
     onClearDeepgram: () -> Unit,
+    onSaveDeepgramProjectId: (String) -> Unit,
     onSavePaid: (String, String, PaidFallbackEngine) -> Unit,
     onClearPaid: () -> Unit
 ) {
@@ -655,7 +714,9 @@ fun MultiProviderKeysDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(420.dp),
+                    .heightIn(min = 280.dp, max = 480.dp)
+                    .verticalScroll(rememberScrollState())
+                    .imePadding(),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 KeySlotRow(
@@ -676,11 +737,12 @@ fun MultiProviderKeysDialog(
                     onSave = onSaveAssembly,
                     onClear = onClearAssembly
                 )
-                KeySlotRow(
-                    title = "4 · Deepgram",
+                DeepgramKeySlot(
                     mask = deepgramMask,
-                    onSave = onSaveDeepgram,
-                    onClear = onClearDeepgram
+                    projectId = deepgramProjectId,
+                    onSaveKey = onSaveDeepgram,
+                    onClearKey = onClearDeepgram,
+                    onSaveProjectId = onSaveDeepgramProjectId
                 )
                 PaidKeySlot(
                     mask = paidMask,
@@ -735,6 +797,64 @@ private fun KeySlotRow(
             ) {
                 Text("Guardar", color = Accent)
             }
+        }
+    }
+}
+
+@Composable
+private fun DeepgramKeySlot(
+    mask: String?,
+    projectId: String,
+    onSaveKey: (String) -> Unit,
+    onClearKey: () -> Unit,
+    onSaveProjectId: (String) -> Unit
+) {
+    var replacing by remember(mask) { mutableStateOf(mask == null) }
+    var value by remember { mutableStateOf("") }
+    var projectText by remember(projectId) { mutableStateOf(projectId) }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("4 · Deepgram", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        if (mask != null && !replacing) {
+            Text(mask, color = Accent, fontWeight = FontWeight.SemiBold)
+            Row {
+                TextButton(onClick = { replacing = true; value = "" }) {
+                    Text("Reemplazar", color = Accent)
+                }
+                TextButton(onClick = onClearKey) {
+                    Text("Borrar", color = Red)
+                }
+            }
+        } else {
+            OutlinedTextField(
+                value = value,
+                onValueChange = { value = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                placeholder = { Text("Pega API key Deepgram…", color = Muted) },
+                colors = fieldColors()
+            )
+            TextButton(
+                onClick = { onSaveKey(value); replacing = false; value = "" },
+                enabled = value.isNotBlank()
+            ) {
+                Text("Guardar key", color = Accent)
+            }
+        }
+        OutlinedTextField(
+            value = projectText,
+            onValueChange = { projectText = it },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("Project ID (opcional)") },
+            placeholder = { Text("Deepgram project_id", color = Muted) },
+            colors = fieldColors()
+        )
+        TextButton(
+            onClick = { onSaveProjectId(projectText) },
+            enabled = projectText.isNotBlank()
+        ) {
+            Text("Guardar Project ID", color = Accent)
         }
     }
 }

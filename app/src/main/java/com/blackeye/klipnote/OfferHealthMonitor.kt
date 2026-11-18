@@ -25,6 +25,97 @@ object OfferHealthMonitor {
         return last == 0L || System.currentTimeMillis() - last > SEVEN_DAYS_MS
     }
 
+    /**
+     * Estado UI inmediato desde ApiKeyStore (sin red).
+     * Nunca marca SIN KEY si hay llave cifrada; usa KEY_READY hasta el ping.
+     */
+    fun seedFromStore(context: Context): List<ProviderStatus> = listOf(
+        seedSlot(
+            provider = SttProvider.GROQ_FREE,
+            label = "Groq Free",
+            hasKey = ApiKeyStore.hasSlot(context, ApiKeyStore.ProviderSlot.GROQ),
+            mask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.GROQ),
+            remainingSeconds = BillingManager.getGroqRemainingSeconds(context)
+        ),
+        seedSlot(
+            provider = SttProvider.INWORLD,
+            label = "Inworld Free",
+            hasKey = ApiKeyStore.hasSlot(context, ApiKeyStore.ProviderSlot.INWORLD),
+            mask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.INWORLD),
+            remainingSeconds = BillingManager.getInworldRemainingSeconds(context)
+        ),
+        seedSlot(
+            provider = SttProvider.ASSEMBLY_AI,
+            label = "AssemblyAI",
+            hasKey = ApiKeyStore.hasSlot(context, ApiKeyStore.ProviderSlot.ASSEMBLY_AI),
+            mask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.ASSEMBLY_AI),
+            remainingSeconds = BillingManager.getAssemblyRemainingSeconds(context)
+        ),
+        seedSlot(
+            provider = SttProvider.DEEPGRAM,
+            label = "Deepgram",
+            hasKey = ApiKeyStore.hasSlot(context, ApiKeyStore.ProviderSlot.DEEPGRAM),
+            mask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.DEEPGRAM),
+            remainingSeconds = null
+        ),
+        seedSlot(
+            provider = SttProvider.PAID_FALLBACK,
+            label = "Respaldo Pagado",
+            hasKey = ApiKeyStore.hasSlot(context, ApiKeyStore.ProviderSlot.PAID_FALLBACK),
+            mask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.PAID_FALLBACK),
+            remainingSeconds = null
+        )
+    )
+
+    /**
+     * Combina seed local con ping de red: si el ping dice NO_KEY pero hay llave, fuerza KEY_READY.
+     */
+    fun reconcileWithStore(context: Context, pinged: List<ProviderStatus>): List<ProviderStatus> {
+        val seed = seedFromStore(context).associateBy { it.provider }
+        return SttProvider.entries.map { provider ->
+            val local = seed[provider]
+            val remote = pinged.firstOrNull { it.provider == provider }
+            when {
+                local == null -> remote ?: ProviderStatus(
+                    provider = provider,
+                    health = ProviderHealth.NO_KEY,
+                    label = provider.displayName(),
+                    detail = "SIN KEY"
+                )
+                local.health == ProviderHealth.NO_KEY -> local
+                remote == null || remote.health == ProviderHealth.NO_KEY -> local
+                else -> remote.copy(
+                    detail = remote.detail.ifBlank { local.detail }
+                )
+            }
+        }
+    }
+
+    private fun seedSlot(
+        provider: SttProvider,
+        label: String,
+        hasKey: Boolean,
+        mask: String?,
+        remainingSeconds: Double?
+    ): ProviderStatus {
+        if (!hasKey) {
+            return ProviderStatus(
+                provider = provider,
+                health = ProviderHealth.NO_KEY,
+                label = label,
+                detail = "SIN KEY",
+                remainingSeconds = remainingSeconds
+            )
+        }
+        return ProviderStatus(
+            provider = provider,
+            health = ProviderHealth.KEY_READY,
+            label = label,
+            detail = "KEY LISTA · Key ${mask ?: "••••"}",
+            remainingSeconds = remainingSeconds
+        )
+    }
+
     fun verifyAll(context: Context): Report {
         val probe = writeSilentWav(context)
         return try {
@@ -37,12 +128,16 @@ object OfferHealthMonitor {
             )
             BillingManager.setLastOfferCheckMs(context, System.currentTimeMillis())
             // Si un motor responde OK, limpia marca de promo terminada.
-            statuses.forEach { st ->
-                if (st.health == ProviderHealth.ACTIVE_FREE || st.health == ProviderHealth.PAUSED_LIMIT) {
+            val reconciled = reconcileWithStore(context, statuses)
+            reconciled.forEach { st ->
+                if (st.health == ProviderHealth.ACTIVE_FREE ||
+                    st.health == ProviderHealth.PAUSED_LIMIT ||
+                    st.health == ProviderHealth.KEY_READY
+                ) {
                     BillingManager.clearPromoEnded(st.provider)
                 }
             }
-            Report(statuses = statuses, checkedAtMs = System.currentTimeMillis())
+            Report(statuses = reconciled, checkedAtMs = System.currentTimeMillis())
         } finally {
             runCatching { probe.delete() }
         }
