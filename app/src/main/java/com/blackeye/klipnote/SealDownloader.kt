@@ -22,11 +22,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 
 /**
- * Envoltorio Seal-style de yt-dlp / FFmpeg / aria2c (io.github.junkfood02.youtubedl-android 0.17.3).
+ * Envoltorio Seal-style de yt-dlp / FFmpeg / aria2c (io.github.junkfood02.youtubedl-android 0.18.1).
  *
  * Flags audio alineadas con junkfood02/Seal DownloadUtil:
- * `--no-playlist`, `--no-mtime`, `-x`, `--audio-format m4a`, `--audio-quality 5`,
- * y `--cookies` + `User-Agent` cuando hay cookies.txt local.
+ * `--no-playlist`, `--no-mtime`, `-x`, `--audio-format m4a`,
+ * TEXT_ONLY: mono 16 kHz ~32 kbps; otros modos: calidad normal,
+ * cookies por sitio, y QuickJS + `--remote-components ejs:github` para YouTube.
  */
 object SealDownloader {
     private const val TAG = "SealDownloader"
@@ -243,7 +244,8 @@ object SealDownloader {
         val processId = UUID.randomUUID().toString()
         activeProcessId.set(processId)
 
-        val request = buildRequest(context, url, outTemplate, wantVideo)
+        val compressForStt = mode == LinkMode.TEXT_ONLY
+        val request = buildRequest(context, url, outTemplate, wantVideo, compressForStt)
 
         try {
             onProgress("Descargando: 0% • preparando…")
@@ -295,7 +297,8 @@ object SealDownloader {
         context: Context,
         url: String,
         outTemplate: String,
-        wantVideo: Boolean
+        wantVideo: Boolean,
+        compressForStt: Boolean
     ): YoutubeDLRequest {
         return YoutubeDLRequest(url).apply {
             // Mirror Seal downloadVideo / audio path
@@ -310,9 +313,25 @@ object SealDownloader {
                 // (sin -f rígido ba[ext=m4a] que rompe IG muxed MP4)
                 addOption("-x")
                 addOption("--audio-format", "m4a")
-                addOption("--audio-quality", "5")
+                if (compressForStt) {
+                    // Solo TEXT_ONLY: audio liviano para STT (Groq ≤24 MB).
+                    // ~32 kbps mono 16 kHz ≈ 9 MB por 40 min. No baja calidad en modos
+                    // que guardan el archivo para el usuario.
+                    addOption("--audio-quality", "32K")
+                    addOption(
+                        "--postprocessor-args",
+                        "ExtractAudio+ffmpeg:-ac 1 -ar 16000 -b:a 32k"
+                    )
+                } else {
+                    addOption("--audio-quality", "5")
+                }
             }
             addOption("--newline")
+
+            // Seal / youtubedl-android 0.18.x: YouTube exige runtime JS.
+            // La librería 0.18.1 ya inyecta --js-runtimes quickjs:<libqjs.so> en execute().
+            // Seal además pide EJS desde GitHub (igual que JsRuntimeConfig.applyJsRuntimeConfig).
+            applyJsRuntimeLikeSeal(context, this)
 
             CookieStore.cookiesFileFor(context, url)?.let { cookies ->
                 addOption("--cookies", cookies.absolutePath)
@@ -325,10 +344,80 @@ object SealDownloader {
         }
     }
 
+    /**
+     * Réplica del cableado de Seal (JsRuntimeConfig): QuickJS + EJS remoto.
+     * No fijamos player_client a mano; yt-dlp elige el cliente.
+     */
+    private fun applyJsRuntimeLikeSeal(context: Context, request: YoutubeDLRequest) {
+        val qjs = File(context.applicationInfo.nativeLibraryDir, "libqjs.so")
+        if (qjs.isFile) {
+            // Por si una build futura no lo inyecta sola; 0.18.1 ya lo hace en execute().
+            if (!request.hasOption("--js-runtimes")) {
+                request.addOption("--js-runtimes", "quickjs:${qjs.absolutePath}")
+            }
+        } else {
+            Log.w(TAG, "libqjs.so no encontrado en nativeLibraryDir; YouTube puede fallar sin JS runtime")
+        }
+        if (!request.hasOption("--remote-components")) {
+            request.addOption("--remote-components", "ejs:github")
+        }
+    }
+
     fun cleanupArtifact(artifact: DownloadArtifact) {
         if (!artifact.deleteAfterUse) return
         runCatching { artifact.file.delete() }
         runCatching { artifact.file.parentFile?.deleteRecursively() }
+    }
+
+    /**
+     * Copia liviana para STT (mono / 16 kHz / ~32 kbps) con el `libffmpeg.so` de
+     * youtubedl-android. La librería no expone FFmpeg.execute; se invoca el binario nativo.
+     * El archivo [input] (calidad completa del usuario) no se modifica.
+     */
+    fun compressAudioForStt(context: Context, input: File): File {
+        require(input.isFile && input.length() > 0L) { "No hay audio/video de entrada para comprimir" }
+        ensureReady()
+        val app = context.applicationContext
+        val out = File(app.cacheDir, "stt_compact_${System.currentTimeMillis()}.m4a")
+        val ffmpegBin = File(app.applicationInfo.nativeLibraryDir, "libffmpeg.so")
+        require(ffmpegBin.isFile) {
+            "libffmpeg.so no encontrado. Reinicia la app para inicializar yt-dlp/FFmpeg."
+        }
+        val packages = File(app.noBackupFilesDir, "youtubedl-android/packages")
+        val ldParts = listOf(
+            File(packages, "ffmpeg/usr/lib"),
+            File(packages, "python/usr/lib"),
+            File(packages, "aria2c/usr/lib"),
+            File(app.applicationInfo.nativeLibraryDir)
+        ).filter { it.isDirectory }.map { it.absolutePath }
+        val cmd = listOf(
+            ffmpegBin.absolutePath,
+            "-y",
+            "-i", input.absolutePath,
+            "-vn",
+            "-ac", "1",
+            "-ar", "16000",
+            "-c:a", "aac",
+            "-b:a", "32k",
+            out.absolutePath
+        )
+        Log.i(TAG, "STT compress: ${input.length() / 1024} KB → ${out.name}")
+        val pb = ProcessBuilder(cmd).redirectErrorStream(true)
+        val env = pb.environment()
+        val existingLd = env["LD_LIBRARY_PATH"].orEmpty()
+        env["LD_LIBRARY_PATH"] = (ldParts + existingLd).filter { it.isNotBlank() }.joinToString(":")
+        val process = pb.start()
+        val log = process.inputStream.bufferedReader().use { it.readText() }
+        val code = process.waitFor()
+        if (code != 0 || !out.isFile || out.length() == 0L) {
+            runCatching { out.delete() }
+            throw IllegalStateException(
+                "No se pudo comprimir el audio para transcribir (FFmpeg $code). " +
+                    log.lineSequence().lastOrNull { it.isNotBlank() }?.take(160).orEmpty()
+            )
+        }
+        Log.i(TAG, "STT compress OK: ${out.length() / 1024} KB")
+        return out
     }
 
     private fun needsYtDlpHeal(message: String): Boolean {
