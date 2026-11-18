@@ -61,7 +61,9 @@ object SealDownloader {
         val uri: Uri?,
         val title: String,
         val isVideo: Boolean,
-        val deleteAfterUse: Boolean
+        val deleteAfterUse: Boolean,
+        /** Nombre con extensión en Descargas/KlipNote, si se guardó en público. */
+        val savedDisplayName: String? = null
     )
 
     private val initialized = AtomicBoolean(false)
@@ -277,7 +279,8 @@ object SealDownloader {
                 uri = Uri.fromFile(produced),
                 title = title,
                 isVideo = wantVideo,
-                deleteAfterUse = true
+                deleteAfterUse = true,
+                savedDisplayName = null
             )
         }
 
@@ -289,7 +292,8 @@ object SealDownloader {
             uri = publicUri ?: Uri.fromFile(produced),
             title = title,
             isVideo = wantVideo,
-            deleteAfterUse = false
+            deleteAfterUse = false,
+            savedDisplayName = displayName
         )
     }
 
