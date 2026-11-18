@@ -16,6 +16,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,6 +39,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Settings
@@ -230,8 +234,9 @@ private fun KlipNoteApp(
     var selectedTab by remember { mutableStateOf(MainTab.Capturar) }
     var showMotorSheet by remember { mutableStateOf(false) }
     var showKeyDialog by remember { mutableStateOf(false) }
-    var languageMode by remember { mutableStateOf(LanguageMode.AUTO) }
-    var diarize by remember { mutableStateOf(false) }
+    var languageMode by remember { mutableStateOf(BillingManager.getLanguageMode(context)) }
+    var forcedLanguage by remember { mutableStateOf(BillingManager.getForcedLanguage(context)) }
+    var diarize by remember { mutableStateOf(BillingManager.getDiarizeEnabled(context)) }
     var phase by remember { mutableStateOf<UiPhase>(UiPhase.Idle) }
     var linkInput by remember { mutableStateOf("") }
     var linkMode by remember { mutableStateOf(SealDownloader.LinkMode.TEXT_ONLY) }
@@ -436,6 +441,7 @@ private fun KlipNoteApp(
                 uri = uri,
                 fileName = fileName,
                 mode = languageMode,
+                forcedLanguageCode = forcedLanguage,
                 diarize = diarize,
                 routingSelection = selectionSnap,
                 onPhase = { phase = it },
@@ -492,6 +498,7 @@ private fun KlipNoteApp(
         val kindSnap = downloadKind
         val selectionSnap = routingSelection
         val langSnap = languageMode
+        val forcedLangSnap = forcedLanguage
         val diarizeSnap = diarize
         scope.launch {
             var artifact: SealDownloader.DownloadArtifact? = null
@@ -516,6 +523,7 @@ private fun KlipNoteApp(
                     uri = uri,
                     fileName = artifact.title,
                     mode = langSnap,
+                    forcedLanguageCode = forcedLangSnap,
                     diarize = diarizeSnap,
                     routingSelection = selectionSnap,
                     onPhase = { phase = it },
@@ -762,6 +770,7 @@ private fun KlipNoteApp(
                         lastResultMeta = lastResultMeta,
                         copyFeedback = copyFeedback,
                         preFlight = preFlight,
+                        forcedLanguage = forcedLanguage,
                         autoTranscribeOnShare = autoTranscribeOnShare,
                         onPasteLink = {
                             val cm = context.getSystemService(ClipboardManager::class.java)
@@ -917,9 +926,24 @@ private fun KlipNoteApp(
                         },
                         onProbeProvider = { setRouting(RoutingSelection.Manual(it)) },
                         languageMode = languageMode,
-                        onLanguageModeChange = { languageMode = it },
+                        onLanguageModeChange = {
+                            languageMode = it
+                            BillingManager.setLanguageMode(context, it)
+                        },
+                        forcedLanguage = forcedLanguage,
+                        onForcedLanguageChange = {
+                            forcedLanguage = it
+                            BillingManager.setForcedLanguage(context, it)
+                            if (languageMode != LanguageMode.FIXED) {
+                                languageMode = LanguageMode.FIXED
+                                BillingManager.setLanguageMode(context, LanguageMode.FIXED)
+                            }
+                        },
                         diarize = diarize,
-                        onDiarizeChange = { diarize = it },
+                        onDiarizeChange = {
+                            diarize = it
+                            BillingManager.setDiarizeEnabled(context, it)
+                        },
                         sealReady = sealReady,
                         updatingYtDlp = updatingYtDlp,
                         onUpdateYtDlp = {
@@ -1155,6 +1179,7 @@ private fun CapturarTab(
     lastResultMeta: TranscriptionResult?,
     copyFeedback: Boolean,
     preFlight: PreFlightState?,
+    forcedLanguage: String,
     autoTranscribeOnShare: Boolean,
     onPasteLink: () -> Unit,
     onClearLink: () -> Unit,
@@ -1209,10 +1234,8 @@ private fun CapturarTab(
             PreFlightCard(
                 fileName = pf.fileName,
                 durationLabel = BillingManager.formatDuration(pf.durationSeconds),
-                modeLabel = when (pf.estimate.mode) {
-                    LanguageMode.AUTO -> "Auto"
-                    LanguageMode.MULTI -> "Spanglish"
-                } + if (pf.estimate.includeDiarize) " + Diarize" else "",
+                modeLabel = pf.estimate.mode.shortUiLabel(forcedLanguage) +
+                    if (pf.estimate.includeDiarize) " + Diarize" else "",
                 estimatedUsd = pf.estimatedUsdDisplay,
                 hardStopMessage = pf.hardStopMessage,
                 autoTranscribe = autoTranscribeOnShare,
@@ -1699,6 +1722,7 @@ private fun GuionesTab(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun MotoresTab(
     routingSelection: RoutingSelection,
@@ -1718,12 +1742,15 @@ private fun MotoresTab(
     onProbeProvider: (SttProvider) -> Unit,
     languageMode: LanguageMode,
     onLanguageModeChange: (LanguageMode) -> Unit,
+    forcedLanguage: String,
+    onForcedLanguageChange: (String) -> Unit,
     diarize: Boolean,
     onDiarizeChange: (Boolean) -> Unit,
     sealReady: SealDownloader.ReadyState,
     updatingYtDlp: Boolean,
     onUpdateYtDlp: () -> Unit
 ) {
+    var advancedOpen by remember { mutableStateOf(diarize) }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1798,8 +1825,11 @@ private fun MotoresTab(
                 )
             }
 
-            Text("Idioma / diarización", color = Muted, fontSize = 12.sp)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.lang_detection_label), color = Muted, fontSize = 12.sp)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 ModeChip(
                     selected = languageMode == LanguageMode.AUTO,
                     label = stringResource(R.string.mode_auto),
@@ -1812,21 +1842,82 @@ private fun MotoresTab(
                     enabled = true,
                     onClick = { onLanguageModeChange(LanguageMode.MULTI) }
                 )
+                ModeChip(
+                    selected = languageMode == LanguageMode.FIXED,
+                    label = stringResource(R.string.mode_fixed),
+                    enabled = true,
+                    onClick = { onLanguageModeChange(LanguageMode.FIXED) }
+                )
             }
+
+            Text(stringResource(R.string.lang_target_label), color = Muted, fontSize = 12.sp)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                COMMON_STT_LANGUAGES.forEach { opt ->
+                    ModeChip(
+                        selected = languageMode == LanguageMode.FIXED &&
+                            forcedLanguage.equals(opt.code, ignoreCase = true),
+                        label = opt.label,
+                        enabled = true,
+                        onClick = { onForcedLanguageChange(opt.code) }
+                    )
+                }
+            }
+            if (languageMode == LanguageMode.AUTO) {
+                Text(
+                    "Auto detecta el idioma hablado. Elige un código solo si quieres forzar reconocimiento.",
+                    color = Muted,
+                    fontSize = 11.sp
+                )
+            }
+
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { advancedOpen = !advancedOpen }
+                    .padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(stringResource(R.string.diarize), color = OnBg)
-                Switch(
-                    checked = diarize,
-                    onCheckedChange = onDiarizeChange,
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = Accent
-                    )
+                Text(
+                    stringResource(R.string.advanced_section),
+                    color = Muted,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
+                Icon(
+                    imageVector = if (advancedOpen) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = null,
+                    tint = Muted,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            if (advancedOpen) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                        Text(stringResource(R.string.diarize), color = OnBg, fontSize = 14.sp)
+                        Text(
+                            stringResource(R.string.diarize_hint),
+                            color = Muted,
+                            fontSize = 11.sp
+                        )
+                    }
+                    Switch(
+                        checked = diarize,
+                        onCheckedChange = onDiarizeChange,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = Accent
+                        )
+                    )
+                }
             }
 
             Column(
@@ -1918,6 +2009,7 @@ private suspend fun runTranscription(
     uri: Uri,
     fileName: String,
     mode: LanguageMode,
+    forcedLanguageCode: String? = null,
     diarize: Boolean,
     routingSelection: RoutingSelection,
     onPhase: (UiPhase) -> Unit,
@@ -1976,7 +2068,8 @@ private suspend fun runTranscription(
                 mode = mode,
                 diarize = diarize,
                 deepgramBalanceUsd = balanceBefore,
-                selection = routingSelection
+                selection = routingSelection,
+                forcedLanguageCode = forcedLanguageCode
             )
         }
 

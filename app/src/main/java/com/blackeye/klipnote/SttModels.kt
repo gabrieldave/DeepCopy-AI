@@ -3,8 +3,50 @@ package com.blackeye.klipnote
 import androidx.annotation.Keep
 
 enum class LanguageMode {
+    /** Detecta el idioma del audio (APIs: detect_language / omit language). */
     AUTO,
-    MULTI
+    /** Code-switch / Spanglish (Deepgram language=multi). */
+    MULTI,
+    /** Fuerza un idioma de reconocimiento concreto. */
+    FIXED
+}
+
+data class SttLanguageOption(
+    val code: String,
+    val label: String
+)
+
+/** Idiomas comunes para fijar reconocimiento / guion. */
+val COMMON_STT_LANGUAGES: List<SttLanguageOption> = listOf(
+    SttLanguageOption("es", "ES"),
+    SttLanguageOption("en", "EN"),
+    SttLanguageOption("pt", "PT"),
+    SttLanguageOption("fr", "FR"),
+    SttLanguageOption("de", "DE"),
+    SttLanguageOption("it", "IT"),
+    SttLanguageOption("ja", "JA"),
+    SttLanguageOption("ko", "KO"),
+    SttLanguageOption("zh", "ZH"),
+    SttLanguageOption("multi", "Multi")
+)
+
+/** Código para APIs: null = auto-detect; "multi" = code-switch; ISO = forzado. */
+fun LanguageMode.toApiLanguageCode(forcedCode: String?): String? = when (this) {
+    LanguageMode.AUTO -> null
+    LanguageMode.MULTI -> "multi"
+    LanguageMode.FIXED -> forcedCode?.trim()?.takeIf { it.isNotBlank() } ?: "es"
+}
+
+/** MULTI usa tarifa multi; AUTO y FIXED usan tarifa auto. */
+fun LanguageMode.billingBaseMode(): LanguageMode = when (this) {
+    LanguageMode.MULTI -> LanguageMode.MULTI
+    LanguageMode.AUTO, LanguageMode.FIXED -> LanguageMode.AUTO
+}
+
+fun LanguageMode.shortUiLabel(forcedCode: String? = null): String = when (this) {
+    LanguageMode.AUTO -> "Auto"
+    LanguageMode.MULTI -> "Multi"
+    LanguageMode.FIXED -> "Fijar${forcedCode?.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: ""}"
 }
 
 @Keep
@@ -36,8 +78,11 @@ data class TranscriptionResult(
             is RoutingSelection.Auto -> "⚡"
             is RoutingSelection.Manual -> "🧪"
         }
+        val lang = detectedLanguage?.trim()?.takeIf { it.isNotBlank() }
         return buildString {
-            append("$prefix $providerLabel • ${String.format("%.1fs", secs)}")
+            append("$prefix $providerLabel")
+            if (lang != null) append(" • $lang")
+            append(" • ${String.format("%.1fs", secs)}")
             if (copiedHint) append(" • Copiado")
             else if (costUsd > 0.0) append(" • ${BillingManager.formatUsd(costUsd, 2)}")
         }

@@ -28,7 +28,8 @@ object PaidFallbackClient {
         engine: PaidFallbackEngine,
         file: File,
         mimeType: String,
-        groqModel: String = "whisper-large-v3-turbo"
+        groqModel: String = "whisper-large-v3-turbo",
+        languageCode: String? = null
     ): TranscriptionResult {
         require(apiKey.isNotBlank()) { "API Key de respaldo pagado vacía" }
         return when (engine) {
@@ -38,25 +39,23 @@ object PaidFallbackClient {
                 file = file,
                 mimeType = mimeType,
                 model = groqModel,
-                enforceFreeSizeLimit = false
-            ).copy(
-                provider = SttProvider.PAID_FALLBACK,
-                providerLabel = "Groq Paid",
-                costUsd = ((file.length().coerceAtLeast(1).toDouble()) /* placeholder */)
-                    .let {
-                        // Coste real por duración si la respuesta la trae
-                        0.04 / 3600.0
-                    }
+                enforceFreeSizeLimit = false,
+                languageCode = languageCode
             ).let { base ->
                 val dur = base.durationSeconds ?: 0.0
-                base.copy(costUsd = dur / 3600.0 * 0.04)
+                base.copy(
+                    provider = SttProvider.PAID_FALLBACK,
+                    providerLabel = "Groq Paid",
+                    costUsd = dur / 3600.0 * 0.04
+                )
             }
 
             PaidFallbackEngine.MICROSOFT_MAI -> microsoftTranscribe(
                 apiKey = apiKey,
                 endpoint = endpoint,
                 file = file,
-                mimeType = mimeType
+                mimeType = mimeType,
+                languageCode = languageCode
             )
         }
     }
@@ -65,7 +64,8 @@ object PaidFallbackClient {
         apiKey: String,
         endpoint: String,
         file: File,
-        mimeType: String
+        mimeType: String,
+        languageCode: String?
     ): TranscriptionResult {
         val base = endpoint.trim().trimEnd('/')
         require(base.isNotBlank()) { "Endpoint Microsoft/MAI vacío" }
@@ -74,9 +74,28 @@ object PaidFallbackClient {
         return if (base.contains("openai", ignoreCase = true) ||
             base.contains("/audio/transcriptions", ignoreCase = true)
         ) {
-            openaiCompatible(apiKey, base, file, mimeType)
+            openaiCompatible(apiKey, base, file, mimeType, languageCode)
         } else {
-            azureFastTranscription(apiKey, base, file, mimeType)
+            azureFastTranscription(apiKey, base, file, mimeType, languageCode)
+        }
+    }
+
+    private fun azureLocales(languageCode: String?): JSONArray {
+        val forced = languageCode?.trim()?.takeIf {
+            it.isNotBlank() && !it.equals("multi", ignoreCase = true)
+        }?.lowercase()
+        return when (forced) {
+            null -> JSONArray().put("es-MX").put("en-US")
+            "es" -> JSONArray().put("es-MX").put("es-ES")
+            "en" -> JSONArray().put("en-US").put("en-GB")
+            "pt" -> JSONArray().put("pt-BR").put("pt-PT")
+            "fr" -> JSONArray().put("fr-FR")
+            "de" -> JSONArray().put("de-DE")
+            "it" -> JSONArray().put("it-IT")
+            "ja" -> JSONArray().put("ja-JP")
+            "ko" -> JSONArray().put("ko-KR")
+            "zh" -> JSONArray().put("zh-CN")
+            else -> JSONArray().put(forced)
         }
     }
 
@@ -84,12 +103,13 @@ object PaidFallbackClient {
         apiKey: String,
         endpoint: String,
         file: File,
-        mimeType: String
+        mimeType: String,
+        languageCode: String?
     ): TranscriptionResult {
         val url =
             "$endpoint/speechtotext/transcriptions:transcribe?api-version=2024-11-15"
         val definition = JSONObject()
-            .put("locales", JSONArray().put("es-MX").put("en-US"))
+            .put("locales", azureLocales(languageCode))
             .toString()
         val media = mimeType.toMediaTypeOrNull()
         val body = MultipartBody.Builder()
@@ -114,7 +134,7 @@ object PaidFallbackClient {
                     response.header("Retry-After")?.toLongOrNull()
                 )
             }
-            return parseAzure(raw)
+            return parseAzure(raw, languageCode)
         }
     }
 
@@ -122,7 +142,8 @@ object PaidFallbackClient {
         apiKey: String,
         endpoint: String,
         file: File,
-        mimeType: String
+        mimeType: String,
+        languageCode: String?
     ): TranscriptionResult {
         val url = if (endpoint.endsWith("/audio/transcriptions")) {
             endpoint
@@ -130,12 +151,18 @@ object PaidFallbackClient {
             "$endpoint/audio/transcriptions"
         }
         val media = mimeType.toMediaTypeOrNull()
-        val body = MultipartBody.Builder()
+        val bodyBuilder = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart("file", file.name, file.asRequestBody(media))
             .addFormDataPart("model", "mai-transcribe-2")
             .addFormDataPart("response_format", "verbose_json")
-            .build()
+        val forced = languageCode?.trim()?.takeIf {
+            it.isNotBlank() && !it.equals("multi", ignoreCase = true)
+        }
+        if (forced != null) {
+            bodyBuilder.addFormDataPart("language", forced.lowercase())
+        }
+        val body = bodyBuilder.build()
         val request = Request.Builder()
             .url(url)
             .addHeader("Authorization", "Bearer $apiKey")
@@ -156,10 +183,12 @@ object PaidFallbackClient {
             val text = root.optString("text").orEmpty().trim()
             val duration = root.optDouble("duration", Double.NaN).takeIf { !it.isNaN() }
             val words = text.split(Regex("\\s+")).count { it.isNotBlank() }
+            val detected = root.optString("language").takeIf { it.isNotBlank() }
+                ?: forced
             return TranscriptionResult(
                 transcript = text,
                 durationSeconds = duration,
-                detectedLanguage = root.optString("language").takeIf { it.isNotBlank() },
+                detectedLanguage = detected,
                 wordCount = words,
                 provider = SttProvider.PAID_FALLBACK,
                 providerLabel = "MAI-Transcribe-2",
@@ -168,7 +197,7 @@ object PaidFallbackClient {
         }
     }
 
-    private fun parseAzure(raw: String): TranscriptionResult {
+    private fun parseAzure(raw: String, languageCode: String?): TranscriptionResult {
         val root = JSONObject(raw)
         // Fast transcription suele devolver combinedPhrases / phrases / durationMilliseconds
         val combined = root.optJSONArray("combinedPhrases")
@@ -189,10 +218,13 @@ object PaidFallbackClient {
         val durationMs = root.optLong("durationMilliseconds", -1L)
         val duration = if (durationMs > 0) durationMs / 1000.0 else null
         val words = text.split(Regex("\\s+")).count { it.isNotBlank() }
+        val forced = languageCode?.trim()?.takeIf {
+            it.isNotBlank() && !it.equals("multi", ignoreCase = true)
+        }
         return TranscriptionResult(
             transcript = text,
             durationSeconds = duration,
-            detectedLanguage = null,
+            detectedLanguage = forced,
             wordCount = words,
             provider = SttProvider.PAID_FALLBACK,
             providerLabel = "Microsoft MAI",

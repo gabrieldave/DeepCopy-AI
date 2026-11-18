@@ -11,8 +11,13 @@
     <string name="copy_with_prompt">Copiar + Prompt IA</string>
     <string name="send_to_ai">Enviar a IA</string>
     <string name="diarize">Diarize (Deepgram)</string>
-    <string name="mode_auto">Auto (ES/EN)</string>
-    <string name="mode_multi">Spanglish/Multi</string>
+    <string name="diarize_hint">Solo útil con varios hablantes (entrevistas/podcasts). Suma coste Deepgram.</string>
+    <string name="mode_auto">Auto detectar</string>
+    <string name="mode_multi">Multi / code-switch</string>
+    <string name="mode_fixed">Fijar idioma</string>
+    <string name="lang_detection_label">Detección de audio</string>
+    <string name="lang_target_label">Idioma del guion / reconocimiento</string>
+    <string name="advanced_section">Avanzado</string>
     <string name="settings_title">API Keys (BYOK)</string>
     <string name="extracting">Extrayendo audio…</string>
     <string name="transcribing">Router STT en cascada…</string>

@@ -31,12 +31,13 @@ object AssemblyAiClient {
     fun transcribe(
         context: Context,
         apiKey: String,
-        file: File
+        file: File,
+        languageCode: String? = null
     ): TranscriptionResult {
         require(apiKey.isNotBlank()) { "API Key AssemblyAI vacía" }
 
         val uploadUrl = upload(apiKey, file)
-        val id = createTranscript(apiKey, uploadUrl)
+        val id = createTranscript(apiKey, uploadUrl, languageCode)
         val result = pollUntilDone(apiKey, id)
 
         val duration = result.durationSeconds ?: 0.0
@@ -152,14 +153,26 @@ object AssemblyAiClient {
         }
     }
 
-    private fun createTranscript(apiKey: String, uploadUrl: String): String {
-        val payload = JSONObject()
+    private fun createTranscript(
+        apiKey: String,
+        uploadUrl: String,
+        languageCode: String?
+    ): String {
+        val forced = languageCode?.trim()?.takeIf {
+            it.isNotBlank() && !it.equals("multi", ignoreCase = true)
+        }
+        val payloadJson = JSONObject()
             .put("audio_url", uploadUrl)
             .put(
                 "speech_models",
                 JSONArray().put("universal-3-pro").put("universal-2")
             )
-            .put("language_detection", true)
+        if (forced != null) {
+            payloadJson.put("language_code", forced.lowercase())
+        } else {
+            payloadJson.put("language_detection", true)
+        }
+        val payload = payloadJson
             .toString()
             .toRequestBody("application/json".toMediaType())
 
