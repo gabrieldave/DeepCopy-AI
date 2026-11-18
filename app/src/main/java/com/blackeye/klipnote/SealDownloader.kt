@@ -25,7 +25,8 @@ import kotlinx.coroutines.withContext
  * Envoltorio Seal-style de yt-dlp / FFmpeg / aria2c (io.github.junkfood02.youtubedl-android 0.18.1).
  *
  * Flags audio alineadas con junkfood02/Seal DownloadUtil:
- * `--no-playlist`, `--no-mtime`, `-x`, `--audio-format m4a`, `--audio-quality 5`,
+ * `--no-playlist`, `--no-mtime`, `-x`, `--audio-format m4a`,
+ * TEXT_ONLY: mono 16 kHz ~32 kbps; otros modos: calidad normal,
  * cookies por sitio, y QuickJS + `--remote-components ejs:github` para YouTube.
  */
 object SealDownloader {
@@ -243,7 +244,8 @@ object SealDownloader {
         val processId = UUID.randomUUID().toString()
         activeProcessId.set(processId)
 
-        val request = buildRequest(context, url, outTemplate, wantVideo)
+        val compressForStt = mode == LinkMode.TEXT_ONLY
+        val request = buildRequest(context, url, outTemplate, wantVideo, compressForStt)
 
         try {
             onProgress("Descargando: 0% • preparando…")
@@ -295,7 +297,8 @@ object SealDownloader {
         context: Context,
         url: String,
         outTemplate: String,
-        wantVideo: Boolean
+        wantVideo: Boolean,
+        compressForStt: Boolean
     ): YoutubeDLRequest {
         return YoutubeDLRequest(url).apply {
             // Mirror Seal downloadVideo / audio path
@@ -310,7 +313,18 @@ object SealDownloader {
                 // (sin -f rígido ba[ext=m4a] que rompe IG muxed MP4)
                 addOption("-x")
                 addOption("--audio-format", "m4a")
-                addOption("--audio-quality", "5")
+                if (compressForStt) {
+                    // Solo TEXT_ONLY: audio liviano para STT (Groq ≤24 MB).
+                    // ~32 kbps mono 16 kHz ≈ 9 MB por 40 min. No baja calidad en modos
+                    // que guardan el archivo para el usuario.
+                    addOption("--audio-quality", "32K")
+                    addOption(
+                        "--postprocessor-args",
+                        "ExtractAudio+ffmpeg:-ac 1 -ar 16000 -b:a 32k"
+                    )
+                } else {
+                    addOption("--audio-quality", "5")
+                }
             }
             addOption("--newline")
 
