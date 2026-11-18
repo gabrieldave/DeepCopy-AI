@@ -30,14 +30,16 @@ data class TranscriptionResult(
     val routingSelection: RoutingSelection = RoutingSelection.Auto,
     val levelIndex: Int = 0
 ) {
-    fun resultBadge(): String {
+    fun resultBadge(copiedHint: Boolean = false): String {
         val secs = elapsedMs / 1000.0
-        val cost = BillingManager.formatUsd(costUsd, 2)
-        return when (routingSelection) {
-            is RoutingSelection.Auto ->
-                "⚡ Auto · $providerLabel • ${String.format("%.1fs", secs)} • $cost"
-            is RoutingSelection.Manual ->
-                "🧪 Prueba · $providerLabel • ${String.format("%.1fs", secs)} • $cost"
+        val prefix = when (routingSelection) {
+            is RoutingSelection.Auto -> "⚡"
+            is RoutingSelection.Manual -> "🧪"
+        }
+        return buildString {
+            append("$prefix $providerLabel • ${String.format("%.1fs", secs)}")
+            if (copiedHint) append(" • Copiado")
+            else if (costUsd > 0.0) append(" • ${BillingManager.formatUsd(costUsd, 2)}")
         }
     }
 }
@@ -153,6 +155,25 @@ fun SttProvider.chipLabel(): String = when (this) {
     SttProvider.ASSEMBLY_AI -> "3 · AssemblyAI"
     SttProvider.DEEPGRAM -> "4 · Deepgram"
     SttProvider.PAID_FALLBACK -> "5 · Pagado"
+}
+
+fun SttProvider.shortName(): String = when (this) {
+    SttProvider.GROQ_FREE -> "Groq"
+    SttProvider.INWORLD -> "Inworld"
+    SttProvider.ASSEMBLY_AI -> "AssemblyAI"
+    SttProvider.DEEPGRAM -> "Deepgram"
+    SttProvider.PAID_FALLBACK -> "Pagado"
+}
+
+/** Pill compacta del TopBar Capturar: Auto verde / Prueba ámbar. */
+fun activeMotorPillText(
+    selection: RoutingSelection,
+    autoPrimary: SttProvider?
+): String = when (selection) {
+    is RoutingSelection.Auto ->
+        "⚡ Auto · ${autoPrimary?.shortName() ?: "—"}"
+    is RoutingSelection.Manual ->
+        "🧪 Prueba · ${selection.provider.shortName()}"
 }
 
 /** Falla exclusiva de Modo Prueba: no hay failover silencioso. */

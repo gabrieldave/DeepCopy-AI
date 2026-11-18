@@ -14,7 +14,8 @@ object SttRouter {
     data class ActiveRouteSummary(
         val primaryLabel: String,
         val chainLabel: String,
-        val hasFreePath: Boolean
+        val hasFreePath: Boolean,
+        val primaryProvider: SttProvider? = null
     )
 
     fun summarizeActiveRoute(
@@ -28,7 +29,8 @@ object SttRouter {
                 return ActiveRouteSummary(
                     primaryLabel = label,
                     chainLabel = label,
-                    hasFreePath = p != SttProvider.PAID_FALLBACK
+                    hasFreePath = p != SttProvider.PAID_FALLBACK,
+                    primaryProvider = p
                 )
             }
             RoutingSelection.Auto -> Unit
@@ -71,7 +73,8 @@ object SttRouter {
         return ActiveRouteSummary(
             primaryLabel = primaryLabel,
             chainLabel = chain,
-            hasFreePath = hasFree
+            hasFreePath = hasFree,
+            primaryProvider = primary
         )
     }
 

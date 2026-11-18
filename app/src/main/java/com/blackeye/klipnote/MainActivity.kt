@@ -12,6 +12,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,32 +21,42 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -59,6 +70,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -75,24 +87,25 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private val Bg = Color(0xFF0B0F17)
 private val Card = Color(0xFF151C28)
 private val Accent = Color(0xFF10B981)
 private val OnBg = Color(0xFFE8EEF7)
 private val Muted = Color(0xFF8B9BB4)
+private val Amber = Color(0xFFFBBF24)
 
-private val AiPrompts = listOf(
-    "Resume este contenido de forma clara y accionable:\n\n",
-    "Extrae las ideas clave, decisiones y pendientes:\n\n",
-    "Reescribe esto como un brief listo para pegar en otra IA:\n\n"
-)
+private enum class MainTab { Capturar, Guiones, Motores }
 
 sealed class UiPhase {
     data object Idle : UiPhase()
@@ -214,6 +227,8 @@ private fun KlipNoteApp(
     val snackbar = remember { SnackbarHostState() }
     val sealReady by SealDownloader.ready.collectAsState()
 
+    var selectedTab by remember { mutableStateOf(MainTab.Capturar) }
+    var showMotorSheet by remember { mutableStateOf(false) }
     var showKeyDialog by remember { mutableStateOf(false) }
     var languageMode by remember { mutableStateOf(LanguageMode.AUTO) }
     var diarize by remember { mutableStateOf(false) }
@@ -224,8 +239,8 @@ private fun KlipNoteApp(
     var updatingYtDlp by remember { mutableStateOf(false) }
     var transcriptText by remember { mutableStateOf("") }
     var lastResultMeta by remember { mutableStateOf<TranscriptionResult?>(null) }
-    var promptMenu by remember { mutableStateOf(false) }
     var copyFeedback by remember { mutableStateOf(false) }
+    var lastSourceLabel by remember { mutableStateOf("") }
 
     var creditExpanded by remember { mutableStateOf(true) }
     var creditRefreshing by remember { mutableStateOf(false) }
@@ -242,6 +257,9 @@ private fun KlipNoteApp(
     var routingSelection by remember { mutableStateOf<RoutingSelection>(RoutingSelection.Auto) }
     var routeChain by remember {
         mutableStateOf(SttRouter.summarizeActiveRoute(context, RoutingSelection.Auto).chainLabel)
+    }
+    var autoPrimary by remember {
+        mutableStateOf(SttRouter.summarizeActiveRoute(context, RoutingSelection.Auto).primaryProvider)
     }
     var appSpent by remember { mutableStateOf(BillingManager.getAppSpent(context)) }
     var localUsage by remember { mutableStateOf(BillingManager.getLocalUsage(context)) }
@@ -270,20 +288,26 @@ private fun KlipNoteApp(
     var showCostSettings by remember { mutableStateOf(false) }
     var giantConfirm by remember { mutableStateOf<PreFlightState?>(null) }
     var historyEntries by remember { mutableStateOf(BillingManager.loadHistory(context)) }
+    var transcriptEntries by remember { mutableStateOf(TranscriptHistoryStore.load(context)) }
+    var guionSearch by remember { mutableStateOf("") }
+    var expandedGuionId by remember { mutableStateOf<String?>(null) }
 
     fun syncKeysUi() {
         keyMasks = readKeyMasks(context)
-        // Semilla inmediata: con llave → KEY LISTA, nunca SIN KEY vacío.
-        providerStatuses = OfferHealthMonitor.reconcileWithStore(
-            context,
-            providerStatuses
-        )
-        routeChain = SttRouter.summarizeActiveRoute(context, routingSelection).chainLabel
+        providerStatuses = OfferHealthMonitor.reconcileWithStore(context, providerStatuses)
+        val summary = SttRouter.summarizeActiveRoute(context, routingSelection)
+        routeChain = summary.chainLabel
+        autoPrimary = when (routingSelection) {
+            is RoutingSelection.Auto -> summary.primaryProvider
+            is RoutingSelection.Manual -> summary.primaryProvider
+        }
     }
 
     fun setRouting(selection: RoutingSelection) {
         routingSelection = selection
-        routeChain = SttRouter.summarizeActiveRoute(context, selection).chainLabel
+        val summary = SttRouter.summarizeActiveRoute(context, selection)
+        routeChain = summary.chainLabel
+        autoPrimary = summary.primaryProvider
         val err = phase
         if (err is UiPhase.Error && err.isManualTest && selection is RoutingSelection.Auto) {
             phase = UiPhase.Idle
@@ -307,10 +331,9 @@ private fun KlipNoteApp(
             groqRemaining = BillingManager.getGroqRemainingSeconds(context)
             inworldRemaining = BillingManager.getInworldRemainingSeconds(context)
             assemblyRemaining = BillingManager.getAssemblyRemainingSeconds(context)
-            routeChain = SttRouter.summarizeActiveRoute(context, routingSelection).chainLabel
+            syncKeysUi()
             historyEntries = BillingManager.loadHistory(context)
             allowPaidFallback = BillingManager.getAllowPaidFallback(context)
-            syncKeysUi()
             creditRefreshing = false
         }
     }
@@ -327,7 +350,7 @@ private fun KlipNoteApp(
             groqRemaining = BillingManager.getGroqRemainingSeconds(context)
             inworldRemaining = BillingManager.getInworldRemainingSeconds(context)
             assemblyRemaining = BillingManager.getAssemblyRemainingSeconds(context)
-            routeChain = SttRouter.summarizeActiveRoute(context, routingSelection).chainLabel
+            syncKeysUi()
             verifyingOffers = false
             if (showSnackbar) {
                 snackbar.showSnackbar("Ofertas verificadas")
@@ -394,8 +417,19 @@ private fun KlipNoteApp(
         )
     }
 
+    fun persistGuion(source: String, result: TranscriptionResult) {
+        transcriptEntries = TranscriptHistoryStore.append(
+            context = context,
+            sourceTitleOrUrl = source,
+            providerUsed = result.providerLabel,
+            durationSec = result.durationSeconds ?: 0.0,
+            text = result.transcript
+        )
+    }
+
     fun startTranscription(uri: Uri, fileName: String) {
         val selectionSnap = routingSelection
+        lastSourceLabel = fileName
         scope.launch {
             runTranscription(
                 context = context,
@@ -406,7 +440,10 @@ private fun KlipNoteApp(
                 routingSelection = selectionSnap,
                 onPhase = { phase = it },
                 onText = { transcriptText = it },
-                onMeta = { lastResultMeta = it },
+                onMeta = {
+                    lastResultMeta = it
+                    persistGuion(fileName, it)
+                },
                 onBalance = { balanceSnapshot = it },
                 onAppSpent = {
                     appSpent = it
@@ -414,7 +451,7 @@ private fun KlipNoteApp(
                     groqRemaining = BillingManager.getGroqRemainingSeconds(context)
                     inworldRemaining = BillingManager.getInworldRemainingSeconds(context)
                     assemblyRemaining = BillingManager.getAssemblyRemainingSeconds(context)
-                    routeChain = SttRouter.summarizeActiveRoute(context, selectionSnap).chainLabel
+                    syncKeysUi()
                 },
                 onHistoryChanged = { historyEntries = it },
                 snackbar = snackbar
@@ -431,9 +468,11 @@ private fun KlipNoteApp(
             return
         }
         linkInput = url
+        lastSourceLabel = url
         val needsStt = linkMode != SealDownloader.LinkMode.DOWNLOAD_ONLY
         if (needsStt && !ApiKeyStore.hasAnyKey(context)) {
             showKeyDialog = true
+            selectedTab = MainTab.Motores
             Toast.makeText(context, context.getString(R.string.error_no_key), Toast.LENGTH_LONG).show()
             return
         }
@@ -471,6 +510,7 @@ private fun KlipNoteApp(
                     return@launch
                 }
                 val uri = artifact.uri ?: Uri.fromFile(artifact.file)
+                lastSourceLabel = artifact.title.ifBlank { url }
                 runTranscription(
                     context = context,
                     uri = uri,
@@ -480,7 +520,10 @@ private fun KlipNoteApp(
                     routingSelection = selectionSnap,
                     onPhase = { phase = it },
                     onText = { transcriptText = it },
-                    onMeta = { lastResultMeta = it },
+                    onMeta = {
+                        lastResultMeta = it
+                        persistGuion(lastSourceLabel.ifBlank { url }, it)
+                    },
                     onBalance = { balanceSnapshot = it },
                     onAppSpent = {
                         appSpent = it
@@ -488,8 +531,7 @@ private fun KlipNoteApp(
                         groqRemaining = BillingManager.getGroqRemainingSeconds(context)
                         inworldRemaining = BillingManager.getInworldRemainingSeconds(context)
                         assemblyRemaining = BillingManager.getAssemblyRemainingSeconds(context)
-                        routeChain =
-                            SttRouter.summarizeActiveRoute(context, selectionSnap).chainLabel
+                        syncKeysUi()
                     },
                     onHistoryChanged = { historyEntries = it },
                     snackbar = snackbar
@@ -523,7 +565,6 @@ private fun KlipNoteApp(
 
     val keysRevision by ApiKeyStore.revision.collectAsState()
     LaunchedEffect(keysRevision) {
-        // Sync ligero de máscaras/estados locales. verifyAll solo vía onKeysChanged/verifyOffers.
         syncKeysUi()
         if (keysRevision == 0L) return@LaunchedEffect
         providerStatuses = OfferHealthMonitor.reconcileWithStore(context, providerStatuses)
@@ -533,7 +574,6 @@ private fun KlipNoteApp(
         syncKeysUi()
         refreshDashboard()
         if (ApiKeyStore.hasAnyKey(context)) {
-            // Ping inmediato al abrir si hay llaves (o si pasaron >7 días).
             if (OfferHealthMonitor.shouldAutoCheck(context)) {
                 verifyOffers(showSnackbar = false)
             }
@@ -544,10 +584,10 @@ private fun KlipNoteApp(
         if (shareText != null) {
             val text = shareText
             onShareConsumed()
+            selectedTab = MainTab.Capturar
             val url = SealDownloader.extractFirstUrl(text)
             if (url != null) {
                 linkInput = url
-                // Espera breve a init nativo si hace falta.
                 var waits = 0
                 while (
                     SealDownloader.ready.value == SealDownloader.ReadyState.IDLE && waits < 25
@@ -563,8 +603,10 @@ private fun KlipNoteApp(
         }
         val uri = shareUri ?: return@LaunchedEffect
         onShareConsumed()
+        selectedTab = MainTab.Capturar
         if (!ApiKeyStore.hasAnyKey(context)) {
             showKeyDialog = true
+            selectedTab = MainTab.Motores
             Toast.makeText(
                 context,
                 context.getString(R.string.error_no_key),
@@ -604,246 +646,319 @@ private fun KlipNoteApp(
         }
     }
 
+    val busy = phase is UiPhase.Downloading ||
+        phase is UiPhase.Extracting ||
+        phase is UiPhase.Transcribing
+
+    val pillManual = routingSelection is RoutingSelection.Manual
+    val pillText = activeMotorPillText(routingSelection, autoPrimary)
+
     Scaffold(
         containerColor = Bg,
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text = stringResource(R.string.app_name),
-                            fontWeight = FontWeight.Bold,
-                            color = OnBg
+            when (selectedTab) {
+                MainTab.Capturar -> {
+                    TopAppBar(
+                        title = {
+                            Text(
+                                text = stringResource(R.string.app_name),
+                                fontWeight = FontWeight.Bold,
+                                color = OnBg
+                            )
+                        },
+                        actions = {
+                            ActiveMotorPill(
+                                label = pillText,
+                                isManual = pillManual,
+                                onClick = { showMotorSheet = true }
+                            )
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Bg,
+                            titleContentColor = OnBg
                         )
-                        Text(
-                            text = stringResource(R.string.app_tagline),
-                            fontSize = 12.sp,
-                            color = Muted
+                    )
+                }
+                MainTab.Guiones -> {
+                    TopAppBar(
+                        title = {
+                            Text("Guiones", fontWeight = FontWeight.Bold, color = OnBg)
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Bg,
+                            titleContentColor = OnBg
                         )
-                    }
-                },
-                actions = {
-                    TextButton(
-                        onClick = {
-                            if (updatingYtDlp) return@TextButton
+                    )
+                }
+                MainTab.Motores -> {
+                    TopAppBar(
+                        title = {
+                            Column {
+                                Text("Motores", fontWeight = FontWeight.Bold, color = OnBg)
+                                Text(
+                                    "Admin · Escudo Anti-Gladia",
+                                    fontSize = 12.sp,
+                                    color = Muted
+                                )
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Bg,
+                            titleContentColor = OnBg
+                        )
+                    )
+                }
+            }
+        },
+        bottomBar = {
+            NavigationBar(containerColor = Card, contentColor = OnBg) {
+                NavigationBarItem(
+                    selected = selectedTab == MainTab.Capturar,
+                    onClick = { selectedTab = MainTab.Capturar },
+                    icon = { Icon(Icons.Default.Link, contentDescription = null) },
+                    label = { Text("Capturar") },
+                    colors = navColors()
+                )
+                NavigationBarItem(
+                    selected = selectedTab == MainTab.Guiones,
+                    onClick = {
+                        transcriptEntries = TranscriptHistoryStore.load(context)
+                        selectedTab = MainTab.Guiones
+                    },
+                    icon = { Icon(Icons.Default.Description, contentDescription = null) },
+                    label = { Text("Guiones") },
+                    colors = navColors()
+                )
+                NavigationBarItem(
+                    selected = selectedTab == MainTab.Motores,
+                    onClick = { selectedTab = MainTab.Motores },
+                    icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                    label = { Text("Motores") },
+                    colors = navColors()
+                )
+            }
+        }
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .imePadding()
+        ) {
+            when (selectedTab) {
+                MainTab.Capturar -> {
+                    CapturarTab(
+                        linkInput = linkInput,
+                        onLinkChange = { linkInput = it },
+                        linkMode = linkMode,
+                        onModeChange = { linkMode = it },
+                        downloadKind = downloadKind,
+                        onDownloadKindChange = { downloadKind = it },
+                        sealReady = sealReady,
+                        busy = busy,
+                        phase = phase,
+                        transcriptText = transcriptText,
+                        lastResultMeta = lastResultMeta,
+                        copyFeedback = copyFeedback,
+                        preFlight = preFlight,
+                        autoTranscribeOnShare = autoTranscribeOnShare,
+                        onPasteLink = {
+                            val cm = context.getSystemService(ClipboardManager::class.java)
+                            val pasted = cm?.primaryClip?.getItemAt(0)?.coerceToText(context)
+                                ?.toString()?.trim().orEmpty()
+                            if (pasted.isNotBlank()) {
+                                linkInput = SealDownloader.extractFirstUrl(pasted) ?: pasted
+                            }
+                        },
+                        onClearLink = { linkInput = "" },
+                        onRun = { startFromLink(linkInput) },
+                        onCancel = { cancelWork() },
+                        onPickFile = {
+                            if (!ApiKeyStore.hasAnyKey(context) &&
+                                linkMode != SealDownloader.LinkMode.DOWNLOAD_ONLY
+                            ) {
+                                showKeyDialog = true
+                                selectedTab = MainTab.Motores
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.error_no_key),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            } else {
+                                picker.launch(arrayOf("audio/*", "video/*"))
+                            }
+                        },
+                        onConfirmPreFlight = { confirmPreFlight(it) },
+                        onDismissPreFlight = { preFlight = null },
+                        onAutoTranscribeChange = { enabled ->
+                            preFlight?.let { pf ->
+                                if (enabled && pf.hardStopMessage != null) return@CapturarTab
+                            }
+                            autoTranscribeOnShare = enabled
+                            BillingManager.setAutoTranscribeOnShare(context, enabled)
+                        },
+                        onCopy = {
+                            copyToClipboard(context, transcriptText)
+                            notifyCopied()
+                        },
+                        onShare = {
+                            val send = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, transcriptText)
+                            }
+                            context.startActivity(
+                                Intent.createChooser(send, context.getString(R.string.send_to_ai))
+                            )
+                        },
+                        onClearResult = {
+                            transcriptText = ""
+                            lastResultMeta = null
+                            phase = UiPhase.Idle
+                            copyFeedback = false
+                        },
+                        onBackToAuto = { setRouting(RoutingSelection.Auto) },
+                        onTextChange = { transcriptText = it }
+                    )
+                }
+                MainTab.Guiones -> {
+                    GuionesTab(
+                        entries = transcriptEntries,
+                        search = guionSearch,
+                        onSearchChange = { guionSearch = it },
+                        expandedId = expandedGuionId,
+                        onExpandToggle = { id ->
+                            expandedGuionId = if (expandedGuionId == id) null else id
+                        },
+                        onCopy = { text ->
+                            copyToClipboard(context, text)
+                            notifyCopied()
+                        },
+                        onOpenLink = { raw ->
+                            val url = SealDownloader.extractFirstUrl(raw)
+                            if (url != null) {
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                    )
+                                }
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    "Sin enlace abríble",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
+                        onDelete = { id ->
+                            transcriptEntries = TranscriptHistoryStore.delete(context, id)
+                            if (expandedGuionId == id) expandedGuionId = null
+                        },
+                        onClearAll = {
+                            transcriptEntries = TranscriptHistoryStore.clear(context)
+                            expandedGuionId = null
+                        }
+                    )
+                }
+                MainTab.Motores -> {
+                    MotoresTab(
+                        routingSelection = routingSelection,
+                        keyMasks = keyMasks,
+                        onSelectAuto = { setRouting(RoutingSelection.Auto) },
+                        onSelectManual = { setRouting(RoutingSelection.Manual(it)) },
+                        onOpenKeys = { showKeyDialog = true },
+                        creditState = CreditUiState(
+                            expanded = creditExpanded,
+                            refreshing = creditRefreshing,
+                            snapshot = balanceSnapshot,
+                            appSpent = appSpent,
+                            initialCredit = initialCredit,
+                            includeDiarizeCost = includeDiarizeCost,
+                            languageMode = languageMode,
+                            localUsage = localUsage,
+                            routeChain = routeChain,
+                            providerStatuses = providerStatuses,
+                            keyMasks = keyMasks,
+                            allowPaidFallback = allowPaidFallback,
+                            verifyingOffers = verifyingOffers,
+                            groqRemainingSeconds = groqRemaining,
+                            inworldRemainingSeconds = inworldRemaining,
+                            inworldUsedMinutesEditable = String.format(
+                                "%.1f",
+                                BillingManager.getInworldUsedSeconds(context) / 60.0
+                            ),
+                            assemblyRemainingSeconds = assemblyRemaining,
+                            assemblyUsedHoursEditable = String.format(
+                                "%.2f",
+                                BillingManager.getAssemblyUsedSeconds(context) / 3600.0
+                            ),
+                            routingSelection = routingSelection
+                        ),
+                        onToggleExpand = { creditExpanded = !creditExpanded },
+                        onRefresh = { refreshDashboard() },
+                        onOpenHistory = {
+                            historyEntries = BillingManager.loadHistory(context)
+                            showHistory = true
+                        },
+                        onOpenCostSettings = { showCostSettings = true },
+                        onVerifyOffers = { verifyOffers(showSnackbar = true) },
+                        onAllowPaidChange = { enabled ->
+                            allowPaidFallback = enabled
+                            BillingManager.setAllowPaidFallback(context, enabled)
+                            syncKeysUi()
+                        },
+                        onInworldUsedMinutesSave = { minutes ->
+                            BillingManager.setInworldUsedSeconds(context, minutes * 60.0)
+                            inworldRemaining = BillingManager.getInworldRemainingSeconds(context)
+                        },
+                        onAssemblyUsedHoursSave = { hours ->
+                            BillingManager.setAssemblyUsedSeconds(context, hours * 3600.0)
+                            assemblyRemaining = BillingManager.getAssemblyRemainingSeconds(context)
+                        },
+                        onProbeProvider = { setRouting(RoutingSelection.Manual(it)) },
+                        languageMode = languageMode,
+                        onLanguageModeChange = { languageMode = it },
+                        diarize = diarize,
+                        onDiarizeChange = { diarize = it },
+                        sealReady = sealReady,
+                        updatingYtDlp = updatingYtDlp,
+                        onUpdateYtDlp = {
+                            if (updatingYtDlp) return@MotoresTab
                             updatingYtDlp = true
                             scope.launch {
                                 val msg = runCatching {
                                     SealDownloader.updateYtDlpNightly(context)
-                                }.getOrElse { e ->
-                                    e.message ?: "Error al actualizar"
-                                }
+                                }.getOrElse { e -> e.message ?: "Error al actualizar" }
                                 updatingYtDlp = false
                                 snackbar.showSnackbar("yt-dlp: $msg")
                             }
-                        },
-                        enabled = !updatingYtDlp && sealReady == SealDownloader.ReadyState.READY
-                    ) {
-                        Text(
-                            if (updatingYtDlp) "…" else "Actualizar yt-dlp",
-                            color = Accent,
-                            fontSize = 12.sp
-                        )
-                    }
-                    IconButton(onClick = { showKeyDialog = true }) {
-                        Icon(
-                            imageVector = Icons.Default.Key,
-                            contentDescription = stringResource(R.string.settings_title),
-                            tint = Accent
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Bg,
-                    titleContentColor = OnBg
-                )
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp)
-                .verticalScroll(rememberScrollState())
-                .imePadding(),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            LinkActionCard(
-                linkInput = linkInput,
-                onLinkChange = { linkInput = it },
-                linkMode = linkMode,
-                onModeChange = { linkMode = it },
-                downloadKind = downloadKind,
-                onDownloadKindChange = { downloadKind = it },
-                sealReady = sealReady,
-                busy = phase is UiPhase.Downloading ||
-                    phase is UiPhase.Extracting ||
-                    phase is UiPhase.Transcribing,
-                onPasteLink = {
-                    val cm = context.getSystemService(ClipboardManager::class.java)
-                    val pasted = cm?.primaryClip?.getItemAt(0)?.coerceToText(context)
-                        ?.toString()?.trim().orEmpty()
-                    if (pasted.isNotBlank()) {
-                        linkInput = SealDownloader.extractFirstUrl(pasted) ?: pasted
-                    }
-                },
-                onRun = { startFromLink(linkInput) },
-                onCancel = { cancelWork() }
-            )
-
-            RoutingModeChips(
-                selection = routingSelection,
-                keyMasks = keyMasks,
-                onSelectAuto = { setRouting(RoutingSelection.Auto) },
-                onSelectManual = { setRouting(RoutingSelection.Manual(it)) },
-                onOpenKeys = { showKeyDialog = true }
-            )
-
-            CreditControlPanel(
-                state = CreditUiState(
-                    expanded = creditExpanded,
-                    refreshing = creditRefreshing,
-                    snapshot = balanceSnapshot,
-                    appSpent = appSpent,
-                    initialCredit = initialCredit,
-                    includeDiarizeCost = includeDiarizeCost,
-                    languageMode = languageMode,
-                    localUsage = localUsage,
-                    routeChain = routeChain,
-                    providerStatuses = providerStatuses,
-                    keyMasks = keyMasks,
-                    allowPaidFallback = allowPaidFallback,
-                    verifyingOffers = verifyingOffers,
-                    groqRemainingSeconds = groqRemaining,
-                    inworldRemainingSeconds = inworldRemaining,
-                    inworldUsedMinutesEditable = String.format(
-                        "%.1f",
-                        BillingManager.getInworldUsedSeconds(context) / 60.0
-                    ),
-                    assemblyRemainingSeconds = assemblyRemaining,
-                    assemblyUsedHoursEditable = String.format(
-                        "%.2f",
-                        BillingManager.getAssemblyUsedSeconds(context) / 3600.0
-                    ),
-                    routingSelection = routingSelection
-                ),
-                onToggleExpand = { creditExpanded = !creditExpanded },
-                onRefresh = { refreshDashboard() },
-                onOpenHistory = {
-                    historyEntries = BillingManager.loadHistory(context)
-                    showHistory = true
-                },
-                onOpenCostSettings = { showCostSettings = true },
-                onVerifyOffers = { verifyOffers(showSnackbar = true) },
-                onAllowPaidChange = { enabled ->
-                    allowPaidFallback = enabled
-                    BillingManager.setAllowPaidFallback(context, enabled)
-                    routeChain = SttRouter.summarizeActiveRoute(context, routingSelection).chainLabel
-                },
-                onInworldUsedMinutesSave = { minutes ->
-                    BillingManager.setInworldUsedSeconds(context, minutes * 60.0)
-                    inworldRemaining = BillingManager.getInworldRemainingSeconds(context)
-                },
-                onAssemblyUsedHoursSave = { hours ->
-                    BillingManager.setAssemblyUsedSeconds(context, hours * 3600.0)
-                    assemblyRemaining = BillingManager.getAssemblyRemainingSeconds(context)
-                },
-                onOpenKeys = { showKeyDialog = true },
-                onProbeProvider = { setRouting(RoutingSelection.Manual(it)) }
-            )
-
-            StatusCard(
-                phase = phase,
-                lastMeta = lastResultMeta,
-                onBackToAuto = { setRouting(RoutingSelection.Auto) }
-            )
-
-            preFlight?.let { pf ->
-                PreFlightCard(
-                    fileName = pf.fileName,
-                    durationLabel = BillingManager.formatDuration(pf.durationSeconds),
-                    modeLabel = when (pf.estimate.mode) {
-                        LanguageMode.AUTO -> "Auto"
-                        LanguageMode.MULTI -> "Spanglish"
-                    } + if (pf.estimate.includeDiarize) " + Diarize" else "",
-                    estimatedUsd = pf.estimatedUsdDisplay,
-                    hardStopMessage = pf.hardStopMessage,
-                    autoTranscribe = autoTranscribeOnShare,
-                    autoTranscribeEnabled = pf.hardStopMessage == null,
-                    routeHint = pf.routeHint,
-                    onAutoTranscribeChange = { enabled ->
-                        if (enabled && pf.hardStopMessage != null) return@PreFlightCard
-                        autoTranscribeOnShare = enabled
-                        BillingManager.setAutoTranscribeOnShare(context, enabled)
-                    },
-                    onConfirm = { confirmPreFlight(pf) },
-                    onDismiss = { preFlight = null },
-                    busy = phase is UiPhase.Downloading ||
-                        phase is UiPhase.Extracting ||
-                        phase is UiPhase.Transcribing
-                )
-            }
-
-            ControlsCard(
-                languageMode = languageMode,
-                onModeChange = { languageMode = it },
-                diarize = diarize,
-                onDiarizeChange = { diarize = it },
-                busy = phase is UiPhase.Downloading ||
-                    phase is UiPhase.Extracting ||
-                    phase is UiPhase.Transcribing,
-                onPick = {
-                    if (!ApiKeyStore.hasAnyKey(context)) {
-                        showKeyDialog = true
-                        Toast.makeText(
-                            context,
-                            context.getString(R.string.error_no_key),
-                            Toast.LENGTH_LONG
-                        ).show()
-                    } else {
-                        picker.launch(arrayOf("audio/*", "video/*"))
-                    }
+                        }
+                    )
                 }
-            )
-
-            if (transcriptText.isNotBlank()) {
-                ResultCard(
-                    text = transcriptText,
-                    metaLabel = lastResultMeta?.let { meta ->
-                        buildString {
-                            append(meta.resultBadge())
-                            if (copyFeedback) append(" · Copiado")
-                        }
-                    },
-                    onTextChange = { transcriptText = it },
-                    promptMenuExpanded = promptMenu,
-                    onPromptMenuChange = { promptMenu = it },
-                    copyFeedback = copyFeedback,
-                    onCopyPlain = {
-                        copyToClipboard(context, transcriptText)
-                        notifyCopied()
-                    },
-                    onCopyWithPrompt = { prefix ->
-                        copyToClipboard(context, prefix + transcriptText)
-                        promptMenu = false
-                        notifyCopied()
-                    },
-                    onSendToAi = {
-                        val send = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, transcriptText)
-                        }
-                        context.startActivity(
-                            Intent.createChooser(send, context.getString(R.string.send_to_ai))
-                        )
-                    }
-                )
             }
-
-            Spacer(Modifier.height(24.dp))
         }
+    }
+
+    if (showMotorSheet) {
+        MotorPickerSheet(
+            selection = routingSelection,
+            keyMasks = keyMasks,
+            onDismiss = { showMotorSheet = false },
+            onSelectAuto = {
+                setRouting(RoutingSelection.Auto)
+                showMotorSheet = false
+            },
+            onSelectManual = { provider ->
+                if (keyMasks[provider].isNullOrBlank()) {
+                    showMotorSheet = false
+                    showKeyDialog = true
+                    selectedTab = MainTab.Motores
+                } else {
+                    setRouting(RoutingSelection.Manual(provider))
+                    showMotorSheet = false
+                }
+            }
+        )
     }
 
     if (showKeyDialog) {
@@ -885,8 +1000,8 @@ private fun KlipNoteApp(
             onDismiss = { showHistory = false },
             onOpen = { entry ->
                 transcriptText = entry.transcript
-                promptMenu = false
                 phase = UiPhase.Idle
+                selectedTab = MainTab.Capturar
                 showHistory = false
             },
             onDelete = { entry ->
@@ -935,150 +1050,196 @@ private fun KlipNoteApp(
 }
 
 @Composable
-private fun StatusCard(
-    phase: UiPhase,
-    lastMeta: TranscriptionResult?,
-    onBackToAuto: () -> Unit
+private fun navColors() = NavigationBarItemDefaults.colors(
+    selectedIconColor = Accent,
+    selectedTextColor = Accent,
+    indicatorColor = Accent.copy(alpha = 0.18f),
+    unselectedIconColor = Muted,
+    unselectedTextColor = Muted
+)
+
+@Composable
+private fun ActiveMotorPill(
+    label: String,
+    isManual: Boolean,
+    onClick: () -> Unit
 ) {
-    Box(
+    val tint = if (isManual) Amber else Accent
+    Text(
+        text = label,
+        color = tint,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
         modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(Card)
-            .padding(16.dp)
+            .padding(end = 8.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(tint.copy(alpha = 0.16f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MotorPickerSheet(
+    selection: RoutingSelection,
+    keyMasks: Map<SttProvider, String?>,
+    onDismiss: () -> Unit,
+    onSelectAuto: () -> Unit,
+    onSelectManual: (SttProvider) -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = Card
     ) {
-        when (phase) {
-            UiPhase.Idle -> {
-                Text(
-                    "Pega un enlace (YT/TikTok/IG/X) o elige un archivo local.",
-                    color = Muted
-                )
-            }
-            is UiPhase.Downloading -> BusyRow(phase.label)
-            UiPhase.Extracting -> BusyRow(stringResource(R.string.extracting))
-            is UiPhase.Transcribing -> BusyRow(
-                phase.motorHint.ifBlank { stringResource(R.string.transcribing) }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                "Motor activo",
+                color = OnBg,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 16.sp
             )
-            is UiPhase.Done -> {
-                val m = phase.meta
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(stringResource(R.string.ready), color = Accent, fontWeight = FontWeight.SemiBold)
-                    Text(m.resultBadge(), color = Accent, fontSize = 13.sp)
-                    Text(
-                        buildString {
-                            m.durationSeconds?.let {
-                                append(String.format("%.1fs audio", it))
-                                append(" · ")
+            Text(
+                "Cambia Auto o fija un motor sin salir de Capturar.",
+                color = Muted,
+                fontSize = 13.sp
+            )
+            FilterChip(
+                selected = selection is RoutingSelection.Auto,
+                onClick = onSelectAuto,
+                label = { Text("⚡ Auto (Cascada)") },
+                modifier = Modifier.fillMaxWidth(),
+                colors = chipColors()
+            )
+            SttProvider.entries.forEach { provider ->
+                val selected = selection is RoutingSelection.Manual &&
+                    selection.provider == provider
+                FilterChip(
+                    selected = selected,
+                    onClick = { onSelectManual(provider) },
+                    label = {
+                        Text(
+                            buildString {
+                                append(provider.chipLabel())
+                                if (keyMasks[provider].isNullOrBlank()) append(" · sin key")
                             }
-                            append(m.detectedLanguage?.uppercase() ?: "—")
-                            append(" · ")
-                            append("${m.wordCount} palabras")
-                        },
-                        color = Muted,
-                        fontSize = 13.sp
-                    )
-                }
-            }
-            is UiPhase.Error -> {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(phase.message, color = Color(0xFFF87171))
-                    if (phase.isManualTest) {
-                        TextButton(onClick = onBackToAuto) {
-                            Text("Volver a Auto (Cascada)", color = Accent)
-                        }
-                    }
-                }
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = chipColors()
+                )
             }
         }
     }
 }
 
 @Composable
-private fun BusyRow(label: String) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        CircularProgressIndicator(
-            modifier = Modifier.size(22.dp),
-            color = Accent,
-            strokeWidth = 2.5.dp
-        )
-        Text(label, color = OnBg)
-    }
-}
-
-@Composable
-private fun ControlsCard(
-    languageMode: LanguageMode,
-    onModeChange: (LanguageMode) -> Unit,
-    diarize: Boolean,
-    onDiarizeChange: (Boolean) -> Unit,
+private fun CapturarTab(
+    linkInput: String,
+    onLinkChange: (String) -> Unit,
+    linkMode: SealDownloader.LinkMode,
+    onModeChange: (SealDownloader.LinkMode) -> Unit,
+    downloadKind: SealDownloader.DownloadKind,
+    onDownloadKindChange: (SealDownloader.DownloadKind) -> Unit,
+    sealReady: SealDownloader.ReadyState,
     busy: Boolean,
-    onPick: () -> Unit
+    phase: UiPhase,
+    transcriptText: String,
+    lastResultMeta: TranscriptionResult?,
+    copyFeedback: Boolean,
+    preFlight: PreFlightState?,
+    autoTranscribeOnShare: Boolean,
+    onPasteLink: () -> Unit,
+    onClearLink: () -> Unit,
+    onRun: () -> Unit,
+    onCancel: () -> Unit,
+    onPickFile: () -> Unit,
+    onConfirmPreFlight: (PreFlightState) -> Unit,
+    onDismissPreFlight: () -> Unit,
+    onAutoTranscribeChange: (Boolean) -> Unit,
+    onCopy: () -> Unit,
+    onShare: () -> Unit,
+    onClearResult: () -> Unit,
+    onBackToAuto: () -> Unit,
+    onTextChange: (String) -> Unit
 ) {
     Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(Card)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp)
+            .padding(top = 8.dp, bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("Idioma", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ModeChip(
-                selected = languageMode == LanguageMode.AUTO,
-                label = stringResource(R.string.mode_auto),
-                enabled = !busy,
-                onClick = { onModeChange(LanguageMode.AUTO) }
-            )
-            ModeChip(
-                selected = languageMode == LanguageMode.MULTI,
-                label = stringResource(R.string.mode_multi),
-                enabled = !busy,
-                onClick = { onModeChange(LanguageMode.MULTI) }
+        LinkHeroCard(
+            linkInput = linkInput,
+            onLinkChange = onLinkChange,
+            linkMode = linkMode,
+            onModeChange = onModeChange,
+            downloadKind = downloadKind,
+            onDownloadKindChange = onDownloadKindChange,
+            sealReady = sealReady,
+            busy = busy,
+            onPasteLink = onPasteLink,
+            onClearLink = onClearLink,
+            onRun = onRun,
+            onPickFile = onPickFile
+        )
+
+        when (phase) {
+            is UiPhase.Downloading,
+            UiPhase.Extracting,
+            is UiPhase.Transcribing -> {
+                ProgressCard(phase = phase, onCancel = onCancel)
+            }
+            is UiPhase.Error -> {
+                ErrorCard(message = phase.message, isManual = phase.isManualTest, onBackToAuto = onBackToAuto)
+            }
+            else -> Unit
+        }
+
+        preFlight?.let { pf ->
+            PreFlightCard(
+                fileName = pf.fileName,
+                durationLabel = BillingManager.formatDuration(pf.durationSeconds),
+                modeLabel = when (pf.estimate.mode) {
+                    LanguageMode.AUTO -> "Auto"
+                    LanguageMode.MULTI -> "Spanglish"
+                } + if (pf.estimate.includeDiarize) " + Diarize" else "",
+                estimatedUsd = pf.estimatedUsdDisplay,
+                hardStopMessage = pf.hardStopMessage,
+                autoTranscribe = autoTranscribeOnShare,
+                autoTranscribeEnabled = pf.hardStopMessage == null,
+                routeHint = pf.routeHint,
+                onAutoTranscribeChange = onAutoTranscribeChange,
+                onConfirm = { onConfirmPreFlight(pf) },
+                onDismiss = onDismissPreFlight,
+                busy = busy
             )
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(stringResource(R.string.diarize), color = OnBg)
-            Switch(
-                checked = diarize,
-                onCheckedChange = onDiarizeChange,
-                enabled = !busy,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.White,
-                    checkedTrackColor = Accent,
-                    uncheckedThumbColor = Muted,
-                    uncheckedTrackColor = Color(0xFF1F2937)
-                )
-            )
-        }
-
-        OutlinedButton(
-            onClick = onPick,
-            enabled = !busy,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Icon(Icons.Default.UploadFile, contentDescription = null, tint = Accent)
-            Spacer(Modifier.size(8.dp))
-            Text(
-                "Elegir archivo local (Video / Audio)",
-                color = Accent,
-                fontWeight = FontWeight.SemiBold
+        if (transcriptText.isNotBlank() || phase is UiPhase.Done) {
+            ResultWorkspaceCard(
+                text = transcriptText,
+                metaLabel = lastResultMeta?.resultBadge(copiedHint = copyFeedback),
+                onTextChange = onTextChange,
+                onCopy = onCopy,
+                onShare = onShare,
+                onClear = onClearResult
             )
         }
     }
 }
 
 @Composable
-private fun LinkActionCard(
+private fun LinkHeroCard(
     linkInput: String,
     onLinkChange: (String) -> Unit,
     linkMode: SealDownloader.LinkMode,
@@ -1088,14 +1249,15 @@ private fun LinkActionCard(
     sealReady: SealDownloader.ReadyState,
     busy: Boolean,
     onPasteLink: () -> Unit,
+    onClearLink: () -> Unit,
     onRun: () -> Unit,
-    onCancel: () -> Unit
+    onPickFile: () -> Unit
 ) {
     val primaryLabel = when (linkMode) {
-        SealDownloader.LinkMode.TEXT_ONLY -> "⚡ Solo Texto"
-        SealDownloader.LinkMode.AUDIO_AND_TEXT -> "🎵 Audio + Texto"
-        SealDownloader.LinkMode.VIDEO_AND_TEXT -> "🎬 Video + Texto"
-        SealDownloader.LinkMode.DOWNLOAD_ONLY -> "📥 Solo Bajar"
+        SealDownloader.LinkMode.TEXT_ONLY -> "Extraer Guion"
+        SealDownloader.LinkMode.AUDIO_AND_TEXT -> "Descargar Audio y Guion"
+        SealDownloader.LinkMode.VIDEO_AND_TEXT -> "Descargar Video y Guion"
+        SealDownloader.LinkMode.DOWNLOAD_ONLY -> "Descargar Archivo"
     }
     Column(
         modifier = Modifier
@@ -1103,20 +1265,25 @@ private fun LinkActionCard(
             .clip(RoundedCornerShape(16.dp))
             .background(Card)
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Enlace", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
         OutlinedTextField(
             value = linkInput,
             onValueChange = onLinkChange,
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             placeholder = {
-                Text("Enlace de YouTube, TikTok, IG, X...", color = Muted)
+                Text("Pega enlace de YouTube, TikTok, IG, X...", color = Muted)
             },
             trailingIcon = {
-                TextButton(onClick = onPasteLink, enabled = !busy) {
-                    Text("Pegar", color = Accent, fontSize = 12.sp)
+                if (linkInput.isNotBlank()) {
+                    IconButton(onClick = onClearLink, enabled = !busy) {
+                        Icon(Icons.Default.Close, contentDescription = "Limpiar", tint = Muted)
+                    }
+                } else {
+                    IconButton(onClick = onPasteLink, enabled = !busy) {
+                        Icon(Icons.Default.ContentPaste, contentDescription = "Pegar", tint = Accent)
+                    }
                 }
             },
             colors = OutlinedTextFieldDefaults.colors(
@@ -1127,40 +1294,49 @@ private fun LinkActionCard(
                 cursorColor = Accent
             )
         )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item {
+
+        // 2x2 — todos los modos visibles (sin LazyRow que recorta Solo Bajar)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 ModeChip(
                     selected = linkMode == SealDownloader.LinkMode.TEXT_ONLY,
-                    label = "⚡ Solo Texto",
+                    label = "Solo Texto",
                     enabled = !busy,
+                    modifier = Modifier.weight(1f),
                     onClick = { onModeChange(SealDownloader.LinkMode.TEXT_ONLY) }
                 )
-            }
-            item {
                 ModeChip(
                     selected = linkMode == SealDownloader.LinkMode.AUDIO_AND_TEXT,
-                    label = "🎵 Audio + Texto",
+                    label = "Audio+Texto",
                     enabled = !busy,
+                    modifier = Modifier.weight(1f),
                     onClick = { onModeChange(SealDownloader.LinkMode.AUDIO_AND_TEXT) }
                 )
             }
-            item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 ModeChip(
                     selected = linkMode == SealDownloader.LinkMode.VIDEO_AND_TEXT,
-                    label = "🎬 Video + Texto",
+                    label = "Video+Texto",
                     enabled = !busy,
+                    modifier = Modifier.weight(1f),
                     onClick = { onModeChange(SealDownloader.LinkMode.VIDEO_AND_TEXT) }
                 )
-            }
-            item {
                 ModeChip(
                     selected = linkMode == SealDownloader.LinkMode.DOWNLOAD_ONLY,
-                    label = "📥 Solo Bajar",
+                    label = "Solo Bajar",
                     enabled = !busy,
+                    modifier = Modifier.weight(1f),
                     onClick = { onModeChange(SealDownloader.LinkMode.DOWNLOAD_ONLY) }
                 )
             }
         }
+
         if (linkMode == SealDownloader.LinkMode.DOWNLOAD_ONLY) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ModeChip(
@@ -1177,6 +1353,7 @@ private fun LinkActionCard(
                 )
             }
         }
+
         val readyHint = when (sealReady) {
             SealDownloader.ReadyState.READY -> null
             SealDownloader.ReadyState.IDLE -> "Inicializando yt-dlp / FFmpeg…"
@@ -1185,65 +1362,136 @@ private fun LinkActionCard(
         if (readyHint != null) {
             Text(readyHint, color = Muted, fontSize = 12.sp)
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+
+        Button(
+            onClick = onRun,
+            enabled = !busy && linkInput.isNotBlank() &&
+                sealReady == SealDownloader.ReadyState.READY,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Accent,
+                contentColor = Color.Black,
+                disabledContainerColor = Accent.copy(alpha = 0.35f)
+            ),
+            shape = RoundedCornerShape(12.dp)
         ) {
-            Button(
-                onClick = onRun,
-                enabled = !busy && linkInput.isNotBlank() &&
-                    sealReady == SealDownloader.ReadyState.READY,
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Accent,
-                    contentColor = Color.Black,
-                    disabledContainerColor = Accent.copy(alpha = 0.35f)
-                ),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text(primaryLabel, fontWeight = FontWeight.SemiBold)
-            }
-            if (busy) {
-                OutlinedButton(onClick = onCancel, shape = RoundedCornerShape(12.dp)) {
-                    Text("Cancelar", color = Color(0xFFF87171))
-                }
+            Text(primaryLabel, fontWeight = FontWeight.SemiBold)
+        }
+
+        OutlinedButton(
+            onClick = onPickFile,
+            enabled = !busy,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Icon(Icons.Default.UploadFile, contentDescription = null, tint = Accent)
+            Spacer(Modifier.size(8.dp))
+            Text(
+                "📂 Elegir video o audio del teléfono",
+                color = Accent,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProgressCard(phase: UiPhase, onCancel: () -> Unit) {
+    val (label, progress) = when (phase) {
+        is UiPhase.Downloading -> {
+            val pct = Regex("""(\d+)%""").find(phase.label)?.groupValues?.getOrNull(1)
+                ?.toFloatOrNull()?.div(100f)
+            phase.label to pct
+        }
+        UiPhase.Extracting -> "Extrayendo audio…" to null
+        is UiPhase.Transcribing ->
+            (phase.motorHint.ifBlank { "Transcribiendo…" }) to null
+        else -> return
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Card)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(22.dp),
+                color = Accent,
+                strokeWidth = 2.5.dp
+            )
+            Text(label, color = OnBg, modifier = Modifier.weight(1f))
+        }
+        if (progress != null) {
+            LinearProgressIndicator(
+                progress = { progress.coerceIn(0f, 1f) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp)),
+                color = Accent,
+                trackColor = Color(0xFF0F1623)
+            )
+        } else {
+            LinearProgressIndicator(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp)),
+                color = Accent,
+                trackColor = Color(0xFF0F1623)
+            )
+        }
+        OutlinedButton(
+            onClick = onCancel,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Text("Cancelar", color = Color(0xFFF87171))
+        }
+    }
+}
+
+@Composable
+private fun ErrorCard(
+    message: String,
+    isManual: Boolean,
+    onBackToAuto: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Card)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(message, color = Color(0xFFF87171))
+        if (isManual) {
+            TextButton(onClick = onBackToAuto) {
+                Text("Volver a Auto (Cascada)", color = Accent)
             }
         }
     }
 }
 
 @Composable
-private fun ModeChip(
-    selected: Boolean,
-    label: String,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        enabled = enabled,
-        label = { Text(label) },
-        colors = FilterChipDefaults.filterChipColors(
-            containerColor = Color(0xFF0F1623),
-            labelColor = Muted,
-            selectedContainerColor = Accent.copy(alpha = 0.2f),
-            selectedLabelColor = Accent
-        )
-    )
-}
-
-@Composable
-private fun ResultCard(
+private fun ResultWorkspaceCard(
     text: String,
     metaLabel: String?,
     onTextChange: (String) -> Unit,
-    promptMenuExpanded: Boolean,
-    onPromptMenuChange: (Boolean) -> Unit,
-    copyFeedback: Boolean,
-    onCopyPlain: () -> Unit,
-    onCopyWithPrompt: (String) -> Unit,
-    onSendToAi: () -> Unit
+    onCopy: () -> Unit,
+    onShare: () -> Unit,
+    onClear: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -1253,18 +1501,33 @@ private fun ResultCard(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        metaLabel?.let {
+            Text(
+                it,
+                color = Accent,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("Transcripción", color = Muted, fontSize = 12.sp)
-            if (copyFeedback) {
-                Text("Copiado", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            TextButton(onClick = onCopy, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Accent, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.size(6.dp))
+                Text("Copiar", color = Accent)
             }
-        }
-        metaLabel?.let {
-            Text(it, color = Accent, fontSize = 12.sp)
+            TextButton(onClick = onShare, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Default.Share, contentDescription = null, tint = Accent, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.size(6.dp))
+                Text("Compartir", color = Accent)
+            }
+            TextButton(onClick = onClear, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Default.Clear, contentDescription = null, tint = Muted, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.size(6.dp))
+                Text("Limpiar", color = Muted)
+            }
         }
         SelectionContainer {
             OutlinedTextField(
@@ -1272,7 +1535,7 @@ private fun ResultCard(
                 onValueChange = onTextChange,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(260.dp),
+                    .heightIn(min = 180.dp),
                 textStyle = androidx.compose.ui.text.TextStyle(
                     color = OnBg,
                     fontSize = 15.sp,
@@ -1289,70 +1552,353 @@ private fun ResultCard(
                 shape = RoundedCornerShape(12.dp)
             )
         }
+    }
+}
 
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            ActionButton(
-                icon = Icons.Default.ContentCopy,
-                label = stringResource(R.string.copy_plain),
-                onClick = onCopyPlain
+@Composable
+private fun GuionesTab(
+    entries: List<TranscriptHistoryStore.Entry>,
+    search: String,
+    onSearchChange: (String) -> Unit,
+    expandedId: String?,
+    onExpandToggle: (String) -> Unit,
+    onCopy: (String) -> Unit,
+    onOpenLink: (String) -> Unit,
+    onDelete: (String) -> Unit,
+    onClearAll: () -> Unit
+) {
+    val filtered = remember(entries, search) {
+        val q = search.trim().lowercase()
+        if (q.isBlank()) entries
+        else entries.filter {
+            it.text.lowercase().contains(q) ||
+                it.sourceTitleOrUrl.lowercase().contains(q) ||
+                it.providerUsed.lowercase().contains(q)
+        }
+    }
+    val fmt = remember {
+        SimpleDateFormat("dd MMM · HH:mm", Locale("es", "MX"))
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp)
+            .padding(top = 8.dp)
+    ) {
+        OutlinedTextField(
+            value = search,
+            onValueChange = onSearchChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            placeholder = { Text("Buscar en mis guiones...", color = Muted) },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Accent,
+                unfocusedBorderColor = Color(0xFF243044),
+                focusedTextColor = OnBg,
+                unfocusedTextColor = OnBg,
+                cursorColor = Accent
             )
-
-            Box {
-                ActionButton(
-                    icon = Icons.Default.SmartToy,
-                    label = stringResource(R.string.copy_with_prompt),
-                    onClick = { onPromptMenuChange(true) }
-                )
-                DropdownMenu(
-                    expanded = promptMenuExpanded,
-                    onDismissRequest = { onPromptMenuChange(false) }
-                ) {
-                    AiPrompts.forEachIndexed { index, prefix ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    when (index) {
-                                        0 -> "Resumen accionable"
-                                        1 -> "Ideas / decisiones"
-                                        else -> "Brief para otra IA"
-                                    }
-                                )
-                            },
-                            onClick = { onCopyWithPrompt(prefix) }
-                        )
-                    }
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "${filtered.size} guion${if (filtered.size == 1) "" else "es"}",
+                color = Muted,
+                fontSize = 12.sp
+            )
+            if (entries.isNotEmpty()) {
+                TextButton(onClick = onClearAll) {
+                    Text("Borrar historial", color = Color(0xFFF87171))
                 }
             }
-
-            ActionButton(
-                icon = Icons.Default.Send,
-                label = stringResource(R.string.send_to_ai),
-                onClick = onSendToAi
-            )
+        }
+        if (filtered.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 48.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("Aún no hay guiones guardados.", color = Muted)
+            }
+        } else {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(filtered, key = { it.id }) { entry ->
+                    val expanded = expandedId == entry.id
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Card)
+                            .clickable { onExpandToggle(entry.id) }
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            entry.sourceTitleOrUrl,
+                            color = OnBg,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            "${fmt.format(Date(entry.timestampMs))} · ${entry.providerUsed}",
+                            color = Muted,
+                            fontSize = 12.sp
+                        )
+                        Text(
+                            entry.text,
+                            color = OnBg.copy(alpha = 0.9f),
+                            fontSize = 13.sp,
+                            maxLines = if (expanded) Int.MAX_VALUE else 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (expanded) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                TextButton(onClick = { onCopy(entry.text) }) {
+                                    Icon(
+                                        Icons.Default.ContentCopy,
+                                        contentDescription = null,
+                                        tint = Accent,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.size(4.dp))
+                                    Text("Copiar texto", color = Accent)
+                                }
+                                TextButton(onClick = { onOpenLink(entry.sourceTitleOrUrl) }) {
+                                    Icon(
+                                        Icons.Default.OpenInNew,
+                                        contentDescription = null,
+                                        tint = Accent,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.size(4.dp))
+                                    Text("Abrir link", color = Accent)
+                                }
+                                TextButton(onClick = { onDelete(entry.id) }) {
+                                    Text("Borrar", color = Color(0xFFF87171))
+                                }
+                            }
+                        }
+                    }
+                }
+                item { Spacer(Modifier.height(16.dp)) }
+            }
         }
     }
 }
 
 @Composable
-private fun ActionButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    onClick: () -> Unit
+private fun MotoresTab(
+    routingSelection: RoutingSelection,
+    keyMasks: Map<SttProvider, String?>,
+    onSelectAuto: () -> Unit,
+    onSelectManual: (SttProvider) -> Unit,
+    onOpenKeys: () -> Unit,
+    creditState: CreditUiState,
+    onToggleExpand: () -> Unit,
+    onRefresh: () -> Unit,
+    onOpenHistory: () -> Unit,
+    onOpenCostSettings: () -> Unit,
+    onVerifyOffers: () -> Unit,
+    onAllowPaidChange: (Boolean) -> Unit,
+    onInworldUsedMinutesSave: (Double) -> Unit,
+    onAssemblyUsedHoursSave: (Double) -> Unit,
+    onProbeProvider: (SttProvider) -> Unit,
+    languageMode: LanguageMode,
+    onLanguageModeChange: (LanguageMode) -> Unit,
+    diarize: Boolean,
+    onDiarizeChange: (Boolean) -> Unit,
+    sealReady: SealDownloader.ReadyState,
+    updatingYtDlp: Boolean,
+    onUpdateYtDlp: () -> Unit
 ) {
-    Button(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = Color(0xFF1A2436),
-            contentColor = OnBg
-        ),
-        shape = RoundedCornerShape(12.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp)
+            .padding(top = 8.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Icon(icon, contentDescription = null, tint = Accent)
-        Spacer(Modifier.size(8.dp))
-        Text(label)
+        SectionLabel("1 · Modo de enrutado")
+        RoutingModeChips(
+            selection = routingSelection,
+            keyMasks = keyMasks,
+            onSelectAuto = onSelectAuto,
+            onSelectManual = onSelectManual,
+            onOpenKeys = onOpenKeys
+        )
+
+        SectionLabel("2 · Escudo Anti-Gladia")
+        CreditControlPanel(
+            state = creditState.copy(expanded = true),
+            onToggleExpand = onToggleExpand,
+            onRefresh = onRefresh,
+            onOpenHistory = onOpenHistory,
+            onOpenCostSettings = onOpenCostSettings,
+            onVerifyOffers = onVerifyOffers,
+            onAllowPaidChange = onAllowPaidChange,
+            onInworldUsedMinutesSave = onInworldUsedMinutesSave,
+            onAssemblyUsedHoursSave = onAssemblyUsedHoursSave,
+            onOpenKeys = onOpenKeys,
+            onProbeProvider = onProbeProvider
+        )
+
+        SectionLabel("3 · Llaves y mantenimiento")
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(Card)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Button(
+                onClick = onOpenKeys,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF1A2436),
+                    contentColor = OnBg
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("API Keys (BYOK)", fontWeight = FontWeight.SemiBold)
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    "Modo \$0 Estricto",
+                    color = OnBg,
+                    fontSize = 14.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                Switch(
+                    checked = !creditState.allowPaidFallback,
+                    onCheckedChange = { strict -> onAllowPaidChange(!strict) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = Accent
+                    )
+                )
+            }
+
+            Text("Idioma / diarización", color = Muted, fontSize = 12.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ModeChip(
+                    selected = languageMode == LanguageMode.AUTO,
+                    label = stringResource(R.string.mode_auto),
+                    enabled = true,
+                    onClick = { onLanguageModeChange(LanguageMode.AUTO) }
+                )
+                ModeChip(
+                    selected = languageMode == LanguageMode.MULTI,
+                    label = stringResource(R.string.mode_multi),
+                    enabled = true,
+                    onClick = { onLanguageModeChange(LanguageMode.MULTI) }
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(stringResource(R.string.diarize), color = OnBg)
+                Switch(
+                    checked = diarize,
+                    onCheckedChange = onDiarizeChange,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = Accent
+                    )
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF0F1623))
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("Motor yt-dlp / FFmpeg", color = OnBg, fontWeight = FontWeight.Medium)
+                Text(
+                    when (sealReady) {
+                        SealDownloader.ReadyState.READY -> "Listo"
+                        SealDownloader.ReadyState.IDLE -> "Inicializando…"
+                        SealDownloader.ReadyState.ERROR -> "Error — reintenta actualizar"
+                    },
+                    color = Muted,
+                    fontSize = 12.sp
+                )
+                OutlinedButton(
+                    onClick = onUpdateYtDlp,
+                    enabled = !updatingYtDlp && sealReady == SealDownloader.ReadyState.READY,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        if (updatingYtDlp) "Actualizando…" else "Actualizar motor yt-dlp",
+                        color = Accent
+                    )
+                }
+            }
+        }
     }
 }
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text,
+        color = Muted,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(top = 4.dp)
+    )
+}
+
+@Composable
+private fun ModeChip(
+    selected: Boolean,
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier,
+        label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        colors = chipColors()
+    )
+}
+
+@Composable
+private fun chipColors() = FilterChipDefaults.filterChipColors(
+    containerColor = Color(0xFF0F1623),
+    labelColor = Muted,
+    selectedContainerColor = Accent.copy(alpha = 0.2f),
+    selectedLabelColor = Accent
+)
 
 private fun readKeyMasks(context: android.content.Context): Map<SttProvider, String?> = mapOf(
     SttProvider.GROQ_FREE to ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.GROQ),
