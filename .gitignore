@@ -60,5 +60,5 @@ secrets.env
 .kotlin/
 
 # Local adb UI captures (see scripts/capture_ui_clarity.py)
-screenshots/
-screenshots-*/
+/screenshots/
+/screenshots-*/
