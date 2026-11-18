@@ -37,7 +37,8 @@ object GroqClient {
         file: File,
         mimeType: String,
         model: String = "whisper-large-v3-turbo",
-        enforceFreeSizeLimit: Boolean = true
+        enforceFreeSizeLimit: Boolean = true,
+        languageCode: String? = null
     ): TranscriptionResult {
         require(apiKey.isNotBlank()) { "API Key Groq vacía" }
         if (enforceFreeSizeLimit && file.length() > MAX_FREE_BYTES) {
@@ -50,12 +51,19 @@ object GroqClient {
         }
 
         val media = resolveMime(file, mimeType).toMediaTypeOrNull()
-        val body = MultipartBody.Builder()
+        val bodyBuilder = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart("file", file.name, file.asRequestBody(media))
             .addFormDataPart("model", model)
             .addFormDataPart("response_format", "verbose_json")
-            .build()
+        // Whisper: omit language for auto-detect; ignore "multi"
+        val forced = languageCode?.trim()?.takeIf {
+            it.isNotBlank() && !it.equals("multi", ignoreCase = true)
+        }
+        if (forced != null) {
+            bodyBuilder.addFormDataPart("language", forced.lowercase())
+        }
+        val body = bodyBuilder.build()
 
         val request = Request.Builder()
             .url(URL)

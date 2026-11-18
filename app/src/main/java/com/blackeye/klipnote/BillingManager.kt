@@ -29,6 +29,9 @@ object BillingManager {
     private const val KEY_MIN_RESERVE = "min_reserve_usd"
     private const val KEY_INCLUDE_DIARIZE = "include_diarize_cost"
     private const val KEY_AUTO_TRANSCRIBE = "auto_transcribe_on_share"
+    private const val KEY_LANGUAGE_MODE = "language_mode"
+    private const val KEY_FORCED_LANGUAGE = "forced_language_code"
+    private const val KEY_DIARIZE_ENABLED = "diarize_enabled"
     private const val KEY_PROJECT_ID = "deepgram_project_id"
     private const val KEY_APP_SPENT = "app_spent_usd"
     private const val KEY_MONTH_KEY = "usage_month_key"
@@ -139,9 +142,10 @@ object BillingManager {
         diarizeEnabled: Boolean,
         includeDiarizeInEstimate: Boolean
     ): CostEstimate {
-        val base = when (mode) {
-            LanguageMode.AUTO -> RATE_AUTO_PER_MIN
+        val billingMode = mode.billingBaseMode()
+        val base = when (billingMode) {
             LanguageMode.MULTI -> RATE_MULTI_PER_MIN
+            LanguageMode.AUTO, LanguageMode.FIXED -> RATE_AUTO_PER_MIN
         }
         val withDiarize = includeDiarizeInEstimate && diarizeEnabled
         val rate = base + if (withDiarize) RATE_DIARIZE_PER_MIN else 0.0
@@ -160,9 +164,10 @@ object BillingManager {
         mode: LanguageMode,
         diarizeUsed: Boolean
     ): Double {
-        val base = when (mode) {
-            LanguageMode.AUTO -> RATE_AUTO_PER_MIN
+        val billingMode = mode.billingBaseMode()
+        val base = when (billingMode) {
             LanguageMode.MULTI -> RATE_MULTI_PER_MIN
+            LanguageMode.AUTO, LanguageMode.FIXED -> RATE_AUTO_PER_MIN
         }
         val rate = base + if (diarizeUsed) RATE_DIARIZE_PER_MIN else 0.0
         return (durationSeconds / 60.0) * rate
@@ -258,6 +263,31 @@ object BillingManager {
 
     fun setAutoTranscribeOnShare(context: Context, value: Boolean) {
         prefs(context).edit().putBoolean(KEY_AUTO_TRANSCRIBE, value).apply()
+    }
+
+    fun getLanguageMode(context: Context): LanguageMode {
+        val raw = prefs(context).getString(KEY_LANGUAGE_MODE, LanguageMode.AUTO.name)
+        return runCatching { LanguageMode.valueOf(raw ?: LanguageMode.AUTO.name) }
+            .getOrDefault(LanguageMode.AUTO)
+    }
+
+    fun setLanguageMode(context: Context, mode: LanguageMode) {
+        prefs(context).edit().putString(KEY_LANGUAGE_MODE, mode.name).apply()
+    }
+
+    fun getForcedLanguage(context: Context): String =
+        prefs(context).getString(KEY_FORCED_LANGUAGE, "es")?.trim()?.takeIf { it.isNotBlank() } ?: "es"
+
+    fun setForcedLanguage(context: Context, code: String) {
+        val normalized = code.trim().lowercase(Locale.US).ifBlank { "es" }
+        prefs(context).edit().putString(KEY_FORCED_LANGUAGE, normalized).apply()
+    }
+
+    fun getDiarizeEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_DIARIZE_ENABLED, false)
+
+    fun setDiarizeEnabled(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_DIARIZE_ENABLED, value).apply()
     }
 
     fun getProjectId(context: Context): String? =

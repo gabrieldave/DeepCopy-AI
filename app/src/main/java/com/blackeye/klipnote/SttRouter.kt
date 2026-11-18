@@ -85,8 +85,10 @@ object SttRouter {
         mode: LanguageMode,
         diarize: Boolean,
         deepgramBalanceUsd: Double? = null,
-        selection: RoutingSelection = RoutingSelection.Auto
+        selection: RoutingSelection = RoutingSelection.Auto,
+        forcedLanguageCode: String? = null
     ): TranscriptionResult {
+        val languageCode = mode.toApiLanguageCode(forcedLanguageCode)
         return when (selection) {
             is RoutingSelection.Manual -> transcribeManual(
                 context = context,
@@ -94,6 +96,7 @@ object SttRouter {
                 audioFile = audioFile,
                 mimeType = mimeType,
                 mode = mode,
+                languageCode = languageCode,
                 diarize = diarize,
                 deepgramBalanceUsd = deepgramBalanceUsd
             )
@@ -102,6 +105,7 @@ object SttRouter {
                 audioFile = audioFile,
                 mimeType = mimeType,
                 mode = mode,
+                languageCode = languageCode,
                 diarize = diarize,
                 deepgramBalanceUsd = deepgramBalanceUsd
             )
@@ -114,6 +118,7 @@ object SttRouter {
         audioFile: File,
         mimeType: String,
         mode: LanguageMode,
+        languageCode: String?,
         diarize: Boolean,
         deepgramBalanceUsd: Double?
     ): TranscriptionResult {
@@ -129,6 +134,7 @@ object SttRouter {
                 audioFile = audioFile,
                 mimeType = mimeType,
                 mode = mode,
+                languageCode = languageCode,
                 diarize = diarize
             ).copy(
                 hopLog = listOf("MANUAL ${provider.displayName()}"),
@@ -158,6 +164,7 @@ object SttRouter {
         audioFile: File,
         mimeType: String,
         mode: LanguageMode,
+        languageCode: String?,
         diarize: Boolean,
         deepgramBalanceUsd: Double?
     ): TranscriptionResult {
@@ -180,6 +187,7 @@ object SttRouter {
                     audioFile = audioFile,
                     mimeType = mimeType,
                     mode = mode,
+                    languageCode = languageCode,
                     diarize = diarize
                 )
                 hopLog += "OK ${provider.displayName()}"
@@ -271,9 +279,13 @@ object SttRouter {
         audioFile: File,
         mimeType: String,
         mode: LanguageMode,
+        languageCode: String?,
         diarize: Boolean
     ): TranscriptionResult {
         val cfg = RemoteRouterConfig.currentOrDefault()
+        val inworldHint = languageCode?.takeIf {
+            it.isNotBlank() && !it.equals("multi", ignoreCase = true)
+        }
         return when (provider) {
             SttProvider.GROQ_FREE -> GroqClient.transcribe(
                 context = context,
@@ -281,25 +293,27 @@ object SttRouter {
                 file = audioFile,
                 mimeType = mimeType,
                 model = cfg.groqModel,
-                enforceFreeSizeLimit = true
+                enforceFreeSizeLimit = true,
+                languageCode = languageCode
             )
             SttProvider.INWORLD -> InworldClient.transcribe(
                 context = context,
                 apiKey = ApiKeyStore.getInworld(context),
                 file = audioFile,
                 mimeType = mimeType,
-                languageHint = null
+                languageHint = inworldHint
             )
             SttProvider.ASSEMBLY_AI -> AssemblyAiClient.transcribe(
                 context = context,
                 apiKey = ApiKeyStore.getAssemblyAi(context),
-                file = audioFile
+                file = audioFile,
+                languageCode = languageCode
             )
             SttProvider.DEEPGRAM -> DeepgramClient.transcribe(
                 apiKey = ApiKeyStore.getDeepgram(context),
                 file = audioFile,
                 mimeType = mimeType,
-                mode = mode,
+                languageCode = languageCode,
                 diarize = diarize,
                 model = cfg.deepgramModel
             ).let { dg ->
@@ -317,7 +331,8 @@ object SttRouter {
                 engine = ApiKeyStore.getPaidFallbackEngine(context),
                 file = audioFile,
                 mimeType = mimeType,
-                groqModel = cfg.groqModel
+                groqModel = cfg.groqModel,
+                languageCode = languageCode
             )
         }
     }

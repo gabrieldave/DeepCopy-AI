@@ -28,7 +28,7 @@ object DeepgramClient {
         apiKey: String,
         file: File,
         mimeType: String,
-        mode: LanguageMode,
+        languageCode: String? = null,
         diarize: Boolean,
         model: String = "nova-3"
     ): TranscriptionResult {
@@ -38,9 +38,12 @@ object DeepgramClient {
             .addQueryParameter("model", model)
             .addQueryParameter("smart_format", "true")
 
-        when (mode) {
-            LanguageMode.AUTO -> urlBuilder.addQueryParameter("detect_language", "true")
-            LanguageMode.MULTI -> urlBuilder.addQueryParameter("language", "multi")
+        val lang = languageCode?.trim()?.takeIf { it.isNotBlank() }
+        when {
+            lang == null -> urlBuilder.addQueryParameter("detect_language", "true")
+            lang.equals("multi", ignoreCase = true) ->
+                urlBuilder.addQueryParameter("language", "multi")
+            else -> urlBuilder.addQueryParameter("language", lang.lowercase())
         }
 
         if (diarize) {
@@ -71,7 +74,7 @@ object DeepgramClient {
                     retryAfter = response.header("Retry-After")?.toLongOrNull()
                 )
             }
-            return parseResponse(raw, diarize)
+            return parseResponse(raw, diarize, lang)
         }
     }
 
@@ -105,7 +108,11 @@ object DeepgramClient {
         }
     }
 
-    private fun parseResponse(raw: String, diarize: Boolean): TranscriptionResult {
+    private fun parseResponse(
+        raw: String,
+        diarize: Boolean,
+        requestedLanguage: String?
+    ): TranscriptionResult {
         val root = JSONObject(raw)
         val results = root.optJSONObject("results")
             ?: return TranscriptionResult("", null, null, 0)
@@ -125,6 +132,12 @@ object DeepgramClient {
                 ?: channels.getJSONObject(0).optString("detected_language")
                     .takeIf { it.isNotBlank() }
         }
+        if (language.isNullOrBlank() &&
+            !requestedLanguage.isNullOrBlank() &&
+            !requestedLanguage.equals("multi", ignoreCase = true)
+        ) {
+            language = requestedLanguage
+        }
 
         val transcript = if (diarize) {
             formatUtterances(results)
@@ -133,9 +146,13 @@ object DeepgramClient {
         }
 
         val words = transcript.split(Regex("\\s+")).count { it.isNotBlank() }
+        val billingMode = when {
+            requestedLanguage.equals("multi", ignoreCase = true) -> LanguageMode.MULTI
+            else -> LanguageMode.AUTO
+        }
         val cost = BillingManager.actualCost(
             durationSeconds = duration ?: 0.0,
-            mode = LanguageMode.AUTO,
+            mode = billingMode,
             diarizeUsed = diarize
         )
         return TranscriptionResult(
