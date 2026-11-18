@@ -3,12 +3,18 @@ package com.blackeye.klipnote
 import android.content.Context
 import androidx.annotation.Keep
 import java.io.File
+import java.io.IOException
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 
 /**
  * Router STT: cascada automática (5 niveles) o prueba manual exclusiva.
  * 1 Groq Free → 2 Inworld Free → 3 AssemblyAI → 4 Deepgram → 5 Pagado
  */
 object SttRouter {
+
+    private const val NETWORK_RETRY_DELAY_MS = 2_500L
 
     @Keep
     data class ActiveRouteSummary(
@@ -90,7 +96,8 @@ object SttRouter {
         diarize: Boolean,
         deepgramBalanceUsd: Double? = null,
         selection: RoutingSelection = RoutingSelection.Auto,
-        forcedLanguageCode: String? = null
+        forcedLanguageCode: String? = null,
+        savedInDownloads: Boolean = false
     ): TranscriptionResult {
         val languageCode = mode.toApiLanguageCode(forcedLanguageCode)
         return when (selection) {
@@ -102,7 +109,8 @@ object SttRouter {
                 mode = mode,
                 languageCode = languageCode,
                 diarize = diarize,
-                deepgramBalanceUsd = deepgramBalanceUsd
+                deepgramBalanceUsd = deepgramBalanceUsd,
+                savedInDownloads = savedInDownloads
             )
             RoutingSelection.Auto -> transcribeCascade(
                 context = context,
@@ -111,7 +119,8 @@ object SttRouter {
                 mode = mode,
                 languageCode = languageCode,
                 diarize = diarize,
-                deepgramBalanceUsd = deepgramBalanceUsd
+                deepgramBalanceUsd = deepgramBalanceUsd,
+                savedInDownloads = savedInDownloads
             )
         }
     }
@@ -124,7 +133,8 @@ object SttRouter {
         mode: LanguageMode,
         languageCode: String?,
         diarize: Boolean,
-        deepgramBalanceUsd: Double?
+        deepgramBalanceUsd: Double?,
+        savedInDownloads: Boolean
     ): TranscriptionResult {
         val started = System.currentTimeMillis()
         val block = preflightBlockReason(
@@ -134,7 +144,7 @@ object SttRouter {
             throw ManualRouteException(provider, "🧪 Prueba Manual · ${provider.displayName()}: $block")
         }
         return try {
-            runProvider(
+            runProviderWithNetworkRetry(
                 context = context,
                 provider = provider,
                 audioFile = audioFile,
@@ -149,6 +159,13 @@ object SttRouter {
                 levelIndex = provider.levelIndex()
             )
         } catch (e: SttProviderException) {
+            if (isNetworkFailure(e)) {
+                throw ManualRouteException(
+                    provider = provider,
+                    message = networkUserMessage(savedInDownloads),
+                    cause = e
+                )
+            }
             throw ManualRouteException(
                 provider = provider,
                 message = "🧪 Prueba Manual · ${provider.displayName()}: ${e.message}",
@@ -157,6 +174,13 @@ object SttRouter {
         } catch (e: ManualRouteException) {
             throw e
         } catch (e: Exception) {
+            if (isNetworkFailure(e)) {
+                throw ManualRouteException(
+                    provider = provider,
+                    message = networkUserMessage(savedInDownloads),
+                    cause = e
+                )
+            }
             throw ManualRouteException(
                 provider = provider,
                 message = "🧪 Prueba Manual · ${provider.displayName()}: ${e.message ?: "Error"}",
@@ -172,12 +196,16 @@ object SttRouter {
         mode: LanguageMode,
         languageCode: String?,
         diarize: Boolean,
-        deepgramBalanceUsd: Double?
+        deepgramBalanceUsd: Double?,
+        savedInDownloads: Boolean
     ): TranscriptionResult {
         val cfg = RemoteRouterConfig.currentOrDefault()
         val hopLog = mutableListOf<String>()
         val started = System.currentTimeMillis()
         var lastError: Exception? = null
+        var sizeSkipCount = 0
+        var networkFailCount = 0
+        var otherAttemptFailures = 0
 
         for (provider in cfg.priority) {
             val block = preflightBlockReason(context, provider, deepgramBalanceUsd, cfg)
@@ -187,7 +215,7 @@ object SttRouter {
             }
 
             try {
-                val result = runProvider(
+                val result = runProviderWithNetworkRetry(
                     context = context,
                     provider = provider,
                     audioFile = audioFile,
@@ -205,42 +233,164 @@ object SttRouter {
                 )
             } catch (e: SttProviderException) {
                 lastError = e
-                when (e.kind) {
-                    SttFailureKind.SIZE_SKIP -> {
-                        hopLog += e.message ?: "Tamaño excedido → salto"
+                when {
+                    e.kind == SttFailureKind.SIZE_SKIP -> {
+                        sizeSkipCount++
+                        hopLog += "${provider.displayName()}: ${e.message ?: "archivo demasiado grande"} → salto"
                     }
-                    SttFailureKind.PROMO_ENDED -> {
+                    e.kind == SttFailureKind.NETWORK || isNetworkFailure(e) -> {
+                        networkFailCount++
+                        hopLog += "${provider.displayName()}: red/timeout → salto"
+                    }
+                    e.kind == SttFailureKind.PROMO_ENDED -> {
+                        otherAttemptFailures++
                         BillingManager.markPromoEnded(provider)
                         hopLog += "${provider.displayName()}: ${e.message} → salto"
                     }
-                    SttFailureKind.COOLDOWN -> {
+                    e.kind == SttFailureKind.COOLDOWN -> {
+                        otherAttemptFailures++
                         BillingManager.markCooldown(provider, e.retryAfterSeconds)
                         hopLog += "${provider.displayName()}: COOLDOWN → salto"
                     }
-                    SttFailureKind.UNAUTHORIZED, SttFailureKind.MODEL_GONE -> {
+                    e.kind == SttFailureKind.UNAUTHORIZED || e.kind == SttFailureKind.MODEL_GONE -> {
+                        otherAttemptFailures++
                         hopLog += "${provider.displayName()}: ${e.message} → salto"
                     }
                     else -> {
+                        otherAttemptFailures++
                         hopLog += "${provider.displayName()}: ${e.message} → salto"
                     }
                 }
             } catch (e: Exception) {
                 lastError = e
-                hopLog += "${provider.displayName()}: ${e.message?.take(120)} → salto"
+                if (isNetworkFailure(e)) {
+                    networkFailCount++
+                    hopLog += "${provider.displayName()}: red/timeout → salto"
+                } else {
+                    otherAttemptFailures++
+                    hopLog += "${provider.displayName()}: ${e.message?.take(120)} → salto"
+                }
             }
         }
 
         val strict = !BillingManager.getAllowPaidFallback(context)
         val detail = hopLog.joinToString(" | ")
-        val msg = if (strict) {
-            "Ningún motor gratis pudo transcribir este audio (sin llave, apagado o sin cuota). " +
-                "Revisa tus llaves en Motores o espera a que se renueve la cuota. " +
-                "Modo \$0 está activo, así que no se usó el de pago. Detalle: $detail"
-        } else {
-            "Ningún motor pudo transcribir este audio. Detalle: $detail"
+        val networkWasTheBlocker =
+            networkFailCount > 0 && sizeSkipCount == 0 && otherAttemptFailures == 0
+        val sizeWasTheBlocker = sizeSkipCount > 0 && networkFailCount == 0 && otherAttemptFailures == 0
+        val msg = when {
+            networkWasTheBlocker || (networkFailCount > 0 && otherAttemptFailures == 0 && sizeSkipCount == 0) ->
+                networkUserMessage(savedInDownloads) + " Detalle: $detail"
+            sizeWasTheBlocker -> {
+                val mb = String.format("%.1f", audioFile.length() / (1024.0 * 1024.0))
+                "Este audio (${mb} MB) supera el límite de tamaño del motor gratis que tienes " +
+                    "(p. ej. Groq: 25 MB). Agrega otra llave (AssemblyAI o Deepgram aceptan archivos grandes) " +
+                    "o usa un video más corto. Detalle: $detail"
+            }
+            strict -> {
+                "Ningún motor gratis pudo transcribir este audio (sin llave, apagado o sin cuota). " +
+                    "Revisa tus llaves en Motores o espera a que se renueve la cuota. " +
+                    "Modo \$0 está activo, así que no se usó el de pago. Detalle: $detail"
+            }
+            else -> "Ningún motor pudo transcribir este audio. Detalle: $detail"
         }
         // Siempre se muestra el recorrido completo; el último error solo va como causa.
         throw IllegalStateException(msg, lastError)
+    }
+
+    private fun runProviderWithNetworkRetry(
+        context: Context,
+        provider: SttProvider,
+        audioFile: File,
+        mimeType: String,
+        mode: LanguageMode,
+        languageCode: String?,
+        diarize: Boolean
+    ): TranscriptionResult {
+        return try {
+            runProvider(
+                context = context,
+                provider = provider,
+                audioFile = audioFile,
+                mimeType = mimeType,
+                mode = mode,
+                languageCode = languageCode,
+                diarize = diarize
+            )
+        } catch (e: Exception) {
+            if (!isNetworkFailure(e)) throw e
+            try {
+                Thread.sleep(NETWORK_RETRY_DELAY_MS)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                throw e
+            }
+            try {
+                runProvider(
+                    context = context,
+                    provider = provider,
+                    audioFile = audioFile,
+                    mimeType = mimeType,
+                    mode = mode,
+                    languageCode = languageCode,
+                    diarize = diarize
+                )
+            } catch (retry: Exception) {
+                if (isNetworkFailure(retry) && retry !is SttProviderException) {
+                    throw SttProviderException(
+                        provider = provider,
+                        httpCode = null,
+                        kind = SttFailureKind.NETWORK,
+                        message = retry.message ?: "Error de red"
+                    )
+                }
+                throw retry
+            }
+        }
+    }
+
+    fun isNetworkFailure(error: Throwable?): Boolean {
+        var cur: Throwable? = error
+        var depth = 0
+        while (cur != null && depth < 8) {
+            when (cur) {
+                is UnknownHostException,
+                is SocketTimeoutException,
+                is ConnectException -> return true
+            }
+            val msg = cur.message.orEmpty().lowercase()
+            if (msg.contains("unable to resolve host") ||
+                msg.contains("no address associated") ||
+                msg.contains("failed to connect") ||
+                msg.contains("network is unreachable") ||
+                msg.contains("software caused connection abort") ||
+                msg.contains("connection reset") ||
+                msg.contains("timeout") ||
+                msg.contains("broken pipe") ||
+                (cur is IOException && (
+                    msg.contains("host") ||
+                        msg.contains("connect") ||
+                        msg.contains("network")
+                    ))
+            ) {
+                return true
+            }
+            if (cur is SttProviderException && cur.kind == SttFailureKind.NETWORK) return true
+            cur = cur.cause
+            depth++
+        }
+        return false
+    }
+
+    private fun networkUserMessage(savedInDownloads: Boolean): String {
+        val base =
+            "Parece que se cortó el internet. Revisa tu conexión y vuelve a intentar."
+        return if (savedInDownloads) {
+            "$base El archivo ya quedó en Descargas/KlipNote: puedes compartirlo a KlipNote " +
+                "para transcribir sin volver a bajarlo."
+        } else {
+            base
+        }
     }
 
     private fun preflightBlockReason(
