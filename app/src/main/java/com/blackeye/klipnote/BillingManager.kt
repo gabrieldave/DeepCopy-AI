@@ -725,7 +725,7 @@ object BillingManager {
         val app = context.applicationContext
         val modern = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (modern.all.isNotEmpty()) return modern
-        // Migración one-shot desde prefs DeepCopy.
+        // Migración one-shot desde prefs legacy (nombre de archivo en disco; no renombrar).
         val legacy = app.getSharedPreferences(LEGACY_PREFS, Context.MODE_PRIVATE)
         if (legacy.all.isEmpty()) return modern
         modern.edit().apply {
