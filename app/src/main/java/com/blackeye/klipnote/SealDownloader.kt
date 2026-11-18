@@ -22,11 +22,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 
 /**
- * Envoltorio Seal-style de yt-dlp / FFmpeg / aria2c (io.github.junkfood02.youtubedl-android 0.17.3).
+ * Envoltorio Seal-style de yt-dlp / FFmpeg / aria2c (io.github.junkfood02.youtubedl-android 0.18.1).
  *
  * Flags audio alineadas con junkfood02/Seal DownloadUtil:
  * `--no-playlist`, `--no-mtime`, `-x`, `--audio-format m4a`, `--audio-quality 5`,
- * y `--cookies` + `User-Agent` cuando hay cookies.txt local.
+ * cookies por sitio, y QuickJS + `--remote-components ejs:github` para YouTube.
  */
 object SealDownloader {
     private const val TAG = "SealDownloader"
@@ -314,6 +314,11 @@ object SealDownloader {
             }
             addOption("--newline")
 
+            // Seal / youtubedl-android 0.18.x: YouTube exige runtime JS.
+            // La librería 0.18.1 ya inyecta --js-runtimes quickjs:<libqjs.so> en execute().
+            // Seal además pide EJS desde GitHub (igual que JsRuntimeConfig.applyJsRuntimeConfig).
+            applyJsRuntimeLikeSeal(context, this)
+
             CookieStore.cookiesFileFor(context, url)?.let { cookies ->
                 addOption("--cookies", cookies.absolutePath)
                 CookieStore.userAgent(context)?.let { ua ->
@@ -322,6 +327,25 @@ object SealDownloader {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Réplica del cableado de Seal (JsRuntimeConfig): QuickJS + EJS remoto.
+     * No fijamos player_client a mano; yt-dlp elige el cliente.
+     */
+    private fun applyJsRuntimeLikeSeal(context: Context, request: YoutubeDLRequest) {
+        val qjs = File(context.applicationInfo.nativeLibraryDir, "libqjs.so")
+        if (qjs.isFile) {
+            // Por si una build futura no lo inyecta sola; 0.18.1 ya lo hace en execute().
+            if (!request.hasOption("--js-runtimes")) {
+                request.addOption("--js-runtimes", "quickjs:${qjs.absolutePath}")
+            }
+        } else {
+            Log.w(TAG, "libqjs.so no encontrado en nativeLibraryDir; YouTube puede fallar sin JS runtime")
+        }
+        if (!request.hasOption("--remote-components")) {
+            request.addOption("--remote-components", "ejs:github")
         }
     }
 
