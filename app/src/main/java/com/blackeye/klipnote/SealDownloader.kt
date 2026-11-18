@@ -369,6 +369,57 @@ object SealDownloader {
         runCatching { artifact.file.parentFile?.deleteRecursively() }
     }
 
+    /**
+     * Copia liviana para STT (mono / 16 kHz / ~32 kbps) con el `libffmpeg.so` de
+     * youtubedl-android. La librería no expone FFmpeg.execute; se invoca el binario nativo.
+     * El archivo [input] (calidad completa del usuario) no se modifica.
+     */
+    fun compressAudioForStt(context: Context, input: File): File {
+        require(input.isFile && input.length() > 0L) { "No hay audio/video de entrada para comprimir" }
+        ensureReady()
+        val app = context.applicationContext
+        val out = File(app.cacheDir, "stt_compact_${System.currentTimeMillis()}.m4a")
+        val ffmpegBin = File(app.applicationInfo.nativeLibraryDir, "libffmpeg.so")
+        require(ffmpegBin.isFile) {
+            "libffmpeg.so no encontrado. Reinicia la app para inicializar yt-dlp/FFmpeg."
+        }
+        val packages = File(app.noBackupFilesDir, "youtubedl-android/packages")
+        val ldParts = listOf(
+            File(packages, "ffmpeg/usr/lib"),
+            File(packages, "python/usr/lib"),
+            File(packages, "aria2c/usr/lib"),
+            File(app.applicationInfo.nativeLibraryDir)
+        ).filter { it.isDirectory }.map { it.absolutePath }
+        val cmd = listOf(
+            ffmpegBin.absolutePath,
+            "-y",
+            "-i", input.absolutePath,
+            "-vn",
+            "-ac", "1",
+            "-ar", "16000",
+            "-c:a", "aac",
+            "-b:a", "32k",
+            out.absolutePath
+        )
+        Log.i(TAG, "STT compress: ${input.length() / 1024} KB → ${out.name}")
+        val pb = ProcessBuilder(cmd).redirectErrorStream(true)
+        val env = pb.environment()
+        val existingLd = env["LD_LIBRARY_PATH"].orEmpty()
+        env["LD_LIBRARY_PATH"] = (ldParts + existingLd).filter { it.isNotBlank() }.joinToString(":")
+        val process = pb.start()
+        val log = process.inputStream.bufferedReader().use { it.readText() }
+        val code = process.waitFor()
+        if (code != 0 || !out.isFile || out.length() == 0L) {
+            runCatching { out.delete() }
+            throw IllegalStateException(
+                "No se pudo comprimir el audio para transcribir (FFmpeg $code). " +
+                    log.lineSequence().lastOrNull { it.isNotBlank() }?.take(160).orEmpty()
+            )
+        }
+        Log.i(TAG, "STT compress OK: ${out.length() / 1024} KB")
+        return out
+    }
+
     private fun needsYtDlpHeal(message: String): Boolean {
         val m = message.lowercase()
         return m.contains("unable to extract") ||

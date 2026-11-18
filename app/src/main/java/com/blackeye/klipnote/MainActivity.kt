@@ -460,6 +460,9 @@ private fun KlipNoteApp(
                 forcedLanguageCode = forcedLanguage,
                 diarize = diarize,
                 routingSelection = selectionSnap,
+                // Galería / compartir: comprimir copia STT para videos largos con solo Groq.
+                compressForStt = true,
+                savedInDownloads = false,
                 onPhase = { phase = it },
                 onText = { transcriptText = it },
                 onMeta = {
@@ -537,6 +540,8 @@ private fun KlipNoteApp(
                 }
                 val uri = artifact.uri ?: Uri.fromFile(artifact.file)
                 lastSourceLabel = artifact.title.ifBlank { url }
+                val savesPublic = modeSnap == SealDownloader.LinkMode.AUDIO_AND_TEXT ||
+                    modeSnap == SealDownloader.LinkMode.VIDEO_AND_TEXT
                 runTranscription(
                     context = context,
                     uri = uri,
@@ -545,6 +550,10 @@ private fun KlipNoteApp(
                     forcedLanguageCode = forcedLangSnap,
                     diarize = diarizeSnap,
                     routingSelection = selectionSnap,
+                    // TEXT_ONLY ya baja audio liviano; Audio/Video+Texto guardan calidad completa
+                    // y comprimen una copia aparte solo para STT.
+                    compressForStt = savesPublic,
+                    savedInDownloads = savesPublic,
                     onPhase = { phase = it },
                     onText = { transcriptText = it },
                     onMeta = {
@@ -2395,6 +2404,8 @@ private suspend fun runTranscription(
     forcedLanguageCode: String? = null,
     diarize: Boolean,
     routingSelection: RoutingSelection,
+    compressForStt: Boolean = false,
+    savedInDownloads: Boolean = false,
     onPhase: (UiPhase) -> Unit,
     onText: (String) -> Unit,
     onMeta: (TranscriptionResult) -> Unit,
@@ -2420,6 +2431,7 @@ private suspend fun runTranscription(
     }
 
     var extracted: AudioExtractor.ExtractedAudio? = null
+    var sttCompact: File? = null
     var balanceBefore: Double? = null
     try {
         val dgKey = ApiKeyStore.getDeepgram(context)
@@ -2436,23 +2448,33 @@ private suspend fun runTranscription(
             AudioExtractor.prepareAudio(context, uri)
         }
 
+        val audioForStt = if (compressForStt) {
+            onPhase(UiPhase.Transcribing("Preparando audio liviano para transcribir…"))
+            withContext(Dispatchers.IO) {
+                SealDownloader.compressAudioForStt(context, extracted!!.file).also { sttCompact = it }
+            }
+        } else {
+            extracted.file
+        }
+        val mimeForStt = if (sttCompact != null) "audio/mp4" else extracted.mimeType
+
         val motorHint = when (routingSelection) {
             is RoutingSelection.Auto -> "Transcribiendo con cascada Auto…"
             is RoutingSelection.Manual ->
                 "Transcribiendo con ${routingSelection.provider.displayName()}…"
         }
         onPhase(UiPhase.Transcribing(motorHint))
-        val audio = extracted
         val result = withContext(Dispatchers.IO) {
             SttRouter.transcribe(
                 context = context,
-                audioFile = audio.file,
-                mimeType = audio.mimeType,
+                audioFile = audioForStt,
+                mimeType = mimeForStt,
                 mode = mode,
                 diarize = diarize,
                 deepgramBalanceUsd = balanceBefore,
                 selection = routingSelection,
-                forcedLanguageCode = forcedLanguageCode
+                forcedLanguageCode = forcedLanguageCode,
+                savedInDownloads = savedInDownloads
             )
         }
 
@@ -2525,6 +2547,7 @@ private suspend fun runTranscription(
         )
     } finally {
         AudioExtractor.cleanup(extracted)
+        sttCompact?.let { runCatching { it.delete() } }
     }
 }
 
