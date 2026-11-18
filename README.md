@@ -6,6 +6,15 @@ Usa servicios de transcripción que **regalan créditos o minutos gratis**. Cuan
 
 > El APK no trae llaves de nadie. **Cada persona pone sus propias llaves** dentro de la app. Se guardan cifradas y nunca salen de tu teléfono.
 
+<p align="center">
+  <img src="docs/capturas/01-asistente.png" alt="Asistente de inicio" width="180" />
+  <img src="docs/capturas/02-capturar.png" alt="Pestaña Capturar" width="180" />
+  <img src="docs/capturas/03-guiones.png" alt="Pestaña Guiones" width="180" />
+  <img src="docs/capturas/04-ajustes-temas.png" alt="Ajustes con temas de color" width="180" />
+</p>
+
+<p align="center"><sub>v1.6 — asistente, Capturar, Guiones y Ajustes (temas)</sub></p>
+
 ---
 
 ## Qué hace
@@ -86,7 +95,13 @@ cp local.properties.example local.properties   # ajusta sdk.dir
 
 **Stack:** Kotlin 2.0 · Jetpack Compose · Material 3 · OkHttp · youtubedl-android (yt-dlp + FFmpeg) · minSdk 26 · targetSdk 35.
 
-Versión actual: **1.5.0** (versionCode 122).
+Versión actual: **1.6.0** (versionCode 125).
+
+## Gracias a
+
+- **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** — motor de descargas de video/audio
+- **[youtubedl-android](https://github.com/yausername/youtubedl-android)** — integración de yt-dlp en Android (fork junkfood02)
+- **[Seal](https://github.com/JunkFood02/Seal)** — app de referencia de la que KlipNote toma ideas y piezas para descargas
 
 ## Licencia
 
