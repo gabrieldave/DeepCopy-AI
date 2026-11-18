@@ -1693,11 +1693,17 @@ private fun LinkHeroCard(
     ) {
         OutlinedTextField(
             value = linkInput,
-            onValueChange = onLinkChange,
+            onValueChange = { onLinkChange(it.replace("\n", "")) },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
+            maxLines = 1,
             placeholder = {
-                Text("Pega enlace de YouTube, TikTok, IG, X...", color = Muted)
+                Text(
+                    "Pega aquí el enlace del video",
+                    color = Muted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             },
             trailingIcon = {
                 if (linkInput.isNotBlank()) {
