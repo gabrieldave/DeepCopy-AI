@@ -1,10 +1,15 @@
 package com.blackeye.klipnote
 
+import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.view.ViewGroup
+import android.webkit.CookieManager
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -94,6 +99,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -242,6 +248,8 @@ private fun KlipNoteApp(
     var linkMode by remember { mutableStateOf(SealDownloader.LinkMode.TEXT_ONLY) }
     var downloadKind by remember { mutableStateOf(SealDownloader.DownloadKind.AUDIO_M4A) }
     var updatingYtDlp by remember { mutableStateOf(false) }
+    var showCookiesSheet by remember { mutableStateOf(false) }
+    var cookiesRevision by remember { mutableStateOf(0) }
     var transcriptText by remember { mutableStateOf("") }
     var lastResultMeta by remember { mutableStateOf<TranscriptionResult?>(null) }
     var copyFeedback by remember { mutableStateOf(false) }
@@ -548,7 +556,11 @@ private fun KlipNoteApp(
                 phase = UiPhase.Idle
                 snackbar.showSnackbar("Descarga cancelada")
             } catch (t: Throwable) {
-                phase = UiPhase.Error(t.message ?: "Error de descarga")
+                val msg = t.message ?: "Error de descarga"
+                phase = UiPhase.Error(msg)
+                if (SealDownloader.looksLikeLoginRequired(msg)) {
+                    snackbar.showSnackbar("Instagram pide login — conecta cookies en Motores")
+                }
             } finally {
                 artifact?.let { SealDownloader.cleanupArtifact(it) }
             }
@@ -758,7 +770,10 @@ private fun KlipNoteApp(
                 MainTab.Capturar -> {
                     CapturarTab(
                         linkInput = linkInput,
-                        onLinkChange = { linkInput = it },
+                        onLinkChange = { raw ->
+                            linkInput = SealDownloader.extractFirstUrl(raw)
+                                ?: SealDownloader.cleanMediaUrl(raw)
+                        },
                         linkMode = linkMode,
                         onModeChange = { linkMode = it },
                         downloadKind = downloadKind,
@@ -777,7 +792,8 @@ private fun KlipNoteApp(
                             val pasted = cm?.primaryClip?.getItemAt(0)?.coerceToText(context)
                                 ?.toString()?.trim().orEmpty()
                             if (pasted.isNotBlank()) {
-                                linkInput = SealDownloader.extractFirstUrl(pasted) ?: pasted
+                                linkInput = SealDownloader.extractFirstUrl(pasted)
+                                    ?: SealDownloader.cleanMediaUrl(pasted)
                             }
                         },
                         onClearLink = { linkInput = "" },
@@ -798,6 +814,7 @@ private fun KlipNoteApp(
                                 picker.launch(arrayOf("audio/*", "video/*"))
                             }
                         },
+                        onConnectCookies = { showCookiesSheet = true },
                         onConfirmPreFlight = { confirmPreFlight(it) },
                         onDismissPreFlight = { preFlight = null },
                         onAutoTranscribeChange = { enabled ->
@@ -956,11 +973,40 @@ private fun KlipNoteApp(
                                 updatingYtDlp = false
                                 snackbar.showSnackbar("yt-dlp: $msg")
                             }
+                        },
+                        cookiesStatus = CookieStore.statusLabel(context),
+                        cookiesEnabled = CookieStore.isEnabled(context) &&
+                            CookieStore.hasCookies(context),
+                        cookiesRevision = cookiesRevision,
+                        onConnectCookies = { showCookiesSheet = true },
+                        onToggleCookies = { enabled ->
+                            CookieStore.setEnabled(context, enabled)
+                            cookiesRevision += 1
+                        },
+                        onClearCookies = {
+                            CookieStore.clear(context)
+                            cookiesRevision += 1
+                            scope.launch {
+                                snackbar.showSnackbar("Cookies de Instagram borradas")
+                            }
                         }
                     )
                 }
             }
         }
+    }
+
+    if (showCookiesSheet) {
+        InstagramCookiesSheet(
+            onDismiss = { showCookiesSheet = false },
+            onSaved = { count ->
+                cookiesRevision += 1
+                showCookiesSheet = false
+                scope.launch {
+                    snackbar.showSnackbar("Cookies guardadas ($count) — solo en este dispositivo")
+                }
+            }
+        )
     }
 
     if (showMotorSheet) {
@@ -1186,6 +1232,7 @@ private fun CapturarTab(
     onRun: () -> Unit,
     onCancel: () -> Unit,
     onPickFile: () -> Unit,
+    onConnectCookies: () -> Unit,
     onConfirmPreFlight: (PreFlightState) -> Unit,
     onDismissPreFlight: () -> Unit,
     onAutoTranscribeChange: (Boolean) -> Unit,
@@ -1225,7 +1272,13 @@ private fun CapturarTab(
                 ProgressCard(phase = phase, onCancel = onCancel)
             }
             is UiPhase.Error -> {
-                ErrorCard(message = phase.message, isManual = phase.isManualTest, onBackToAuto = onBackToAuto)
+                ErrorCard(
+                    message = phase.message,
+                    isManual = phase.isManualTest,
+                    showConnectCookies = SealDownloader.looksLikeLoginRequired(phase.message),
+                    onConnectCookies = onConnectCookies,
+                    onBackToAuto = onBackToAuto
+                )
             }
             else -> Unit
         }
@@ -1488,6 +1541,8 @@ private fun ProgressCard(phase: UiPhase, onCancel: () -> Unit) {
 private fun ErrorCard(
     message: String,
     isManual: Boolean,
+    showConnectCookies: Boolean = false,
+    onConnectCookies: () -> Unit = {},
     onBackToAuto: () -> Unit
 ) {
     Column(
@@ -1499,6 +1554,24 @@ private fun ErrorCard(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(message, color = Color(0xFFF87171))
+        if (showConnectCookies) {
+            Text(
+                "Instagram requiere sesión. Conecta cookies (privadas, solo en este teléfono).",
+                color = Muted,
+                fontSize = 12.sp
+            )
+            Button(
+                onClick = onConnectCookies,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Accent,
+                    contentColor = Color.Black
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Conectar Cookies de Instagram", fontWeight = FontWeight.SemiBold)
+            }
+        }
         if (isManual) {
             TextButton(onClick = onBackToAuto) {
                 Text("Volver a Auto (Cascada)", color = Accent)
@@ -1748,9 +1821,16 @@ private fun MotoresTab(
     onDiarizeChange: (Boolean) -> Unit,
     sealReady: SealDownloader.ReadyState,
     updatingYtDlp: Boolean,
-    onUpdateYtDlp: () -> Unit
+    onUpdateYtDlp: () -> Unit,
+    cookiesStatus: String,
+    cookiesEnabled: Boolean,
+    cookiesRevision: Int,
+    onConnectCookies: () -> Unit,
+    onToggleCookies: (Boolean) -> Unit,
+    onClearCookies: () -> Unit
 ) {
     var advancedOpen by remember { mutableStateOf(diarize) }
+    val cookiesLabel = remember(cookiesRevision, cookiesStatus) { cookiesStatus }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1950,6 +2030,62 @@ private fun MotoresTab(
                     )
                 }
             }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF0F1623))
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("Cookies Instagram", color = OnBg, fontWeight = FontWeight.Medium)
+                Text(
+                    cookiesLabel,
+                    color = Muted,
+                    fontSize = 12.sp
+                )
+                Text(
+                    "Privadas en el teléfono (filesDir). No se suben ni entran en backup.",
+                    color = Muted,
+                    fontSize = 11.sp
+                )
+                Button(
+                    onClick = onConnectCookies,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Accent,
+                        contentColor = Color.Black
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Conectar Cookies de Instagram", fontWeight = FontWeight.SemiBold)
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Usar cookies en descargas", color = OnBg, fontSize = 14.sp)
+                    Switch(
+                        checked = cookiesEnabled,
+                        onCheckedChange = onToggleCookies,
+                        enabled = cookiesLabel != "Sin cookies de Instagram",
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = Accent
+                        )
+                    )
+                }
+                OutlinedButton(
+                    onClick = onClearCookies,
+                    enabled = cookiesLabel != "Sin cookies de Instagram",
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Borrar Cookies", color = Color(0xFFF87171))
+                }
+            }
         }
     }
 }
@@ -2142,5 +2278,164 @@ private suspend fun runTranscription(
         )
     } finally {
         AudioExtractor.cleanup(extracted)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun InstagramCookiesSheet(
+    onDismiss: () -> Unit,
+    onSaved: (Int) -> Unit
+) {
+    val context = LocalContext.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var mode by remember { mutableStateOf("webview") } // webview | paste
+    var pasteText by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf("Inicia sesión en Instagram y pulsa Guardar") }
+    var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    var busy by remember { mutableStateOf(false) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Card,
+        contentColor = OnBg
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                "Conectar Cookies de Instagram",
+                fontWeight = FontWeight.Bold,
+                color = OnBg,
+                fontSize = 18.sp
+            )
+            Text(
+                "Se guardan en privado (filesDir/cookies.txt). allowBackup=false · no se suben.",
+                color = Muted,
+                fontSize = 12.sp
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ModeChip(
+                    selected = mode == "webview",
+                    label = "Login WebView",
+                    enabled = !busy,
+                    onClick = { mode = "webview" }
+                )
+                ModeChip(
+                    selected = mode == "paste",
+                    label = "Pegar cookies.txt",
+                    enabled = !busy,
+                    onClick = { mode = "paste" }
+                )
+            }
+
+            if (mode == "webview") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(360.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF0F1623))
+                ) {
+                    AndroidView(
+                        factory = { ctx ->
+                            WebView(ctx).apply {
+                                layoutParams = ViewGroup.LayoutParams(
+                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                    ViewGroup.LayoutParams.MATCH_PARENT
+                                )
+                                settings.javaScriptEnabled = true
+                                settings.domStorageEnabled = true
+                                settings.javaScriptCanOpenWindowsAutomatically = true
+                                CookieManager.getInstance().setAcceptCookie(true)
+                                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                                webViewClient = WebViewClient()
+                                loadUrl("https://www.instagram.com/accounts/login/")
+                                webViewRef = this
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                        update = { webViewRef = it }
+                    )
+                }
+                Button(
+                    onClick = {
+                        if (busy) return@Button
+                        busy = true
+                        try {
+                            CookieManager.getInstance().flush()
+                            val ua = webViewRef?.settings?.userAgentString
+                            val count = CookieStore.saveFromCookieManager(context, ua)
+                            status = "Guardadas $count cookies"
+                            onSaved(count)
+                        } catch (t: Throwable) {
+                            status = t.message ?: "No se pudieron guardar"
+                            busy = false
+                        }
+                    },
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Accent,
+                        contentColor = Color.Black
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Guardar cookies del WebView", fontWeight = FontWeight.SemiBold)
+                }
+            } else {
+                OutlinedTextField(
+                    value = pasteText,
+                    onValueChange = { pasteText = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 160.dp),
+                    placeholder = {
+                        Text("Pega cookies.txt Netscape o sessionid=…", color = Muted)
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Accent,
+                        unfocusedBorderColor = Muted.copy(alpha = 0.4f),
+                        focusedTextColor = OnBg,
+                        unfocusedTextColor = OnBg,
+                        cursorColor = Accent
+                    )
+                )
+                Button(
+                    onClick = {
+                        if (busy) return@Button
+                        busy = true
+                        try {
+                            val count = CookieStore.saveFromPaste(context, pasteText)
+                            status = "Guardadas $count cookies"
+                            onSaved(count)
+                        } catch (t: Throwable) {
+                            status = t.message ?: "Pegado inválido"
+                            busy = false
+                        }
+                    },
+                    enabled = !busy && pasteText.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Accent,
+                        contentColor = Color.Black
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Guardar cookies pegadas", fontWeight = FontWeight.SemiBold)
+                }
+            }
+
+            Text(status, color = Muted, fontSize = 12.sp)
+            TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
+                Text("Cerrar", color = Muted)
+            }
+        }
     }
 }
