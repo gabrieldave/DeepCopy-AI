@@ -113,13 +113,21 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.blackeye.klipnote.ui.KlipNeutrals
+import com.blackeye.klipnote.ui.KlipPalette
+import com.blackeye.klipnote.ui.KlipTheme
+import com.blackeye.klipnote.ui.KlipThemeId
+import com.blackeye.klipnote.ui.ThemePrefs
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
 
-private val Bg = Color(0xFF0B0F17)
-private val Card = Color(0xFF151C28)
-private val Accent = Color(0xFF10B981)
-private val OnBg = Color(0xFFE8EEF7)
-private val Muted = Color(0xFFB0BCCE)
-private val Amber = Color(0xFFFBBF24)
+private val Bg get() = KlipNeutrals.Bg
+private val Card get() = KlipNeutrals.Card
+private val Accent get() = KlipPalette.accent
+private val OnAccent get() = KlipPalette.onAccent
+private val OnBg get() = KlipNeutrals.OnBg
+private val Muted get() = KlipNeutrals.Muted
+private val Amber get() = KlipNeutrals.Amber
 
 private enum class MainTab { Capturar, Guiones, Motores }
 
@@ -157,16 +165,39 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         handleShareIntent(intent)
         setContent {
-            KlipNoteTheme {
-                KlipNoteApp(
-                    shareUri = pendingShareUri,
-                    shareText = pendingShareText,
-                    shareNonce = shareNonce,
-                    onShareConsumed = {
-                        pendingShareUri = null
-                        pendingShareText = null
-                    }
+            val appContext = this@MainActivity
+            var themeId by remember {
+                mutableStateOf(ThemePrefs.getThemeId(appContext))
+            }
+            var showOnboarding by remember {
+                mutableStateOf(
+                    !ApiKeyStore.hasAnyKey(appContext) && !OnboardingPrefs.isDone(appContext)
                 )
+            }
+            KlipTheme(themeId = themeId) {
+                // Asistente = pantalla independiente (no Scaffold / tabs).
+                if (showOnboarding) {
+                    OnboardingWizard(
+                        onFinished = { showOnboarding = false },
+                        onSavedKey = { /* KlipNoteApp recarga llaves al montar */ }
+                    )
+                } else {
+                    KlipNoteApp(
+                        shareUri = pendingShareUri,
+                        shareText = pendingShareText,
+                        shareNonce = shareNonce,
+                        themeId = themeId,
+                        onThemeIdChange = { id ->
+                            themeId = id
+                            ThemePrefs.setThemeId(appContext, id)
+                        },
+                        onShowOnboarding = { showOnboarding = true },
+                        onShareConsumed = {
+                            pendingShareUri = null
+                            pendingShareText = null
+                        }
+                    )
+                }
             }
         }
     }
@@ -203,28 +234,15 @@ private fun Intent.getParcelableExtraCompat(key: String): Uri? {
     }
 }
 
-@Composable
-private fun KlipNoteTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = darkColorScheme(
-            primary = Accent,
-            onPrimary = Color.Black,
-            background = Bg,
-            surface = Card,
-            onBackground = OnBg,
-            onSurface = OnBg,
-            secondary = Accent
-        ),
-        content = content
-    )
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun KlipNoteApp(
     shareUri: Uri?,
     shareText: String?,
     shareNonce: Int,
+    themeId: KlipThemeId,
+    onThemeIdChange: (KlipThemeId) -> Unit,
+    onShowOnboarding: () -> Unit,
     onShareConsumed: () -> Unit
 ) {
     val context = LocalContext.current
@@ -235,9 +253,7 @@ private fun KlipNoteApp(
     var selectedTab by remember { mutableStateOf(MainTab.Capturar) }
     var showMotorSheet by remember { mutableStateOf(false) }
     var showKeyDialog by remember { mutableStateOf(false) }
-    var showOnboarding by remember {
-        mutableStateOf(!ApiKeyStore.hasAnyKey(context) && !OnboardingPrefs.isDone(context))
-    }
+    // showOnboarding vive en setContent (pantalla independiente).
     var languageMode by remember { mutableStateOf(BillingManager.getLanguageMode(context)) }
     var forcedLanguage by remember { mutableStateOf(BillingManager.getForcedLanguage(context)) }
     var diarize by remember { mutableStateOf(BillingManager.getDiarizeEnabled(context)) }
@@ -865,7 +881,7 @@ private fun KlipNoteApp(
                             groqRemainingSeconds = groqRemaining,
                             autoPrimary = autoPrimary
                         ),
-                        onOpenOnboarding = { showOnboarding = true },
+                        onOpenOnboarding = onShowOnboarding,
                         onOpenKeys = { showKeyDialog = true }
                     )
                 }
@@ -1022,22 +1038,15 @@ private fun KlipNoteApp(
                                 snackbar.showSnackbar("Cuenta de ${site.label} desconectada")
                             }
                         },
-                        onShowTutorial = { showOnboarding = true }
+                        onShowTutorial = onShowOnboarding,
+                        themeId = themeId,
+                        onThemeIdChange = onThemeIdChange
                     )
                 }
             }
         }
     }
 
-    if (showOnboarding) {
-        OnboardingWizard(
-            onFinished = { showOnboarding = false },
-            onSavedKey = {
-                syncKeysUi()
-                onKeysChanged()
-            }
-        )
-    }
 
     cookieSheetSite?.let { sheetSite ->
         SiteCookiesSheet(
@@ -1547,7 +1556,7 @@ private fun LinkHeroCard(
                 .height(52.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Accent,
-                contentColor = Color.Black,
+                contentColor = OnAccent,
                 disabledContainerColor = Accent.copy(alpha = 0.35f)
             ),
             shape = RoundedCornerShape(12.dp)
@@ -1664,7 +1673,7 @@ private fun ErrorCard(
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Accent,
-                    contentColor = Color.Black
+                    contentColor = OnAccent
                 ),
                 shape = RoundedCornerShape(12.dp)
             ) {
@@ -2167,7 +2176,9 @@ private fun MotoresTab(
     onConnectCookies: (CookieSite) -> Unit,
     onToggleCookies: (Boolean) -> Unit,
     onClearCookies: (CookieSite) -> Unit,
-    onShowTutorial: () -> Unit = {}
+    onShowTutorial: () -> Unit = {},
+    themeId: KlipThemeId = KlipThemeId.GREEN,
+    onThemeIdChange: (KlipThemeId) -> Unit = {}
 ) {
     val context = LocalContext.current
     var advancedOpen by remember { mutableStateOf(false) }
@@ -2308,6 +2319,11 @@ private fun MotoresTab(
             }
         }
 
+        AppearanceSection(
+            themeId = themeId,
+            onThemeIdChange = onThemeIdChange
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -2438,6 +2454,67 @@ private fun MotoresTab(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun AppearanceSection(
+    themeId: KlipThemeId,
+    onThemeIdChange: (KlipThemeId) -> Unit
+) {
+    val context = LocalContext.current
+    val options = remember { KlipThemeId.selectable(context) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Card)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        SectionHeader(
+            title = "Apariencia",
+            help = "Cambia el color de botones y acentos. El fondo se queda oscuro. " +
+                "El ícono de la app no cambia con el tema."
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            options.forEach { id ->
+                val swatch = when (id) {
+                    KlipThemeId.GREEN -> Color(0xFF10B981)
+                    KlipThemeId.BLUE -> Color(0xFF3B82F6)
+                    KlipThemeId.PURPLE -> Color(0xFF8B5CF6)
+                    KlipThemeId.ORANGE -> Color(0xFFF59E0B)
+                    KlipThemeId.PINK -> Color(0xFFEC4899)
+                    KlipThemeId.DYNAMIC -> Color(0xFF94A3B8)
+                }
+                val selected = themeId == id
+                Box(
+                    modifier = Modifier
+                        .size(if (selected) 40.dp else 36.dp)
+                        .clip(CircleShape)
+                        .background(swatch)
+                        .then(
+                            if (selected) Modifier.border(2.dp, OnBg, CircleShape)
+                            else Modifier
+                        )
+                        .clickable { onThemeIdChange(id) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (id == KlipThemeId.DYNAMIC) {
+                        Text("DY", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+        Text(
+            themeId.label,
+            color = Muted,
+            fontSize = 12.sp
+        )
     }
 }
 
@@ -2757,7 +2834,7 @@ private fun SiteCookiesSheet(
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Accent,
-                        contentColor = Color.Black
+                        contentColor = OnAccent
                     ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -2798,7 +2875,7 @@ private fun SiteCookiesSheet(
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Accent,
-                        contentColor = Color.Black
+                        contentColor = OnAccent
                     ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
