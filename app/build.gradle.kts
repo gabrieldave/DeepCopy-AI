@@ -17,8 +17,8 @@ android {
         targetSdk = 35
 
         // Fuente de verdad local; CI nunca baja de este piso.
-        val localVersionCode = 109
-        val localVersionName = "1.2.1"
+        val localVersionCode = 111
+        val localVersionName = "1.2.3"
         val ciCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 100 + it }
         versionCode = max(localVersionCode, ciCode ?: 0)
         versionName = if (ciCode != null && ciCode > localVersionCode) {

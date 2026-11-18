@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -208,7 +209,12 @@ private fun KlipNoteApp(
     var balanceSnapshot by remember {
         mutableStateOf<DeepgramBillingClient.BalanceSnapshot?>(null)
     }
-    var providerStatuses by remember { mutableStateOf<List<ProviderStatus>>(emptyList()) }
+    var providerStatuses by remember {
+        mutableStateOf(OfferHealthMonitor.seedFromStore(context))
+    }
+    var keyMasks by remember {
+        mutableStateOf(readKeyMasks(context))
+    }
     var routeChain by remember { mutableStateOf(SttRouter.summarizeActiveRoute(context).chainLabel) }
     var appSpent by remember { mutableStateOf(BillingManager.getAppSpent(context)) }
     var localUsage by remember { mutableStateOf(BillingManager.getLocalUsage(context)) }
@@ -238,9 +244,20 @@ private fun KlipNoteApp(
     var giantConfirm by remember { mutableStateOf<PreFlightState?>(null) }
     var historyEntries by remember { mutableStateOf(BillingManager.loadHistory(context)) }
 
+    fun syncKeysUi() {
+        keyMasks = readKeyMasks(context)
+        // Semilla inmediata: con llave → KEY LISTA, nunca SIN KEY vacío.
+        providerStatuses = OfferHealthMonitor.reconcileWithStore(
+            context,
+            providerStatuses
+        )
+        routeChain = SttRouter.summarizeActiveRoute(context).chainLabel
+    }
+
     fun refreshDashboard() {
         scope.launch {
             creditRefreshing = true
+            syncKeysUi()
             withContext(Dispatchers.IO) {
                 RemoteRouterConfig.refreshQuietly(context)
             }
@@ -257,24 +274,34 @@ private fun KlipNoteApp(
             routeChain = SttRouter.summarizeActiveRoute(context).chainLabel
             historyEntries = BillingManager.loadHistory(context)
             allowPaidFallback = BillingManager.getAllowPaidFallback(context)
+            syncKeysUi()
             creditRefreshing = false
         }
     }
 
-    fun verifyOffers() {
+    fun verifyOffers(showSnackbar: Boolean = true) {
         scope.launch {
             verifyingOffers = true
+            syncKeysUi()
             val report = withContext(Dispatchers.IO) {
                 OfferHealthMonitor.verifyAll(context)
             }
             providerStatuses = report.statuses
+            keyMasks = readKeyMasks(context)
             groqRemaining = BillingManager.getGroqRemainingSeconds(context)
             inworldRemaining = BillingManager.getInworldRemainingSeconds(context)
             assemblyRemaining = BillingManager.getAssemblyRemainingSeconds(context)
             routeChain = SttRouter.summarizeActiveRoute(context).chainLabel
             verifyingOffers = false
-            snackbar.showSnackbar("Ofertas verificadas")
+            if (showSnackbar) {
+                snackbar.showSnackbar("Ofertas verificadas")
+            }
         }
+    }
+
+    fun onKeysChanged() {
+        syncKeysUi()
+        verifyOffers(showSnackbar = false)
     }
 
     fun notifyCopied() {
@@ -367,9 +394,13 @@ private fun KlipNoteApp(
     }
 
     LaunchedEffect(Unit) {
+        syncKeysUi()
         refreshDashboard()
-        if (OfferHealthMonitor.shouldAutoCheck(context) && ApiKeyStore.hasAnyKey(context)) {
-            verifyOffers()
+        if (ApiKeyStore.hasAnyKey(context)) {
+            // Ping inmediato al abrir si hay llaves (o si pasaron >7 días).
+            if (OfferHealthMonitor.shouldAutoCheck(context)) {
+                verifyOffers(showSnackbar = false)
+            }
         }
     }
 
@@ -457,7 +488,8 @@ private fun KlipNoteApp(
                 .fillMaxSize()
                 .padding(padding)
                 .padding(horizontal = 16.dp)
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(rememberScrollState())
+                .imePadding(),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             CreditControlPanel(
@@ -472,6 +504,7 @@ private fun KlipNoteApp(
                     localUsage = localUsage,
                     routeChain = routeChain,
                     providerStatuses = providerStatuses,
+                    keyMasks = keyMasks,
                     allowPaidFallback = allowPaidFallback,
                     verifyingOffers = verifyingOffers,
                     groqRemainingSeconds = groqRemaining,
@@ -493,7 +526,7 @@ private fun KlipNoteApp(
                     showHistory = true
                 },
                 onOpenCostSettings = { showCostSettings = true },
-                onVerifyOffers = { verifyOffers() },
+                onVerifyOffers = { verifyOffers(showSnackbar = true) },
                 onAllowPaidChange = { enabled ->
                     allowPaidFallback = enabled
                     BillingManager.setAllowPaidFallback(context, enabled)
@@ -601,52 +634,57 @@ private fun KlipNoteApp(
             inworldMask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.INWORLD),
             assemblyMask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.ASSEMBLY_AI),
             deepgramMask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.DEEPGRAM),
+            deepgramProjectId = ApiKeyStore.getDeepgramProjectId(context).orEmpty(),
             paidMask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.PAID_FALLBACK),
             paidEndpoint = ApiKeyStore.getPaidFallbackEndpoint(context),
             paidEngine = ApiKeyStore.getPaidFallbackEngine(context),
             onDismiss = { showKeyDialog = false },
             onSaveGroq = {
                 ApiKeyStore.setGroq(context, it)
-                refreshDashboard()
+                onKeysChanged()
             },
             onClearGroq = {
                 ApiKeyStore.clearGroq(context)
-                refreshDashboard()
+                onKeysChanged()
             },
             onSaveInworld = {
                 ApiKeyStore.setInworld(context, it)
-                refreshDashboard()
+                onKeysChanged()
             },
             onClearInworld = {
                 ApiKeyStore.clearInworld(context)
-                refreshDashboard()
+                onKeysChanged()
             },
             onSaveAssembly = {
                 ApiKeyStore.setAssemblyAi(context, it)
-                refreshDashboard()
+                onKeysChanged()
             },
             onClearAssembly = {
                 ApiKeyStore.clearAssemblyAi(context)
-                refreshDashboard()
+                onKeysChanged()
             },
             onSaveDeepgram = {
                 ApiKeyStore.setDeepgram(context, it)
-                refreshDashboard()
+                onKeysChanged()
             },
             onClearDeepgram = {
                 ApiKeyStore.clearDeepgram(context)
                 balanceSnapshot = null
-                refreshDashboard()
+                onKeysChanged()
+            },
+            onSaveDeepgramProjectId = {
+                ApiKeyStore.setDeepgramProjectId(context, it)
+                onKeysChanged()
             },
             onSavePaid = { key, endpoint, engine ->
                 ApiKeyStore.setPaidFallback(context, key)
                 ApiKeyStore.setPaidFallbackEndpoint(context, endpoint)
                 ApiKeyStore.setPaidFallbackEngine(context, engine)
-                refreshDashboard()
+                onKeysChanged()
             },
             onClearPaid = {
                 ApiKeyStore.clearPaidFallback(context)
-                refreshDashboard()
+                onKeysChanged()
             }
         )
     }
@@ -1002,6 +1040,14 @@ private fun ActionButton(
         Text(label)
     }
 }
+
+private fun readKeyMasks(context: android.content.Context): Map<SttProvider, String?> = mapOf(
+    SttProvider.GROQ_FREE to ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.GROQ),
+    SttProvider.INWORLD to ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.INWORLD),
+    SttProvider.ASSEMBLY_AI to ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.ASSEMBLY_AI),
+    SttProvider.DEEPGRAM to ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.DEEPGRAM),
+    SttProvider.PAID_FALLBACK to ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.PAID_FALLBACK)
+)
 
 private fun copyToClipboard(context: android.content.Context, text: String) {
     val cm = context.getSystemService(ClipboardManager::class.java)

@@ -20,7 +20,7 @@ App Android nativa (`com.blackeye.klipnote`) para transcribir audio/video local 
 4. **Deepgram Nova-3** — créditos $200 USD con umbral de seguridad $1
 5. **Respaldo Pagado** — Microsoft MAI / Groq Paid (switch explícito)
 
-Versión: `versionName = 1.2.1`, `versionCode = 109`.
+Versión: `versionName = 1.2.3`, `versionCode = 111`.
 
 ## Requisitos
 
