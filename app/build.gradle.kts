@@ -1,5 +1,4 @@
 import java.util.Properties
-import kotlin.math.max
 
 plugins {
     id("com.android.application")
@@ -16,16 +15,9 @@ android {
         minSdk = 26
         targetSdk = 35
 
-        // Fuente de verdad local; CI nunca baja de este piso.
-        val localVersionCode = 122
-        val localVersionName = "1.5.0"
-        val ciCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 100 + it }
-        versionCode = max(localVersionCode, ciCode ?: 0)
-        versionName = if (ciCode != null && ciCode > localVersionCode) {
-            "1.5.${ciCode - 100}"
-        } else {
-            localVersionName
-        }
+        // Fuente de verdad única (local). CI no sobrescribe con GITHUB_RUN_NUMBER.
+        versionCode = 123
+        versionName = "1.5.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -136,10 +128,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
-    // Seal / junkfood02 fork — Maven Central verificado 0.17.3
-    implementation("io.github.junkfood02.youtubedl-android:library:0.17.3")
-    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.17.3")
-    implementation("io.github.junkfood02.youtubedl-android:aria2c:0.17.3")
+    // Seal / junkfood02 fork — 0.18.1 incluye QuickJS (libqjs.so) para YouTube EJS
+    implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
+    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
+    implementation("io.github.junkfood02.youtubedl-android:aria2c:0.18.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
