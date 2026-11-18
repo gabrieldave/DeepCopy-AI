@@ -23,15 +23,25 @@ import kotlinx.coroutines.withContext
 
 /**
  * Envoltorio Seal-style de yt-dlp / FFmpeg / aria2c (io.github.junkfood02.youtubedl-android 0.17.3).
+ *
+ * Flags audio alineadas con junkfood02/Seal DownloadUtil:
+ * `--no-playlist`, `--no-mtime`, `-x`, `--audio-format m4a`, `--audio-quality 5`,
+ * y `--cookies` + `User-Agent` cuando hay cookies.txt local.
  */
 object SealDownloader {
     private const val TAG = "SealDownloader"
+    private const val PREFS = "seal_downloader"
+    private const val KEY_LAST_YTDLP_UPDATE_MS = "last_ytdlp_nightly_ms"
+    private const val SEVEN_DAYS_MS = 7L * 24 * 60 * 60 * 1000
+
     private val URL_REGEX = Regex("""https?://\S+""", RegexOption.IGNORE_CASE)
 
-    private val AUDIO_FORMAT =
-        """ba[ext=m4a][abr<=96]/ba[ext=m4a]/ba/b"""
     private val VIDEO_FORMAT =
         """bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b"""
+
+    private val TRACKING_QUERY_KEYS = setOf(
+        "igsh", "igshid", "fbclid", "gclid", "si", "feature", "reels_share", "s"
+    )
 
     enum class ReadyState { IDLE, READY, ERROR }
 
@@ -64,7 +74,46 @@ object SealDownloader {
     fun extractFirstUrl(raw: String?): String? {
         if (raw.isNullOrBlank()) return null
         val match = URL_REGEX.find(raw.trim()) ?: return null
-        return match.value.trim().trimEnd(')', ']', '>', '"', '\'', ',', '.', ';')
+        val clipped = match.value.trim().trimEnd(')', ']', '>', '"', '\'', ',', '.', ';')
+        return cleanMediaUrl(clipped)
+    }
+
+    /** Limpia tracking de Instagram reel/reels/p (igsh, utm_*, etc.). */
+    fun cleanMediaUrl(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return trimmed
+        return try {
+            val uri = Uri.parse(trimmed)
+            val host = uri.host?.lowercase().orEmpty()
+            val path = uri.path.orEmpty().lowercase()
+            val isIg = host.contains("instagram.com") || host == "instagr.am" ||
+                host.endsWith("cdninstagram.com")
+            val isIgMediaPath = path.contains("/reel") || path.contains("/reels") ||
+                path.matches(Regex(".*/p/[^/]+.*"))
+            if (!isIg || (!isIgMediaPath && uri.query.isNullOrBlank())) {
+                return trimmed
+            }
+            val builder = uri.buildUpon().clearQuery()
+            for (name in uri.queryParameterNames) {
+                val key = name.lowercase()
+                if (key in TRACKING_QUERY_KEYS || key.startsWith("utm_")) continue
+                for (value in uri.getQueryParameters(name)) {
+                    builder.appendQueryParameter(name, value)
+                }
+            }
+            builder.build().toString()
+        } catch (_: Throwable) {
+            trimmed
+        }
+    }
+
+    fun looksLikeLoginRequired(message: String?): Boolean {
+        if (message.isNullOrBlank()) return false
+        val m = message.lowercase()
+        return m.contains("login required") ||
+            m.contains("sign in to confirm") ||
+            (m.contains("cookies") && (m.contains("login") || m.contains("instagram"))) ||
+            m.contains("rate-limit") && m.contains("login")
     }
 
     fun initAsync(context: Context) {
@@ -79,6 +128,7 @@ object SealDownloader {
                 _ready.value = ReadyState.READY
                 _readyError.value = null
                 Log.i(TAG, "YoutubeDL/FFmpeg/Aria2c listos")
+                maybeAutoUpdateYtDlpSilent(app)
             } catch (t: Throwable) {
                 Log.e(TAG, "Init falló", t)
                 _ready.value = ReadyState.ERROR
@@ -98,6 +148,7 @@ object SealDownloader {
             context.applicationContext,
             YoutubeDL.UpdateChannel.NIGHTLY
         )
+        markYtDlpUpdated(context.applicationContext)
         when (status) {
             YoutubeDL.UpdateStatus.DONE -> "ACTUALIZADO"
             YoutubeDL.UpdateStatus.ALREADY_UP_TO_DATE -> "YA ESTÁ AL DÍA"
@@ -116,6 +167,28 @@ object SealDownloader {
         val url = extractFirstUrl(rawInput)
             ?: throw IllegalArgumentException("No hay URL http(s) en el texto")
 
+        try {
+            downloadOnce(context, url, mode, downloadKind, onProgress)
+        } catch (e: YoutubeDL.CanceledException) {
+            throw e
+        } catch (t: Throwable) {
+            val msg = t.message.orEmpty()
+            if (!needsYtDlpHeal(msg)) throw t
+            Log.w(TAG, "Auto-heal yt-dlp NIGHTLY tras: $msg")
+            onProgress("Actualizando yt-dlp (auto-heal)…")
+            runCatching { updateYtDlpNightly(context) }
+            onProgress("Reintentando descarga…")
+            downloadOnce(context, url, mode, downloadKind, onProgress)
+        }
+    }
+
+    private fun downloadOnce(
+        context: Context,
+        url: String,
+        mode: LinkMode,
+        downloadKind: DownloadKind,
+        onProgress: (String) -> Unit
+    ): DownloadArtifact {
         val wantVideo = when (mode) {
             LinkMode.VIDEO_AND_TEXT -> true
             LinkMode.DOWNLOAD_ONLY -> downloadKind == DownloadKind.VIDEO_MP4
@@ -129,20 +202,7 @@ object SealDownloader {
         val processId = UUID.randomUUID().toString()
         activeProcessId.set(processId)
 
-        val request = YoutubeDLRequest(url).apply {
-            addOption("--no-playlist")
-            addOption("--no-mtime")
-            addOption("-o", outTemplate)
-            if (wantVideo) {
-                addOption("-f", VIDEO_FORMAT)
-                addOption("--merge-output-format", "mp4")
-            } else {
-                addOption("-x")
-                addOption("-f", AUDIO_FORMAT)
-                addOption("--audio-format", "m4a")
-            }
-            addOption("--newline")
-        }
+        val request = buildRequest(context, url, outTemplate, wantVideo)
 
         try {
             onProgress("Descargando: 0% • preparando…")
@@ -169,7 +229,7 @@ object SealDownloader {
             .take(120)
 
         if (!savePublic) {
-            return@withContext DownloadArtifact(
+            return DownloadArtifact(
                 file = produced,
                 uri = Uri.fromFile(produced),
                 title = title,
@@ -181,7 +241,7 @@ object SealDownloader {
         val mime = if (wantVideo) "video/mp4" else "audio/mp4"
         val displayName = sanitizeFileName(title) + if (wantVideo) ".mp4" else ".m4a"
         val publicUri = saveToDownloadsKlipNote(context, produced, displayName, mime)
-        DownloadArtifact(
+        return DownloadArtifact(
             file = produced,
             uri = publicUri ?: Uri.fromFile(produced),
             title = title,
@@ -190,10 +250,73 @@ object SealDownloader {
         )
     }
 
+    private fun buildRequest(
+        context: Context,
+        url: String,
+        outTemplate: String,
+        wantVideo: Boolean
+    ): YoutubeDLRequest {
+        return YoutubeDLRequest(url).apply {
+            // Mirror Seal downloadVideo / audio path
+            addOption("--no-playlist")
+            addOption("--no-mtime")
+            addOption("-o", outTemplate)
+            if (wantVideo) {
+                addOption("-f", VIDEO_FORMAT)
+                addOption("--merge-output-format", "mp4")
+            } else {
+                // Seal addOptionsForAudioDownloads: -x + --audio-format m4a
+                // (sin -f rígido ba[ext=m4a] que rompe IG muxed MP4)
+                addOption("-x")
+                addOption("--audio-format", "m4a")
+                addOption("--audio-quality", "5")
+            }
+            addOption("--newline")
+
+            CookieStore.cookiesFileIfEnabled(context)?.let { cookies ->
+                addOption("--cookies", cookies.absolutePath)
+                CookieStore.userAgent(context)?.let { ua ->
+                    if (ua.isNotEmpty()) {
+                        addOption("--add-header", "User-Agent:$ua")
+                    }
+                }
+            }
+        }
+    }
+
     fun cleanupArtifact(artifact: DownloadArtifact) {
         if (!artifact.deleteAfterUse) return
         runCatching { artifact.file.delete() }
         runCatching { artifact.file.parentFile?.deleteRecursively() }
+    }
+
+    private fun needsYtDlpHeal(message: String): Boolean {
+        val m = message.lowercase()
+        return m.contains("unable to extract") ||
+            m.contains("confirm you are on the latest version") ||
+            m.contains("metadata extraction failed") ||
+            m.contains("shared data")
+    }
+
+    private fun maybeAutoUpdateYtDlpSilent(app: Context) {
+        val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val last = prefs.getLong(KEY_LAST_YTDLP_UPDATE_MS, 0L)
+        val now = System.currentTimeMillis()
+        if (last != 0L && now - last < SEVEN_DAYS_MS) return
+        try {
+            Log.i(TAG, "Auto-update yt-dlp NIGHTLY (first init / 7d)")
+            YoutubeDL.getInstance().updateYoutubeDL(app, YoutubeDL.UpdateChannel.NIGHTLY)
+            markYtDlpUpdated(app)
+        } catch (t: Throwable) {
+            Log.w(TAG, "Auto-update yt-dlp falló (no bloquea)", t)
+        }
+    }
+
+    private fun markYtDlpUpdated(app: Context) {
+        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(KEY_LAST_YTDLP_UPDATE_MS, System.currentTimeMillis())
+            .apply()
     }
 
     private fun ensureReady() {
@@ -221,7 +344,6 @@ object SealDownloader {
                 } else {
                     MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
                 }
-                // Prefer Downloads tree for both.
                 val downloads = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
                 val values = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
