@@ -1,119 +1,166 @@
-# KlipNote
-
-App Android **gratis y de código abierto** para transcribir audio y video a texto, listo para pegarlo en cualquier IA.
-
-Usa servicios de transcripción que **regalan créditos o minutos gratis**. Cuando uno se acaba, salta solo al siguiente. Así puedes transcribir mucho sin pagar nada. Si algún día quieres, puedes agregar un motor de pago al final, y solo se usa si tú lo permites.
-
-> El APK no trae llaves de nadie. **Cada persona pone sus propias llaves** dentro de la app. Se guardan cifradas y nunca salen de tu teléfono.
+<p align="center">🇪🇸 <strong>Español</strong> · <a href="README.en.md">🇺🇸 English</a></p>
 
 <p align="center">
-  <img src="docs/capturas/01-asistente.png" alt="Asistente de inicio" width="180" />
-  <img src="docs/capturas/02-capturar.png" alt="Pestaña Capturar" width="180" />
-  <img src="docs/capturas/03-guiones.png" alt="Pestaña Guiones" width="180" />
-  <img src="docs/capturas/04-ajustes-temas.png" alt="Ajustes con temas de color" width="180" />
+  <img src="docs/assets/logo.png" alt="Logo de KlipNote" width="128" />
 </p>
 
-<p align="center"><sub>v1.6 — asistente, Capturar, Guiones y Ajustes (temas)</sub></p>
+<h1 align="center">🎙️ KlipNote</h1>
+
+<p align="center"><strong>Convierte videos y audios en texto. Gratis, en tu Android.</strong></p>
+
+<p align="center">
+  Pega un enlace, comparte un video o elige un archivo.<br />
+  KlipNote transcribe con créditos gratis de varios servicios (tus propias llaves)<br />
+  y deja el texto listo para pegarlo en cualquier IA.
+</p>
+
+<p align="center">
+  <a href="https://github.com/gabrieldave/KlipNote/releases/latest"><img src="https://img.shields.io/github/v/release/gabrieldave/KlipNote?style=for-the-badge&label=Descargar&color=10B981" alt="Descargar última versión" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/Licencia-GPL--3.0-blue?style=for-the-badge" alt="Licencia GPL-3.0" /></a>
+  <img src="https://img.shields.io/badge/Android-8.0%2B-green?style=for-the-badge&logo=android&logoColor=white" alt="Android 8.0+" />
+</p>
+
+<p align="center">
+  <img src="docs/assets/screenshots/01-asistente.png" alt="Asistente de inicio" width="200" />
+  <img src="docs/assets/screenshots/02-capturar.png" alt="Pestaña Capturar" width="200" />
+  <img src="docs/assets/screenshots/03-guiones.png" alt="Pestaña Guiones" width="200" />
+  <img src="docs/assets/screenshots/04-ajustes-temas.png" alt="Ajustes con temas" width="200" />
+</p>
 
 ---
 
-## Qué hace
+## ✨ ¿Por qué KlipNote?
 
-- Transcribe archivos de audio o video, o lo que compartas desde Galería, Archivos, WhatsApp, etc.
-- Descarga y transcribe enlaces de YouTube, TikTok, Instagram, Facebook y X (con yt-dlp).
-- Copia el texto al portapapeles y trae prompts listos para IA.
-- Te muestra cuánto te queda en cada servicio gratis.
+Transcribir suele costar dinero o tener un solo límite que se agota rápido.
 
-## Instalar
+KlipNote usa **tus propias llaves** de servicios que **regalan créditos o minutos**. Prueba uno tras otro en automático (Groq → Inworld → AssemblyAI → Deepgram). Cuando uno se queda sin saldo o toca el tope, pasa al siguiente.
 
-1. Ve a **[Releases](../../releases)** y descarga el `.apk` más reciente.
-2. Ábrelo en tu teléfono (Android 8 o superior). Si te lo pide, permite «instalar apps de origen desconocido».
+No prometemos «gratis para siempre»: las ofertas las pone cada empresa y **pueden cambiar**. La app es gratis; el costo de la transcripción depende de esos regalos y de que **no registres tarjeta** ahí.
 
-## Configurar las llaves (5 minutos)
+---
 
-En la app: pestaña **Motores → API Keys**. Cada tarjeta tiene un botón **«Conseguir mi llave»** que abre la página correcta, y **«¿Cómo?»** con los pasos.
+## 📲 Descargar
 
-**No necesitas las 5.** Con una sola ya funciona. Mientras más gratuitas pongas, más puedes transcribir.
+**[→ Descargar el APK más reciente](https://github.com/gabrieldave/KlipNote/releases/latest)**
 
-| # | Servicio | Qué regala* | Dónde sacar la llave |
-|---|---|---|---|
-| 1 | Groq | Gratis siempre, con límite (~2 h de audio por hora, ~8 h por día) | console.groq.com/keys |
-| 2 | Inworld | Hasta ~400 min STT gratis una vez (On-Demand) | platform.inworld.ai |
-| 3 | AssemblyAI | Crédito de regalo una vez (~$50 USD) | assemblyai.com/app |
-| 4 | Deepgram | Crédito de regalo una vez (~$200 USD) | console.deepgram.com |
-| 5 | De pago (opcional) | Nada: aquí sí pagas | Groq de pago o Microsoft Azure |
+**Requisitos:** Android 8.0 o superior · CPU **arm64** (la mayoría de móviles de 2018 en adelante).
 
-\*Las ofertas son de cada empresa y pueden cambiar. La app las verifica sola (ver abajo).
+1. En Releases, baja el archivo que termina en **`.apk`** (no los «Source code»).
+2. Ábrelo en el teléfono. Si Android pide permiso, permite instalar apps de orígenes desconocidos.
+3. Para **actualizar**, instala el APK nuevo encima: no deberías perder llaves ni guiones.
 
-### ⚠️ La regla para gastar $0
+Versión actual (Latest): **v1.6.0**.
 
-**No registres tarjeta de crédito en Groq, Inworld, AssemblyAI ni Deepgram.**
-Si pones tarjeta, cuando se acabe el regalo el proveedor te va a cobrar, y la app no puede impedirlo.
-El «Modo $0» de la app (activado por defecto) solo evita usar el motor #5 de pago.
+---
 
-## Cómo funciona por dentro (sin tecnicismos)
+## 🚀 Cómo funciona
 
-- **Cascada automática:** intenta en orden 1 → 2 → 3 → 4. Si uno responde «sin crédito» o «límite alcanzado», pasa al siguiente sin que hagas nada.
-- **Tú eliges:** cada motor tiene un interruptor «Usar este motor».
-- **Medidores:** cada barra dice **Real** (el dato lo da el proveedor: Groq y Deepgram) o **Estimado** (la app cuenta lo que transcribes: Inworld y AssemblyAI). Si un «Estimado» no coincide con tu panel, corrígelo con «Corregir».
-- **Verificar mis llaves y ofertas:** prueba cada llave con 0.3 s de silencio y te dice si sigue gratis, en pausa o sin saldo. Se hace sola una vez por semana.
+1. **Instala** KlipNote desde [Releases](https://github.com/gabrieldave/KlipNote/releases/latest).
+2. Abre la app: el **asistente** te guía para sacar una llave gratis (recomendamos Groq; tarda unos minutos).
+3. Pega un enlace de YouTube, TikTok, Instagram, Facebook o X, **o** comparte un video desde Galería/WhatsApp, **o** elige un archivo del teléfono.
+4. Pulsa **Extraer Guion**. El texto se **copia solo** al portapapeles y queda en **Guiones**.
 
-## Descargas de redes sociales
+Con una sola llave gratis ya puedes empezar. En **Ajustes → Mis llaves** puedes añadir más cuando quieras.
 
-- El motor de descargas (**yt-dlp**) **se actualiza solo** cada 3 días, y también en cuanto una descarga falla porque un sitio cambió. No tienes que hacer nada.
-- Si un sitio pide iniciar sesión, ve a **Motores → Cuentas para descargar** y conecta **tu propia cuenta**. Las cookies se quedan en tu teléfono.
-- **YouTube** es el más difícil: a veces pide verificar que no eres un robot, y Google puede bloquear el inicio de sesión dentro de apps. Si te pasa, exporta `cookies.txt` desde Firefox en tu PC y pégalo en la app. Usa una cuenta secundaria.
-- **Si un sitio deja de funcionar:** casi siempre se arregla solo en unos días, cuando yt-dlp publica el arreglo y la app se actualiza. Mientras tanto, descarga el video con otra app y **compártelo a KlipNote**: la transcripción sigue funcionando.
+---
 
-## Privacidad
+## 💸 La regla para gastar $0
 
-- Tus llaves se cifran con el Keystore de Android y nunca salen del teléfono, salvo para llamar al proveedor que elegiste.
-- Tus cookies y tu historial son locales. La app no tiene servidor propio ni recopila datos.
-- Lo único que descarga de este repo es `config/stt-router.json` (ver abajo). No envía nada.
+> [!IMPORTANT]
+> **No registres tarjeta** en Groq, Inworld, AssemblyAI ni Deepgram.  
+> Si pones tarjeta y se acaba el regalo, el proveedor puede cobrarte y la app no puede impedirlo.  
+> El interruptor **Modo $0** (activado por defecto) solo evita el motor de **pago** al final de la lista.
 
-## Contribuir (sin programar)
+---
 
-¿Cambió una oferta o un servicio dejó de dar gratis? Edita **[`config/stt-router.json`](config/stt-router.json)** y manda un Pull Request:
+## 📖 Guías
 
-- `offers`: el texto de la oferta que se ve en la app.
-- `disabled`: pon ahí un servicio para que la app lo salte. Por ejemplo, `["inworld"]` si terminó su plan gratis.
-- `priority`: el orden de la cascada. El de pago siempre queda último, y la config nunca puede activarlo.
+| Guía | Contenido |
+|---|---|
+| [Llaves gratis](docs/llaves-gratis.md) | Paso a paso para cada servicio |
+| [Preguntas frecuentes](docs/preguntas-frecuentes.md) | Seguridad, Play Store, sitios que fallan… |
+| [Contribuir ofertas](docs/contribuir-ofertas.md) | Actualizar `config/stt-router.json` sin programar |
 
-Las apps instaladas toman el cambio solas, sin publicar un APK nuevo. Si el archivo falta o está mal escrito, la app usa sus valores por defecto.
+Índice: **[docs/README.md](docs/README.md)**
 
-## Compilar
+---
 
-```bash
-cp local.properties.example local.properties   # ajusta sdk.dir
-./gradlew assembleDebug
-```
+## 🔧 Funciones
 
-- APK: `app/build/outputs/apk/debug/`.
-- **GitHub Actions:** en este repo compila el APK firmado y crea el Release. En forks y Pull Requests compila un APK *debug* y lo deja como artefacto. No necesitas keystore.
-- Para firmar tu propio release: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD` y `ANDROID_KEY_ALIAS` como *secrets* del repo.
-- En local, para leer la config remota: `klipnote.githubRepo=usuario/repo` en `gradle.properties`.
+**Transcripción**
+- Modo Automático: Groq → Inworld → AssemblyAI → Deepgram (y pago solo si lo permites)
+- Cuatro modos: Solo texto · Audio+texto · Video+texto · Solo descargar
+- Audio comprimido para poder transcribir videos largos
+- Aviso y notificación al terminar
+- Historial de guiones con búsqueda
 
-**Stack:** Kotlin 2.0 · Jetpack Compose · Material 3 · OkHttp · youtubedl-android (yt-dlp + FFmpeg) · minSdk 26 · targetSdk 35.
+**Fuentes de audio y video**
+- Enlaces de YouTube, TikTok, Instagram, Facebook y X
+- Compartir desde Galería, Archivos, WhatsApp, etc.
+- Archivos locales del teléfono
+- Motor de descargas (yt-dlp) que **se actualiza solo**
 
-Versión actual: **1.6.0** (versionCode 125).
+**Ahorro y control**
+- Medidores de consumo (dato real o estimado, según el servicio)
+- Modo $0 para no usar el motor de pago
+- Ofertas actualizables por config remota (`config/stt-router.json`)
 
-## Gracias a
+**Privacidad y seguridad**
+- Llaves cifradas en el teléfono
+- Sin servidor propio ni recolección de datos de uso
+- Videos que piden iniciar sesión: conecta tu cuenta en **Ajustes** solo si hace falta (datos en el dispositivo)
 
-- **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** — motor de descargas de video/audio
-- **[youtubedl-android](https://github.com/yausername/youtubedl-android)** — integración de yt-dlp en Android (fork junkfood02)
-- **[Seal](https://github.com/JunkFood02/Seal)** — app de referencia de la que KlipNote toma ideas y piezas para descargas
+**Personalización**
+- Temas de color (Apariencia)
+- Asistente de inicio
+- Idioma de detección / forzado para la voz
 
-## Licencia
+---
 
-Este proyecto se publica bajo la **[GNU General Public License v3.0](LICENSE)** (GPL-3.0).
+## 🔒 Privacidad
 
-Incluye / usa, entre otros:
+- Tus llaves se cifran con el Keystore de Android y no salen del teléfono, salvo para llamar al proveedor que elegiste.
+- Guiones, cookies y ajustes son **locales**.
+- Lo único que la app puede descargar de este repo es [`config/stt-router.json`](config/stt-router.json) (textos de ofertas y orden). No envía tus datos a KlipNote.
 
-- **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** — Unlicense
-- **[youtubedl-android](https://github.com/yausername/youtubedl-android)** (fork junkfood02) — GPL-3.0
+---
 
-Si redistribuyes KlipNote (APK o código), debes cumplir la GPL-3.0: incluir el texto de la licencia, ofrecer el código fuente correspondiente y mantener las mismas libertades para quien lo reciba.
+## ❓ ¿Nuevo en GitHub?
 
-## Aviso
+1. Entra a **[Releases](https://github.com/gabrieldave/KlipNote/releases/latest)**.
+2. En **Assets**, toca el archivo que termina en **`.apk`**.
+3. Ábrelo en Android y pulsa **Instalar**.
+4. Si pide «orígenes desconocidos», actívalo solo para el administrador de archivos o el navegador que usaste.
 
-Respeta los términos de cada plataforma y los derechos de autor del contenido que descargas o transcribes. Este proyecto no está afiliado a ninguno de los servicios mencionados.
+No bajes los ZIP de «Source code» para instalar la app: eso es el código, no el instalador.
+
+---
+
+## 📙 Contribuir
+
+Sí se aceptan contribuciones:
+
+- **Issues** para fallos o ideas
+- **Pull Requests** para ofertas (`config/stt-router.json`) y para código
+- Los cambios a **`.github/workflows`** se revisan a mano; pregunta antes
+- Para compilar en local: `./gradlew assembleDebug` (hace falta el Android SDK; copia `local.properties.example`)
+- Si usas una IA para ayudar, sigue también [`AGENTS.md`](AGENTS.md)
+
+---
+
+## ❗ Acerca de / Créditos
+
+Mantiene el proyecto: **[gabrieldave](https://github.com/gabrieldave)**.
+
+**Gracias a**
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) — motor de descargas
+- [youtubedl-android](https://github.com/yausername/youtubedl-android) — yt-dlp en Android (fork junkfood02)
+- [Seal](https://github.com/JunkFood02/Seal) — app de referencia para ideas y piezas de descarga
+
+KlipNote es un **transcriptor**. Respeta los términos de cada plataforma y los derechos de autor del contenido que descargas o transcribes. No está afiliado a Groq, Inworld, AssemblyAI, Deepgram, YouTube ni a las demás marcas mencionadas.
+
+---
+
+## 📜 Licencia
+
+[GNU General Public License v3.0](LICENSE) (GPL-3.0).

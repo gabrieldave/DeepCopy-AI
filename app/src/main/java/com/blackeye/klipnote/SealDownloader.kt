@@ -139,7 +139,7 @@ object SealDownloader {
         val siteName = site?.label ?: "El sitio"
         val friendly = when {
             looksLikeLoginRequired(msg) ->
-                "🔐 $siteName $LOGIN_MARKER para este video. Conecta tu cuenta en Motores → Cookies " +
+                "🔐 $siteName $LOGIN_MARKER para este video. Conecta tu cuenta en Ajustes → Videos que piden iniciar sesión " +
                     "(se guardan solo en tu teléfono) y vuelve a intentar."
             m.contains("unsupported url") ->
                 "Este enlace no es compatible. Prueba con el enlace directo del video (botón Compartir → Copiar enlace)."

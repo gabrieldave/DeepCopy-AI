@@ -17,6 +17,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,13 +33,16 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
@@ -52,6 +56,7 @@ import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -105,6 +110,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -125,9 +131,6 @@ import com.blackeye.klipnote.ui.KlipPalette
 import com.blackeye.klipnote.ui.KlipTheme
 import com.blackeye.klipnote.ui.KlipThemeId
 import com.blackeye.klipnote.ui.ThemePrefs
-import androidx.compose.foundation.border
-import androidx.compose.foundation.shape.CircleShape
-
 private val Bg get() = KlipNeutrals.Bg
 private val Card get() = KlipNeutrals.Card
 private val Accent get() = KlipPalette.accent
@@ -265,6 +268,7 @@ private fun KlipNoteApp(
     var selectedTab by remember { mutableStateOf(MainTab.Capturar) }
     var showMotorSheet by remember { mutableStateOf(false) }
     var showKeyDialog by remember { mutableStateOf(false) }
+    var keysFocusProvider by remember { mutableStateOf<SttProvider?>(null) }
     // showOnboarding vive en setContent (pantalla independiente).
     var languageMode by remember { mutableStateOf(BillingManager.getLanguageMode(context)) }
     var forcedLanguage by remember { mutableStateOf(BillingManager.getForcedLanguage(context)) }
@@ -777,8 +781,9 @@ private fun KlipNoteApp(
         phase is UiPhase.Transcribing ||
         KlipNoteJobHub.isBusy()
 
+    val hasAnyKey = ApiKeyStore.hasAnyKey(context)
     val pillManual = routingSelection is RoutingSelection.Manual
-    val pillText = activeMotorPillText(routingSelection, autoPrimary)
+    val pillText = activeMotorPillText(routingSelection, autoPrimary, hasKeys = hasAnyKey)
 
     Scaffold(
         containerColor = Bg,
@@ -956,7 +961,10 @@ private fun KlipNoteApp(
                             autoPrimary = autoPrimary
                         ),
                         onOpenOnboarding = onShowOnboarding,
-                        onOpenKeys = { showKeyDialog = true },
+                        onOpenKeys = {
+                            keysFocusProvider = null
+                            showKeyDialog = true
+                        },
                         savedMedia = lastSavedMedia,
                         onOpenSavedMedia = { SavedMediaActions.openWithPlayer(context, it) },
                         onShareSavedMedia = { SavedMediaActions.share(context, it) },
@@ -999,7 +1007,8 @@ private fun KlipNoteApp(
                         onClearAll = {
                             transcriptEntries = TranscriptHistoryStore.clear(context)
                             expandedGuionId = null
-                        }
+                        },
+                        onGoToCapturar = { selectedTab = MainTab.Capturar }
                     )
                 }
                 MainTab.Motores -> {
@@ -1008,7 +1017,14 @@ private fun KlipNoteApp(
                         keyMasks = keyMasks,
                         onSelectAuto = { setRouting(RoutingSelection.Auto) },
                         onSelectManual = { setRouting(RoutingSelection.Manual(it)) },
-                        onOpenKeys = { showKeyDialog = true },
+                        onOpenKeys = {
+                            keysFocusProvider = null
+                            showKeyDialog = true
+                        },
+                        onConnectProvider = { provider ->
+                            keysFocusProvider = provider
+                            showKeyDialog = true
+                        },
                         creditState = CreditUiState(
                             expanded = creditExpanded,
                             refreshing = creditRefreshing,
@@ -1169,13 +1185,17 @@ private fun KlipNoteApp(
 
     if (showKeyDialog) {
         MultiProviderKeysDialog(
-            onDismiss = { showKeyDialog = false },
+            onDismiss = {
+                showKeyDialog = false
+                keysFocusProvider = null
+            },
             onChanged = {
                 if (ApiKeyStore.getDeepgram(context).isBlank()) {
                     balanceSnapshot = null
                 }
                 onKeysChanged()
-            }
+            },
+            focusProvider = keysFocusProvider
         )
     }
 
@@ -1334,12 +1354,15 @@ private fun ActiveMotorPill(
         color = tint,
         fontSize = 12.sp,
         fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
         modifier = Modifier
             .padding(end = 8.dp)
+            .widthIn(max = 168.dp)
             .clip(RoundedCornerShape(20.dp))
             .background(tint.copy(alpha = 0.16f))
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .padding(horizontal = 10.dp, vertical = 8.dp)
     )
 }
 
@@ -1524,29 +1547,56 @@ private fun CapturarTab(
                 onClear = onClearResult
             )
         } else if (phase is UiPhase.Idle && preFlight == null) {
+            val openAction = {
+                if (!hasKeys) onOpenOnboarding() else onOpenKeys()
+            }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
+                    .border(1.5.dp, Accent.copy(alpha = 0.55f), RoundedCornerShape(16.dp))
                     .background(Card)
-                    .padding(16.dp)
-                    .clickable {
-                        if (!hasKeys) onOpenOnboarding() else onOpenKeys()
-                    },
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                    .clickable(onClick = openAction)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (!hasKeys) {
-                    Text(
-                        "Paso 1: consigue tu llave gratis",
-                        color = OnBg,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 15.sp
-                    )
-                    Text(
-                        "Toca aquí para el tutorial. Tarda unos 2 minutos con Groq.",
-                        color = Muted,
-                        fontSize = 12.sp
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Paso 1: consigue tu llave gratis",
+                                color = OnBg,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 15.sp
+                            )
+                            Text(
+                                "Toca aquí para el tutorial. Tarda unos 2 minutos con Groq.",
+                                color = Muted,
+                                fontSize = 12.sp
+                            )
+                        }
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            tint = Accent,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Button(
+                        onClick = openAction,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Accent,
+                            contentColor = OnAccent
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Empezar", fontWeight = FontWeight.SemiBold)
+                    }
                 } else {
                     Text(
                         servicesSummary.ifBlank { "Servicios listos" },
@@ -2171,7 +2221,8 @@ private fun GuionesTab(
     onCopy: (String) -> Unit,
     onOpenLink: (String) -> Unit,
     onDelete: (String) -> Unit,
-    onClearAll: () -> Unit
+    onClearAll: () -> Unit,
+    onGoToCapturar: () -> Unit = {}
 ) {
     val filtered = remember(entries, search) {
         val q = search.trim().lowercase()
@@ -2187,6 +2238,43 @@ private fun GuionesTab(
     }
     var menuOpen by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
+
+    if (entries.isEmpty()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 24.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                Icons.Default.Description,
+                contentDescription = null,
+                tint = Accent.copy(alpha = 0.85f),
+                modifier = Modifier.size(72.dp)
+            )
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "Aquí aparecerán tus transcripciones",
+                color = OnBg,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 16.sp,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = onGoToCapturar,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Accent,
+                    contentColor = OnAccent
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Ir a Capturar", fontWeight = FontWeight.SemiBold)
+            }
+        }
+        return
+    }
 
     Column(
         modifier = Modifier
@@ -2219,23 +2307,21 @@ private fun GuionesTab(
                 color = Muted,
                 fontSize = 12.sp
             )
-            if (entries.isNotEmpty()) {
-                Box {
-                    IconButton(onClick = { menuOpen = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "Más", tint = Muted)
-                    }
-                    DropdownMenu(
-                        expanded = menuOpen,
-                        onDismissRequest = { menuOpen = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Borrar historial", color = Color(0xFFF87171)) },
-                            onClick = {
-                                menuOpen = false
-                                confirmClear = true
-                            }
-                        )
-                    }
+            Box {
+                IconButton(onClick = { menuOpen = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "Más", tint = Muted)
+                }
+                DropdownMenu(
+                    expanded = menuOpen,
+                    onDismissRequest = { menuOpen = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Borrar historial", color = Color(0xFFF87171)) },
+                        onClick = {
+                            menuOpen = false
+                            confirmClear = true
+                        }
+                    )
                 }
             }
         }
@@ -2267,7 +2353,7 @@ private fun GuionesTab(
                     .padding(top = 48.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text("Aún no hay guiones guardados.", color = Muted, fontSize = 12.sp)
+                Text("Ningún guion coincide con la búsqueda.", color = Muted, fontSize = 12.sp)
             }
         } else {
             LazyColumn(
@@ -2355,6 +2441,7 @@ private fun MotoresTab(
     onSelectAuto: () -> Unit,
     onSelectManual: (SttProvider) -> Unit,
     onOpenKeys: () -> Unit,
+    onConnectProvider: (SttProvider) -> Unit = { onOpenKeys() },
     creditState: CreditUiState,
     onToggleExpand: () -> Unit,
     onRefresh: () -> Unit,
@@ -2405,6 +2492,7 @@ private fun MotoresTab(
             onInworldUsedMinutesSave = onInworldUsedMinutesSave,
             onAssemblyRemainingUsdSave = onAssemblyRemainingUsdSave,
             onOpenKeys = onOpenKeys,
+            onConnectProvider = onConnectProvider,
             onProbeProvider = onProbeProvider,
             onEngineEnabledChange = onEngineEnabledChange
         )
@@ -2692,6 +2780,16 @@ private fun AppearanceSection(
 ) {
     val context = LocalContext.current
     val options = remember { KlipThemeId.selectable(context) }
+    val shortLabel: (KlipThemeId) -> String = { id ->
+        when (id) {
+            KlipThemeId.GREEN -> "Verde"
+            KlipThemeId.BLUE -> "Azul"
+            KlipThemeId.PURPLE -> "Morado"
+            KlipThemeId.ORANGE -> "Naranja"
+            KlipThemeId.PINK -> "Rosa"
+            KlipThemeId.DYNAMIC -> "Dinámico"
+        }
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -2707,8 +2805,8 @@ private fun AppearanceSection(
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top
         ) {
             options.forEach { id ->
                 val swatch = when (id) {
@@ -2720,22 +2818,47 @@ private fun AppearanceSection(
                     KlipThemeId.DYNAMIC -> Color(0xFF94A3B8)
                 }
                 val selected = themeId == id
-                Box(
-                    modifier = Modifier
-                        .size(if (selected) 40.dp else 36.dp)
-                        .clip(CircleShape)
-                        .background(swatch)
-                        .then(
-                            if (selected) Modifier.border(2.dp, OnBg, CircleShape)
-                            else Modifier
-                        )
-                        .semantics { contentDescription = "Tema ${id.label}" }
-                        .clickable { onThemeIdChange(id) },
-                    contentAlignment = Alignment.Center
+                val dynamicBrush = Brush.sweepGradient(
+                    listOf(
+                        Color(0xFF10B981),
+                        Color(0xFF3B82F6),
+                        Color(0xFF8B5CF6),
+                        Color(0xFFEC4899),
+                        Color(0xFFF59E0B),
+                        Color(0xFF10B981)
+                    )
+                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
-                    if (id == KlipThemeId.DYNAMIC) {
-                        Text("DY", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
+                    Box(
+                        modifier = Modifier
+                            .size(if (selected) 40.dp else 34.dp)
+                            .clip(CircleShape)
+                            .then(
+                                if (id == KlipThemeId.DYNAMIC) {
+                                    Modifier.background(dynamicBrush)
+                                } else {
+                                    Modifier.background(swatch)
+                                }
+                            )
+                            .then(
+                                if (selected) Modifier.border(2.dp, OnBg, CircleShape)
+                                else Modifier
+                            )
+                            .semantics { contentDescription = "Tema ${id.label}" }
+                            .clickable { onThemeIdChange(id) },
+                        contentAlignment = Alignment.Center
+                    ) {}
+                    Text(
+                        shortLabel(id),
+                        color = if (selected) Accent else Muted,
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }

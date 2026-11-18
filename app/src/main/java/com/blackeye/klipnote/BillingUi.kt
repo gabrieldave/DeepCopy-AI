@@ -24,10 +24,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
@@ -38,6 +40,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Switch
@@ -195,6 +198,7 @@ fun FreeServicesPanel(
     onInworldUsedMinutesSave: (Double) -> Unit,
     onAssemblyRemainingUsdSave: (Double) -> Unit,
     onOpenKeys: () -> Unit,
+    onConnectProvider: (SttProvider) -> Unit = { onOpenKeys() },
     onProbeProvider: (SttProvider) -> Unit = {},
     onEngineEnabledChange: (SttProvider, Boolean) -> Unit = { _, _ -> }
 ) {
@@ -214,6 +218,7 @@ fun FreeServicesPanel(
         SttProvider.DEEPGRAM
     )
     val connected = freeProviders.count { !state.keyMasks[it].isNullOrBlank() }
+    val hasAnyKey = connected > 0
 
     Column(
         modifier = Modifier
@@ -236,8 +241,23 @@ fun FreeServicesPanel(
                     fontSize = 13.sp
                 )
             }
-            TextButton(onClick = onOpenKeys) {
-                Text("Mis llaves", color = Accent, fontWeight = FontWeight.SemiBold)
+            if (hasAnyKey) {
+                TextButton(onClick = onOpenKeys) {
+                    Text("Mis llaves", color = Accent, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+        if (!hasAnyKey) {
+            Button(
+                onClick = onOpenKeys,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Accent,
+                    contentColor = OnAccent
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Conectar mis llaves", fontWeight = FontWeight.SemiBold)
             }
         }
 
@@ -267,7 +287,7 @@ fun FreeServicesPanel(
             enabled = state.engineEnabled[SttProvider.GROQ_FREE] ?: true,
             onEnabledChange = { onEngineEnabledChange(SttProvider.GROQ_FREE, it) },
             onProbe = { onProbeProvider(SttProvider.GROQ_FREE) },
-            onOpenKeys = onOpenKeys,
+            onConnect = { onConnectProvider(SttProvider.GROQ_FREE) },
             showMeterAdjust = false,
             meterAdjustLabel = "",
             meterAdjustInitial = "",
@@ -286,7 +306,7 @@ fun FreeServicesPanel(
             enabled = state.engineEnabled[SttProvider.INWORLD] ?: true,
             onEnabledChange = { onEngineEnabledChange(SttProvider.INWORLD, it) },
             onProbe = { onProbeProvider(SttProvider.INWORLD) },
-            onOpenKeys = onOpenKeys,
+            onConnect = { onConnectProvider(SttProvider.INWORLD) },
             showMeterAdjust = true,
             meterAdjustLabel = "Minutos usados este mes (según la página)",
             meterAdjustInitial = state.inworldUsedMinutesEditable,
@@ -308,7 +328,7 @@ fun FreeServicesPanel(
             enabled = state.engineEnabled[SttProvider.ASSEMBLY_AI] ?: true,
             onEnabledChange = { onEngineEnabledChange(SttProvider.ASSEMBLY_AI, it) },
             onProbe = { onProbeProvider(SttProvider.ASSEMBLY_AI) },
-            onOpenKeys = onOpenKeys,
+            onConnect = { onConnectProvider(SttProvider.ASSEMBLY_AI) },
             showMeterAdjust = true,
             meterAdjustLabel = "Saldo que ves en la página (USD)",
             meterAdjustInitial = state.assemblyRemainingUsdEditable,
@@ -330,7 +350,7 @@ fun FreeServicesPanel(
             enabled = state.engineEnabled[SttProvider.DEEPGRAM] ?: true,
             onEnabledChange = { onEngineEnabledChange(SttProvider.DEEPGRAM, it) },
             onProbe = { onProbeProvider(SttProvider.DEEPGRAM) },
-            onOpenKeys = onOpenKeys,
+            onConnect = { onConnectProvider(SttProvider.DEEPGRAM) },
             barColor = barColorDg,
             showMeterAdjust = false,
             meterAdjustLabel = "",
@@ -338,39 +358,81 @@ fun FreeServicesPanel(
             onMeterAdjustSave = {}
         )
 
-        InlineHelpLink(
-            label = "ℹ️ Cómo gastar $0",
-            helpTitle = "Cómo gastar $0",
-            helpBody = HelpCopy.ZERO_COST
-        )
+        ZeroCostHelpRow()
 
         Button(
             onClick = onVerifyOffers,
-            enabled = !state.verifyingOffers,
+            enabled = hasAnyKey && !state.verifyingOffers,
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color(0xFF1A2436),
-                contentColor = OnBg
+                contentColor = OnBg,
+                disabledContainerColor = Color(0xFF121820),
+                disabledContentColor = Muted
             ),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Icon(Icons.Default.Shield, contentDescription = null, tint = Accent)
+            Icon(
+                Icons.Default.Shield,
+                contentDescription = null,
+                tint = if (hasAnyKey) Accent else Muted
+            )
             Spacer(Modifier.size(8.dp))
             Text(
-                if (state.verifyingOffers) "Verificando…" else "Verificar mis llaves y ofertas",
+                when {
+                    !hasAnyKey -> "Conecta una llave primero"
+                    state.verifyingOffers -> "Verificando…"
+                    else -> "Verificar mis llaves y ofertas"
+                },
                 fontWeight = FontWeight.SemiBold
             )
         }
         Text(
-            "Prueba cada llave con un audio corto y te dice si sigue gratis, en pausa o sin saldo.",
+            if (hasAnyKey) {
+                "Prueba cada llave con un audio corto y te dice si sigue gratis, en pausa o sin saldo."
+            } else {
+                "Conecta al menos una llave para verificar ofertas y actualizar medidores."
+            },
             color = Muted,
             fontSize = 12.sp
         )
-        TextButton(onClick = onRefresh, enabled = !state.refreshing) {
-            Icon(Icons.Default.Refresh, contentDescription = null, tint = Accent, modifier = Modifier.size(16.dp))
+        TextButton(onClick = onRefresh, enabled = hasAnyKey && !state.refreshing) {
+            Icon(
+                Icons.Default.Refresh,
+                contentDescription = null,
+                tint = if (hasAnyKey) Accent else Muted,
+                modifier = Modifier.size(16.dp)
+            )
             Spacer(Modifier.size(6.dp))
-            Text("Actualizar medidores", color = Accent)
+            Text(
+                if (hasAnyKey) "Actualizar medidores" else "Conecta una llave primero",
+                color = if (hasAnyKey) Accent else Muted
+            )
         }
+    }
+}
+
+@Composable
+private fun ZeroCostHelpRow() {
+    var open by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable { open = true }
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Icon(
+            Icons.Default.Info,
+            contentDescription = null,
+            tint = Accent,
+            modifier = Modifier.size(18.dp)
+        )
+        Text("Cómo gastar $0", color = Accent, fontSize = 13.sp)
+    }
+    if (open) {
+        HelpDialog(title = "Cómo gastar $0", body = HelpCopy.ZERO_COST, onDismiss = { open = false })
     }
 }
 
@@ -386,7 +448,7 @@ private fun ClearServiceRow(
     enabled: Boolean,
     onEnabledChange: (Boolean) -> Unit,
     onProbe: () -> Unit,
-    onOpenKeys: () -> Unit,
+    onConnect: () -> Unit,
     barColor: Color = Accent,
     showMeterAdjust: Boolean,
     meterAdjustLabel: String,
@@ -401,19 +463,20 @@ private fun ClearServiceRow(
         status == null || status.health == ProviderHealth.NO_KEY -> ProviderHealth.KEY_READY
         else -> status.health
     }
-    val (dot, tint) = when (health) {
+    val (dot, _) = when (health) {
         ProviderHealth.ACTIVE_FREE, ProviderHealth.KEY_READY -> "🟢" to Accent
         ProviderHealth.PAUSED_LIMIT, ProviderHealth.COOLDOWN -> "🟡" to Amber
         ProviderHealth.OFFER_ENDED -> "🔴" to Red
         ProviderHealth.NO_KEY, ProviderHealth.UNKNOWN -> "⚪" to Muted
     }
+    val headline = if (hasKey) "$name $dot · $primary" else "$name $dot · Sin llave"
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(Color(0xFF0F1623))
             .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Row(
             modifier = Modifier
@@ -421,33 +484,49 @@ private fun ClearServiceRow(
                 .clickable { expanded = !expanded },
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "$name $dot · $primary",
-                    color = OnBg,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 13.sp,
-                    maxLines = 2
-                )
-            }
+            Text(
+                headline,
+                color = OnBg,
+                fontWeight = FontWeight.Medium,
+                fontSize = 13.sp,
+                maxLines = 2,
+                modifier = Modifier.weight(1f)
+            )
             Icon(
                 if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                contentDescription = if (expanded) "Ver menos" else "Ver más",
+                contentDescription = if (expanded) "Cerrar" else "Abrir",
                 tint = Muted,
                 modifier = Modifier.size(20.dp)
             )
         }
-        LinearProgressIndicator(
-            progress = { progress },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp)
-                .clip(RoundedCornerShape(3.dp)),
-            color = if (hasKey) barColor else Muted,
-            trackColor = Color(0xFF151C28)
-        )
-        TextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth()) {
-            Text(if (expanded) "Ver menos" else "Ver más", color = Accent)
+        if (hasKey) {
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp)),
+                color = barColor,
+                trackColor = Color(0xFF151C28)
+            )
+        } else {
+            LinearProgressIndicator(
+                progress = { 0f },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp)),
+                color = Muted.copy(alpha = 0.35f),
+                trackColor = Color(0xFF151C28)
+            )
+            OutlinedButton(
+                onClick = onConnect,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                border = BorderStroke(1.dp, Accent.copy(alpha = 0.55f))
+            ) {
+                Text("Conectar", color = Accent, fontWeight = FontWeight.SemiBold)
+            }
         }
         AnimatedVisibility(visible = expanded) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -459,16 +538,16 @@ private fun ClearServiceRow(
                     MeterBadge(info.meterKind)
                     Text(info.meterNote, color = Muted, fontSize = 12.sp)
                 }
-                status?.detail
-                    ?.takeIf {
-                        it.isNotBlank() &&
-                            !it.contains("SIN KEY", ignoreCase = true) &&
-                            !it.contains("KEY LISTA", ignoreCase = true)
-                    }
-                    ?.let {
-                        Text(it, color = Muted, fontSize = 12.sp)
-                    }
                 if (hasKey) {
+                    status?.detail
+                        ?.takeIf {
+                            it.isNotBlank() &&
+                                !it.contains("SIN KEY", ignoreCase = true) &&
+                                !it.contains("KEY LISTA", ignoreCase = true)
+                        }
+                        ?.let {
+                            Text(it, color = Muted, fontSize = 12.sp)
+                        }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -491,19 +570,15 @@ private fun ClearServiceRow(
                             fontWeight = if (pinned) FontWeight.SemiBold else FontWeight.Normal
                         )
                     }
-                } else {
-                    TextButton(onClick = onOpenKeys, modifier = Modifier.fillMaxWidth()) {
-                        Text("Conseguir llave", color = Accent)
+                    if (showMeterAdjust) {
+                        Text("Ajustar contador", color = OnBg, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Text(HelpCopy.METER_ADJUST, color = Muted, fontSize = 12.sp)
+                        QuotaAdjustEditor(
+                            label = meterAdjustLabel,
+                            initialText = meterAdjustInitial,
+                            onSave = onMeterAdjustSave
+                        )
                     }
-                }
-                if (showMeterAdjust && hasKey) {
-                    Text("Ajustar contador", color = OnBg, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    Text(HelpCopy.METER_ADJUST, color = Muted, fontSize = 12.sp)
-                    QuotaAdjustEditor(
-                        label = meterAdjustLabel,
-                        initialText = meterAdjustInitial,
-                        onSave = onMeterAdjustSave
-                    )
                 }
             }
         }

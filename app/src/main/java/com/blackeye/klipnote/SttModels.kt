@@ -213,12 +213,15 @@ fun SttProvider.shortName(): String = when (this) {
 /** Pill compacta del TopBar Capturar: Auto verde / Prueba ámbar. */
 fun activeMotorPillText(
     selection: RoutingSelection,
-    autoPrimary: SttProvider?
-): String = when (selection) {
-    is RoutingSelection.Auto ->
-        "Usando: ${autoPrimary?.shortName() ?: "—"}"
-    is RoutingSelection.Manual ->
+    autoPrimary: SttProvider?,
+    hasKeys: Boolean = true
+): String = when {
+    !hasKeys -> "Sin llaves"
+    selection is RoutingSelection.Auto ->
+        "Usando: ${autoPrimary?.shortName() ?: "Groq"}"
+    selection is RoutingSelection.Manual ->
         "Probando: ${selection.provider.shortName()}"
+    else -> "Sin llaves"
 }
 
 /** Falla exclusiva de Modo Prueba: no hay failover silencioso. */

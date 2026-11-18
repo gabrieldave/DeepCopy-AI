@@ -2,6 +2,7 @@
 """Capturas adb de la interfaz clara (requiere pantalla desbloqueada)."""
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -11,7 +12,9 @@ from pathlib import Path
 # Prefer USB (-d) when cable+Wi-Fi both appear; else default adb device.
 PKG = "com.blackeye.klipnote.debug"
 ACTIVITY = f"{PKG}/com.blackeye.klipnote.MainActivity"
-SHOTS = Path("/Users/davidai/Developer/deepcopy-ai/screenshots-1.6.0")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+# Override with KLIPNOTE_SHOTS_DIR, else screenshots/ under the repo.
+SHOTS = Path(os.environ.get("KLIPNOTE_SHOTS_DIR", str(REPO_ROOT / "screenshots"))).expanduser()
 REMOTE_DIR = "/sdcard/Download/klipnote-shots"
 
 
