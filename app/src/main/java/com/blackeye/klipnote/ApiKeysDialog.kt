@@ -51,6 +51,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -86,7 +88,8 @@ private val LevelBgs = listOf(
 @Composable
 fun MultiProviderKeysDialog(
     onDismiss: () -> Unit,
-    onChanged: () -> Unit = {}
+    onChanged: () -> Unit = {},
+    focusProvider: SttProvider? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -188,6 +191,18 @@ fun MultiProviderKeysDialog(
                 }
                 HorizontalDivider(color = BorderSubtle)
                 val scroll = rememberScrollState()
+                val cardOffsets = remember { mutableMapOf<SttProvider, Int>() }
+                LaunchedEffect(focusProvider) {
+                    val target = focusProvider ?: return@LaunchedEffect
+                    repeat(12) {
+                        val y = cardOffsets[target]
+                        if (y != null) {
+                            scroll.animateScrollTo(y.coerceAtLeast(0))
+                            return@LaunchedEffect
+                        }
+                        delay(40)
+                    }
+                }
                 Column(
                     modifier = Modifier
                         .weight(1f, fill = false)
@@ -203,6 +218,8 @@ fun MultiProviderKeysDialog(
                         provider = SttProvider.GROQ_FREE,
                         mask = groqMask,
                         cardBg = LevelBgs[0],
+                        highlighted = focusProvider == SttProvider.GROQ_FREE,
+                        onPositioned = { cardOffsets[SttProvider.GROQ_FREE] = it },
                         flushers = flushers,
                         onSave = {
                             ApiKeyStore.setGroq(context, it)
@@ -218,6 +235,8 @@ fun MultiProviderKeysDialog(
                         provider = SttProvider.INWORLD,
                         mask = inworldMask,
                         cardBg = LevelBgs[1],
+                        highlighted = focusProvider == SttProvider.INWORLD,
+                        onPositioned = { cardOffsets[SttProvider.INWORLD] = it },
                         flushers = flushers,
                         onSave = {
                             ApiKeyStore.setInworld(context, it)
@@ -233,6 +252,8 @@ fun MultiProviderKeysDialog(
                         provider = SttProvider.ASSEMBLY_AI,
                         mask = assemblyMask,
                         cardBg = LevelBgs[2],
+                        highlighted = focusProvider == SttProvider.ASSEMBLY_AI,
+                        onPositioned = { cardOffsets[SttProvider.ASSEMBLY_AI] = it },
                         flushers = flushers,
                         onSave = {
                             ApiKeyStore.setAssemblyAi(context, it)
@@ -249,6 +270,8 @@ fun MultiProviderKeysDialog(
                         projectAutoLinked = projectAutoLinked,
                         projectLinking = projectLinking,
                         cardBg = LevelBgs[3],
+                        highlighted = focusProvider == SttProvider.DEEPGRAM,
+                        onPositioned = { cardOffsets[SttProvider.DEEPGRAM] = it },
                         flushers = flushers,
                         onSaveKey = {
                             ApiKeyStore.setDeepgram(context, it)
@@ -271,6 +294,8 @@ fun MultiProviderKeysDialog(
                         endpoint = paidEndpoint,
                         engine = paidEngine,
                         cardBg = LevelBgs[4],
+                        highlighted = focusProvider == SttProvider.PAID_FALLBACK,
+                        onPositioned = { cardOffsets[SttProvider.PAID_FALLBACK] = it },
                         flushers = flushers,
                         onSave = { key, endpoint, engine ->
                             ApiKeyStore.setPaidFallback(context, key)
@@ -311,7 +336,9 @@ private fun AutosaveKeyCard(
     cardBg: Color,
     flushers: MutableList<() -> Unit>,
     onSave: (String) -> Unit,
-    onClear: () -> Unit
+    onClear: () -> Unit,
+    highlighted: Boolean = false,
+    onPositioned: (Int) -> Unit = {}
 ) {
     var replacing by remember(mask) { mutableStateOf(mask == null) }
     var value by remember { mutableStateOf("") }
@@ -340,7 +367,13 @@ private fun AutosaveKeyCard(
         if (value.isNotBlank()) commit(value)
     }
 
-    LevelCard(title = title, cardBg = cardBg, provider = provider) {
+    LevelCard(
+        title = title,
+        cardBg = cardBg,
+        provider = provider,
+        highlighted = highlighted,
+        onPositioned = onPositioned
+    ) {
         if (mask != null && !replacing) {
             SavedChip(mask)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -388,7 +421,9 @@ private fun DeepgramAutosaveCard(
     flushers: MutableList<() -> Unit>,
     onSaveKey: (String) -> Unit,
     onClearKey: () -> Unit,
-    onSaveProject: (String) -> Unit
+    onSaveProject: (String) -> Unit,
+    highlighted: Boolean = false,
+    onPositioned: (Int) -> Unit = {}
 ) {
     val context = LocalContext.current
     var replacing by remember(mask) { mutableStateOf(mask == null) }
@@ -436,7 +471,13 @@ private fun DeepgramAutosaveCard(
         if (projectText.isNotBlank()) commitProject(projectText)
     }
 
-    LevelCard(title = "4 · Deepgram", cardBg = cardBg, provider = SttProvider.DEEPGRAM) {
+    LevelCard(
+        title = "4 · Deepgram",
+        cardBg = cardBg,
+        provider = SttProvider.DEEPGRAM,
+        highlighted = highlighted,
+        onPositioned = onPositioned
+    ) {
         if (mask != null && !replacing) {
             SavedChip(mask)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -547,7 +588,9 @@ private fun PaidAutosaveCard(
     cardBg: Color,
     flushers: MutableList<() -> Unit>,
     onSave: (String, String, PaidFallbackEngine) -> Unit,
-    onClear: () -> Unit
+    onClear: () -> Unit,
+    highlighted: Boolean = false,
+    onPositioned: (Int) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -623,7 +666,13 @@ private fun PaidAutosaveCard(
     }
 
     val focusManager = LocalFocusManager.current
-    LevelCard(title = "5 · Respaldo Pagado", cardBg = cardBg, provider = SttProvider.PAID_FALLBACK) {
+    LevelCard(
+        title = "5 · Respaldo Pagado",
+        cardBg = cardBg,
+        provider = SttProvider.PAID_FALLBACK,
+        highlighted = highlighted,
+        onPositioned = onPositioned
+    ) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             EngineChip(
                 label = "Groq Paid",
@@ -734,12 +783,21 @@ private fun LevelCard(
     title: String,
     cardBg: Color,
     provider: SttProvider? = null,
+    highlighted: Boolean = false,
+    onPositioned: (Int) -> Unit = {},
     content: @Composable () -> Unit
 ) {
     OutlinedCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .onGloballyPositioned { coords ->
+                onPositioned(coords.positionInParent().y.toInt())
+            },
         shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, BorderSubtle),
+        border = BorderStroke(
+            if (highlighted) 2.dp else 1.dp,
+            if (highlighted) Accent else BorderSubtle
+        ),
         colors = CardDefaults.outlinedCardColors(
             containerColor = cardBg
         )

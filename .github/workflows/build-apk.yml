@@ -110,7 +110,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="v${{ steps.ver.outputs.versionName }}"
-          NOTES="KlipNote ${TAG} — APK firmado. Gratis y de código abierto. Pon tus propias llaves en la app (Motores → API Keys). Guía: README."
+          NOTES="KlipNote ${TAG} — APK firmado. Gratis y de código abierto. Pon tus propias llaves en la app (Ajustes → Mis llaves). Guía: README."
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$APK_PATH" --clobber
           else

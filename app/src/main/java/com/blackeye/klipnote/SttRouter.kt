@@ -289,7 +289,7 @@ object SttRouter {
             }
             strict -> {
                 "Ningún motor gratis pudo transcribir este audio (sin llave, apagado o sin cuota). " +
-                    "Revisa tus llaves en Motores o espera a que se renueve la cuota. " +
+                    "Revisa tus llaves en Ajustes → Mis llaves o espera a que se renueve la cuota. " +
                     "Modo \$0 está activo, así que no se usó el de pago. Detalle: $detail"
             }
             else -> "Ningún motor pudo transcribir este audio. Detalle: $detail"
