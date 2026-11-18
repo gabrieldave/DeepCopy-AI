@@ -1,0 +1,16 @@
+{
+  "_info": "Config opcional que KlipNote descarga de este repo. Si una oferta cambia, cualquiera puede mandar un Pull Request editando este archivo; las apps lo toman solas, sin publicar APK. Si este archivo no existe o está mal, la app usa sus valores por defecto.",
+  "priority": ["groq", "inworld", "assemblyai", "deepgram", "paid"],
+  "disabled": [],
+  "models": {
+    "groq": "whisper-large-v3-turbo",
+    "deepgram": "nova-3"
+  },
+  "offers": {
+    "groq": "Gratis siempre, con límite: ~2 h de audio por hora y ~8 h por día. Archivos de hasta 25 MB.",
+    "inworld": "Hasta 400 min de STT gratis en plan On-Demand ($0). Archivos de hasta ~16 MB.",
+    "assemblyai": "Crédito de regalo una sola vez ($50 USD), sin tarjeta y sin vencimiento.",
+    "deepgram": "Crédito de regalo una sola vez ($200 USD), sin tarjeta.",
+    "paid": "Aquí SÍ pagas. Solo se usa si apagas «Modo $0» y todos los gratuitos fallaron."
+  }
+}

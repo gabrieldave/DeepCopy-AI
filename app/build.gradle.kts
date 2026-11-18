@@ -17,20 +17,28 @@ android {
         targetSdk = 35
 
         // Fuente de verdad local; CI nunca baja de este piso.
-        val localVersionCode = 121
-        val localVersionName = "1.4.5"
+        val localVersionCode = 122
+        val localVersionName = "1.5.0"
         val ciCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 100 + it }
         versionCode = max(localVersionCode, ciCode ?: 0)
         versionName = if (ciCode != null && ciCode > localVersionCode) {
-            "1.4.${ciCode - 100}"
+            "1.5.${ciCode - 100}"
         } else {
             localVersionName
         }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // APK comercial: cero llaves quemadas. BYOK solo en almacén cifrado del dispositivo.
-        buildConfigField("String", "DEFAULT_DEEPGRAM_KEY", "\"\"")
+        // Cero llaves en el APK: cada usuario pone las suyas (BYOK cifrado en el dispositivo).
+
+        // Config remota opcional: config/stt-router.json del repo con el que se compila.
+        // En GitHub Actions se arma sola con GITHUB_REPOSITORY (sirve también para forks).
+        // En local: define klipnote.githubRepo=usuario/repo en gradle.properties (o déjalo vacío).
+        val configRepo = System.getenv("GITHUB_REPOSITORY")
+            ?: (project.findProperty("klipnote.githubRepo") as String?).orEmpty()
+        val configUrl = if (configRepo.isBlank()) "" else
+            "https://raw.githubusercontent.com/$configRepo/main/config/stt-router.json"
+        buildConfigField("String", "REMOTE_CONFIG_URL", "\"$configUrl\"")
 
         // libpython / libffmpeg / aria2c (Seal / youtubedl-android)
         ndk {
@@ -81,8 +89,6 @@ android {
         }
         debug {
             isMinifyEnabled = false
-            // Tampoco quemar llaves en debug.
-            buildConfigField("String", "DEFAULT_DEEPGRAM_KEY", "\"\"")
         }
     }
 

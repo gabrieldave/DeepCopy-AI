@@ -84,7 +84,8 @@ data class CreditUiState(
     val inworldRemainingSeconds: Double = BillingManager.INWORLD_MONTHLY_SECONDS,
     val inworldUsedMinutesEditable: String = "0",
     val assemblyRemainingSeconds: Double = BillingManager.ASSEMBLY_POOL_SECONDS,
-    val assemblyUsedHoursEditable: String = "0",
+    val assemblyRemainingUsdEditable: String = "50.00",
+    val engineEnabled: Map<SttProvider, Boolean> = emptyMap(),
     val routingSelection: RoutingSelection = RoutingSelection.Auto
 )
 
@@ -164,9 +165,10 @@ fun CreditControlPanel(
     onVerifyOffers: () -> Unit,
     onAllowPaidChange: (Boolean) -> Unit,
     onInworldUsedMinutesSave: (Double) -> Unit,
-    onAssemblyUsedHoursSave: (Double) -> Unit,
+    onAssemblyRemainingUsdSave: (Double) -> Unit,
     onOpenKeys: () -> Unit,
-    onProbeProvider: (SttProvider) -> Unit = {}
+    onProbeProvider: (SttProvider) -> Unit = {},
+    onEngineEnabledChange: (SttProvider, Boolean) -> Unit = { _, _ -> }
 ) {
     val official = state.snapshot?.balanceUsd
     val localOnly = official == null
@@ -197,6 +199,7 @@ fun CreditControlPanel(
         if (state.routeChain.isNotBlank()) {
             Text(state.routeChain, color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Medium)
         }
+        ZeroCostWarning()
 
         Row(
             modifier = Modifier
@@ -213,7 +216,7 @@ fun CreditControlPanel(
                     fontSize = 15.sp
                 )
                 Text(
-                    "Router gratis · Escudo Anti-Gladia",
+                    "Se usan en orden: si uno se acaba, salta solo al siguiente",
                     color = Muted,
                     fontSize = 11.sp
                 )
@@ -258,12 +261,14 @@ fun CreditControlPanel(
                     pinned = state.routingSelection is RoutingSelection.Manual &&
                         state.routingSelection.provider == SttProvider.GROQ_FREE,
                     onOpenKeys = onOpenKeys,
-                    onProbe = { onProbeProvider(SttProvider.GROQ_FREE) }
+                    onProbe = { onProbeProvider(SttProvider.GROQ_FREE) },
+                    enabled = state.engineEnabled[SttProvider.GROQ_FREE] ?: true,
+                    onEnabledChange = { onEngineEnabledChange(SttProvider.GROQ_FREE, it) }
                 )
                 MotorQuotaCard(
                     level = "2",
                     title = "Inworld Free",
-                    detail = "${String.format("%.0f", state.inworldRemainingSeconds / 60.0)}m / 400m mes",
+                    detail = "Quedan ~${String.format("%.0f", state.inworldRemainingSeconds / 60.0)} min de 400 este mes",
                     progress = (state.inworldRemainingSeconds / BillingManager.INWORLD_MONTHLY_SECONDS)
                         .toFloat()
                         .coerceIn(0f, 1f),
@@ -273,13 +278,16 @@ fun CreditControlPanel(
                     pinned = state.routingSelection is RoutingSelection.Manual &&
                         state.routingSelection.provider == SttProvider.INWORLD,
                     onOpenKeys = onOpenKeys,
-                    onProbe = { onProbeProvider(SttProvider.INWORLD) }
+                    onProbe = { onProbeProvider(SttProvider.INWORLD) },
+                    enabled = state.engineEnabled[SttProvider.INWORLD] ?: true,
+                    onEnabledChange = { onEngineEnabledChange(SttProvider.INWORLD, it) }
                 )
                 MotorQuotaCard(
                     level = "3",
                     title = "AssemblyAI",
-                    detail = "Bolsa Gratis \$50 USD (~185h) · " +
-                        "${String.format("%.1f", state.assemblyRemainingSeconds / 3600.0)}h rest.",
+                    detail = "Saldo ~${BillingManager.formatUsd(
+                        state.assemblyRemainingSeconds / 3600.0 * BillingManager.ASSEMBLY_EST_USD_PER_HOUR, 2
+                    )} de \$50 · ~${String.format("%.1f", state.assemblyRemainingSeconds / 3600.0)} h",
                     progress = (state.assemblyRemainingSeconds / BillingManager.ASSEMBLY_POOL_SECONDS)
                         .toFloat()
                         .coerceIn(0f, 1f),
@@ -289,7 +297,9 @@ fun CreditControlPanel(
                     pinned = state.routingSelection is RoutingSelection.Manual &&
                         state.routingSelection.provider == SttProvider.ASSEMBLY_AI,
                     onOpenKeys = onOpenKeys,
-                    onProbe = { onProbeProvider(SttProvider.ASSEMBLY_AI) }
+                    onProbe = { onProbeProvider(SttProvider.ASSEMBLY_AI) },
+                    enabled = state.engineEnabled[SttProvider.ASSEMBLY_AI] ?: true,
+                    onEnabledChange = { onEngineEnabledChange(SttProvider.ASSEMBLY_AI, it) }
                 )
                 MotorQuotaCard(
                     level = "4",
@@ -297,7 +307,8 @@ fun CreditControlPanel(
                     detail = if (official != null) {
                         BillingManager.formatUsd(official, 2)
                     } else {
-                        "Uso local · ${BillingManager.formatUsd(state.appSpent, 4)} gastado app"
+                        "Saldo no disponible (la llave no tiene permiso de facturación) · " +
+                            "gastado según la app: ${BillingManager.formatUsd(state.appSpent, 2)}"
                     },
                     progress = progress,
                     provider = SttProvider.DEEPGRAM,
@@ -307,12 +318,18 @@ fun CreditControlPanel(
                         state.routingSelection.provider == SttProvider.DEEPGRAM,
                     onOpenKeys = onOpenKeys,
                     onProbe = { onProbeProvider(SttProvider.DEEPGRAM) },
+                    enabled = state.engineEnabled[SttProvider.DEEPGRAM] ?: true,
+                    onEnabledChange = { onEngineEnabledChange(SttProvider.DEEPGRAM, it) },
                     barColor = barColor
                 )
                 MotorQuotaCard(
                     level = "5",
                     title = "Respaldo Pagado",
-                    detail = if (state.allowPaidFallback) "Habilitado" else "Modo \$0 Estricto",
+                    detail = if (state.allowPaidFallback) {
+                        "Permitido: se usa solo si fallan todos los gratis"
+                    } else {
+                        "Bloqueado por Modo \$0"
+                    },
                     progress = if (state.allowPaidFallback) 1f else 0f,
                     provider = SttProvider.PAID_FALLBACK,
                     status = state.providerStatuses.firstOrNull { it.provider == SttProvider.PAID_FALLBACK },
@@ -320,18 +337,25 @@ fun CreditControlPanel(
                     pinned = state.routingSelection is RoutingSelection.Manual &&
                         state.routingSelection.provider == SttProvider.PAID_FALLBACK,
                     onOpenKeys = onOpenKeys,
-                    onProbe = { onProbeProvider(SttProvider.PAID_FALLBACK) }
+                    onProbe = { onProbeProvider(SttProvider.PAID_FALLBACK) },
+                    enabled = state.engineEnabled[SttProvider.PAID_FALLBACK] ?: true,
+                    onEnabledChange = { onEngineEnabledChange(SttProvider.PAID_FALLBACK, it) }
                 )
 
+                Text(
+                    "Corregir los medidores «Estimado» con lo que ves en el panel de cada proveedor:",
+                    color = Muted,
+                    fontSize = 11.sp
+                )
                 QuotaAdjustEditor(
-                    label = "Minutos Inworld ya usados (mes)",
+                    label = "Inworld: minutos usados este mes",
                     initialText = state.inworldUsedMinutesEditable,
                     onSave = onInworldUsedMinutesSave
                 )
                 QuotaAdjustEditor(
-                    label = "Horas AssemblyAI ya usadas",
-                    initialText = state.assemblyUsedHoursEditable,
-                    onSave = onAssemblyUsedHoursSave
+                    label = "AssemblyAI: saldo que ves (USD)",
+                    initialText = state.assemblyRemainingUsdEditable,
+                    onSave = onAssemblyRemainingUsdSave
                 )
 
                 Row(
@@ -340,7 +364,7 @@ fun CreditControlPanel(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        "Modo \$0 Estricto (Bloquear cobros si se acaban las gratis)",
+                        "Modo \$0 (nunca usar el motor de pago)",
                         color = OnBg,
                         fontSize = 13.sp,
                         modifier = Modifier.weight(1f)
@@ -368,10 +392,16 @@ fun CreditControlPanel(
                     Icon(Icons.Default.Shield, contentDescription = null, tint = Accent)
                     Spacer(Modifier.size(8.dp))
                     Text(
-                        if (state.verifyingOffers) "Verificando ofertas…" else "Verificar Ofertas Activas",
+                        if (state.verifyingOffers) "Verificando…" else "Verificar mis llaves y ofertas",
                         fontWeight = FontWeight.SemiBold
                     )
                 }
+                Text(
+                    "Prueba cada llave con un audio de silencio de 0.3 s y te dice si sigue gratis, " +
+                        "en pausa o sin saldo. También se hace sola una vez por semana.",
+                    color = Muted,
+                    fontSize = 11.sp
+                )
 
                 TextButton(onClick = onOpenKeys) {
                     Text("Configurar API keys (BYOK)", color = Accent)
@@ -417,8 +447,11 @@ private fun MotorQuotaCard(
     pinned: Boolean,
     onOpenKeys: () -> Unit,
     onProbe: () -> Unit,
-    barColor: Color = Accent
+    barColor: Color = Accent,
+    enabled: Boolean = true,
+    onEnabledChange: (Boolean) -> Unit = {}
 ) {
+    val info = ProviderCatalog.info(provider)
     val hasKey = !keyMask.isNullOrBlank()
     // Regla estricta: con llave en ApiKeyStore NUNCA mostrar SIN KEY.
     val health = when {
@@ -480,7 +513,15 @@ private fun MotorQuotaCard(
             fontWeight = FontWeight.Medium,
             modifier = Modifier.clickable(onClick = onOpenKeys)
         )
-        Text(detail, color = Muted, fontSize = 12.sp)
+        Text(ProviderCatalog.offerText(provider), color = Muted, fontSize = 11.sp)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            MeterBadge(info.meterKind)
+            Text(detail, color = Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+        }
+        Text(info.meterNote, color = Muted.copy(alpha = 0.8f), fontSize = 10.sp)
         status?.detail
             ?.takeIf { it.isNotBlank() && it != healthLabel && !it.startsWith("SIN KEY") }
             ?.let {
@@ -496,6 +537,30 @@ private fun MotorQuotaCard(
             trackColor = Color(0xFF151C28)
         )
         if (hasKey) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    if (provider == SttProvider.PAID_FALLBACK) {
+                        "Permitir gastar dinero"
+                    } else {
+                        "Usar este motor"
+                    },
+                    color = OnBg,
+                    fontSize = 13.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = onEnabledChange,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = if (provider == SttProvider.PAID_FALLBACK) Amber else Accent
+                    )
+                )
+            }
             TextButton(
                 onClick = onProbe,
                 modifier = Modifier.fillMaxWidth()
@@ -508,6 +573,40 @@ private fun MotorQuotaCard(
             }
         }
     }
+}
+
+@Composable
+private fun MeterBadge(kind: MeterKind) {
+    val color = when (kind) {
+        MeterKind.REAL -> Accent
+        MeterKind.ESTIMATED -> Amber
+        MeterKind.NONE -> Muted
+    }
+    Text(
+        kind.badge(),
+        color = color,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(color.copy(alpha = 0.15f))
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    )
+}
+
+/** Aviso fijo: Modo $0 solo bloquea el motor de pago; las tarjetas en los proveedores sí cobran. */
+@Composable
+fun ZeroCostWarning(modifier: Modifier = Modifier) {
+    Text(
+        "⚠️ ${ProviderCatalog.ZERO_COST_WARNING}",
+        color = Amber,
+        fontSize = 11.sp,
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(Amber.copy(alpha = 0.10f))
+            .padding(10.dp)
+    )
 }
 
 @Composable

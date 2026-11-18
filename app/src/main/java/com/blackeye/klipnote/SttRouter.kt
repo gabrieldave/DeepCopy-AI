@@ -36,7 +36,11 @@ object SttRouter {
             RoutingSelection.Auto -> Unit
         }
         val cfg = RemoteRouterConfig.currentOrDefault()
-        val available = cfg.priority.filter { isConfigured(context, it) && !cfg.disabled.contains(it) }
+        val available = cfg.priority.filter {
+            isConfigured(context, it) &&
+                !cfg.disabled.contains(it) &&
+                BillingManager.isEngineEnabled(context, it)
+        }
         val primary = available.firstOrNull()
         val primaryLabel = when (primary) {
             SttProvider.GROQ_FREE -> {
@@ -123,7 +127,9 @@ object SttRouter {
         deepgramBalanceUsd: Double?
     ): TranscriptionResult {
         val started = System.currentTimeMillis()
-        val block = preflightBlockReason(context, provider, deepgramBalanceUsd)
+        val block = preflightBlockReason(
+            context, provider, deepgramBalanceUsd, respectUserToggle = false
+        )
         if (block != null) {
             throw ManualRouteException(provider, "🧪 Prueba Manual · ${provider.displayName()}: $block")
         }
@@ -225,23 +231,34 @@ object SttRouter {
         }
 
         val strict = !BillingManager.getAllowPaidFallback(context)
+        val detail = hopLog.joinToString(" | ")
         val msg = if (strict) {
-            "Se agotaron los motores gratis y Modo \$0 Estricto está activo. " +
-                "Activa el respaldo pagado o recarga cuotas. Hops: ${hopLog.joinToString(" | ")}"
+            "Ningún motor gratis pudo transcribir este audio (sin llave, apagado o sin cuota). " +
+                "Revisa tus llaves en Motores o espera a que se renueve la cuota. " +
+                "Modo \$0 está activo, así que no se usó el de pago. Detalle: $detail"
         } else {
-            "Ningún motor STT disponible. Hops: ${hopLog.joinToString(" | ")}"
+            "Ningún motor pudo transcribir este audio. Detalle: $detail"
         }
-        throw lastError ?: IllegalStateException(msg)
+        // Siempre se muestra el recorrido completo; el último error solo va como causa.
+        throw IllegalStateException(msg, lastError)
     }
 
     private fun preflightBlockReason(
         context: Context,
         provider: SttProvider,
         deepgramBalanceUsd: Double?,
-        cfg: RemoteRouterConfig.Snapshot = RemoteRouterConfig.currentOrDefault()
+        cfg: RemoteRouterConfig.Snapshot = RemoteRouterConfig.currentOrDefault(),
+        respectUserToggle: Boolean = true
     ): String? {
-        if (cfg.disabled.contains(provider)) return "deshabilitado por config remota"
         if (!isConfigured(context, provider)) return "sin key"
+        if (respectUserToggle && provider != SttProvider.PAID_FALLBACK &&
+            !BillingManager.isEngineEnabled(context, provider)
+        ) {
+            return "apagado por ti"
+        }
+        if (respectUserToggle && cfg.disabled.contains(provider)) {
+            return "pausado por la comunidad (config del repo)"
+        }
         if (BillingManager.isPromoEnded(provider)) return "PROMO_TERMINADA"
         if (BillingManager.isInCooldown(provider)) {
             return "COOLDOWN ${BillingManager.cooldownRemainingSeconds(provider)}s"

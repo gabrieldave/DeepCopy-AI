@@ -32,7 +32,8 @@ object SealDownloader {
     private const val TAG = "SealDownloader"
     private const val PREFS = "seal_downloader"
     private const val KEY_LAST_YTDLP_UPDATE_MS = "last_ytdlp_nightly_ms"
-    private const val SEVEN_DAYS_MS = 7L * 24 * 60 * 60 * 1000
+    /** yt-dlp se actualiza solo cada 3 días (y al instante si una descarga falla por cambios del sitio). */
+    private const val AUTO_UPDATE_INTERVAL_MS = 3L * 24 * 60 * 60 * 1000
 
     private val URL_REGEX = Regex("""https?://\S+""", RegexOption.IGNORE_CASE)
 
@@ -107,13 +108,53 @@ object SealDownloader {
         }
     }
 
+    /** Marca que llevan los mensajes amigables de «necesita login» (ver [friendlyDownloadError]). */
+    private const val LOGIN_MARKER = "pide iniciar sesión"
+
     fun looksLikeLoginRequired(message: String?): Boolean {
         if (message.isNullOrBlank()) return false
         val m = message.lowercase()
-        return m.contains("login required") ||
+        return m.contains(LOGIN_MARKER) ||
+            m.contains("login required") ||
             m.contains("sign in to confirm") ||
-            (m.contains("cookies") && (m.contains("login") || m.contains("instagram"))) ||
-            m.contains("rate-limit") && m.contains("login")
+            m.contains("use --cookies") ||
+            m.contains("--cookies-from-browser") ||
+            (m.contains("cookies") && m.contains("login")) ||
+            (m.contains("rate-limit") && m.contains("login")) ||
+            m.contains("requested content is not available") ||
+            m.contains("this content isn't available")
+    }
+
+    /**
+     * Convierte errores técnicos de yt-dlp en mensajes que entiende cualquier persona.
+     * Siempre agrega el detalle técnico al final (corto) para reportes en GitHub.
+     */
+    fun friendlyDownloadError(raw: String?, url: String?): String {
+        val msg = raw.orEmpty()
+        val m = msg.lowercase()
+        val site = CookieStore.siteForUrl(url)
+        val siteName = site?.label ?: "El sitio"
+        val friendly = when {
+            looksLikeLoginRequired(msg) ->
+                "🔐 $siteName $LOGIN_MARKER para este video. Conecta tu cuenta en Motores → Cookies " +
+                    "(se guardan solo en tu teléfono) y vuelve a intentar."
+            m.contains("unsupported url") ->
+                "Este enlace no es compatible. Prueba con el enlace directo del video (botón Compartir → Copiar enlace)."
+            m.contains("private video") || m.contains("is private") || m.contains("video unavailable") ||
+                m.contains("has been removed") || m.contains("not available in your country") ->
+                "El video es privado, fue borrado o no está disponible en tu país."
+            m.contains("unable to resolve host") || m.contains("timed out") ||
+                m.contains("network is unreachable") || m.contains("connection reset") ->
+                "Sin conexión estable. Revisa tu internet y vuelve a intentar."
+            else ->
+                "🛠️ $siteName cambió algo y la descarga falló. KlipNote actualiza su motor de descargas solo; " +
+                    "prueba de nuevo más tarde. Mientras, descarga el video con otra app y compártelo a KlipNote: " +
+                    "la transcripción sigue funcionando."
+        }
+        val detail = msg.lineSequence().firstOrNull { it.contains("ERROR", ignoreCase = true) }
+            ?: msg.lineSequence().firstOrNull()
+            ?: ""
+        return if (detail.isBlank()) friendly else "$friendly\n\nDetalle técnico: ${detail.trim().take(180)}"
     }
 
     fun initAsync(context: Context) {
@@ -273,7 +314,7 @@ object SealDownloader {
             }
             addOption("--newline")
 
-            CookieStore.cookiesFileIfEnabled(context)?.let { cookies ->
+            CookieStore.cookiesFileFor(context, url)?.let { cookies ->
                 addOption("--cookies", cookies.absolutePath)
                 CookieStore.userAgent(context)?.let { ua ->
                     if (ua.isNotEmpty()) {
@@ -295,16 +336,22 @@ object SealDownloader {
         return m.contains("unable to extract") ||
             m.contains("confirm you are on the latest version") ||
             m.contains("metadata extraction failed") ||
-            m.contains("shared data")
+            m.contains("shared data") ||
+            m.contains("http error 403") ||
+            m.contains("signature") ||
+            m.contains("nsig") ||
+            m.contains("javascript") ||
+            m.contains("requested format is not available") ||
+            m.contains("no video formats found")
     }
 
     private fun maybeAutoUpdateYtDlpSilent(app: Context) {
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val last = prefs.getLong(KEY_LAST_YTDLP_UPDATE_MS, 0L)
         val now = System.currentTimeMillis()
-        if (last != 0L && now - last < SEVEN_DAYS_MS) return
+        if (last != 0L && now - last < AUTO_UPDATE_INTERVAL_MS) return
         try {
-            Log.i(TAG, "Auto-update yt-dlp NIGHTLY (first init / 7d)")
+            Log.i(TAG, "Auto-update yt-dlp NIGHTLY (first init / 3d)")
             YoutubeDL.getInstance().updateYoutubeDL(app, YoutubeDL.UpdateChannel.NIGHTLY)
             markYtDlpUpdated(app)
         } catch (t: Throwable) {

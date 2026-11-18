@@ -2,11 +2,9 @@ package com.blackeye.klipnote
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.os.Environment
 import androidx.annotation.Keep
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
-import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,7 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Bóveda BYOK multi-proveedor (AndroidKeyStore + AES/GCM).
- * Nunca expone la clave completa en UI; migra plaintext legado y Deepgram one-shot.
+ * Nunca expone la clave completa en UI. Cada usuario pone sus propias llaves; el APK no trae ninguna.
  */
 object ApiKeyStore {
     private val _revision = MutableStateFlow(0L)
@@ -42,9 +40,6 @@ object ApiKeyStore {
     private const val KEY_PAID_ENDPOINT = "paid_fallback_endpoint"
     private const val KEY_PAID_ENGINE = "paid_fallback_engine"
 
-    const val MIGRATE_INTENT_EXTRA = "klipnote_migrate_key"
-    const val MIGRATE_FILE_NAME = ".klipnote_migrate_once"
-    private const val LEGACY_MIGRATE_FILE = ".deepcopy_migrate_once"
 
     private val migrated = AtomicBoolean(false)
 
@@ -170,50 +165,6 @@ object ApiKeyStore {
         return "••••$suffix"
     }
 
-    fun ingestMigrationExtra(context: Context, raw: String?): Boolean {
-        val candidate = raw?.trim().orEmpty()
-        if (candidate.isEmpty()) return false
-        migrateIfNeeded(context)
-        if (hasSlot(context, ProviderSlot.DEEPGRAM)) return false
-        setDeepgram(context, candidate)
-        return true
-    }
-
-    fun ingestMigrationFile(context: Context): Boolean {
-        migrateIfNeeded(context)
-        if (hasSlot(context, ProviderSlot.DEEPGRAM)) {
-            deleteMigrateFiles(context)
-            return false
-        }
-        val candidates = listOfNotNull(
-            context.getExternalFilesDir(null)?.let { File(it, MIGRATE_FILE_NAME) },
-            context.getExternalFilesDir(null)?.let { File(it, LEGACY_MIGRATE_FILE) },
-            File(
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                MIGRATE_FILE_NAME
-            ),
-            File(
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                LEGACY_MIGRATE_FILE
-            )
-        )
-        for (file in candidates) {
-            val raw = runCatching {
-                if (file.exists()) file.readText().trim() else ""
-            }.getOrDefault("")
-            if (raw.isNotBlank()) {
-                setDeepgram(context, raw)
-                runCatching {
-                    file.writeBytes(ByteArray(file.length().toInt().coerceAtLeast(1)))
-                    file.delete()
-                }
-                deleteMigrateFiles(context)
-                return true
-            }
-        }
-        return false
-    }
-
     private fun getSlot(context: Context, slot: ProviderSlot): String {
         migrateIfNeeded(context)
         return encryptedPrefs(context).getString(keyFor(slot), null)?.trim().orEmpty()
@@ -266,21 +217,6 @@ object ApiKeyStore {
         ProviderSlot.PAID_FALLBACK -> KEY_PAID_LAST4
     }
 
-    private fun deleteMigrateFiles(context: Context) {
-        listOfNotNull(
-            context.getExternalFilesDir(null)?.let { File(it, MIGRATE_FILE_NAME) },
-            context.getExternalFilesDir(null)?.let { File(it, LEGACY_MIGRATE_FILE) },
-            File(
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                MIGRATE_FILE_NAME
-            ),
-            File(
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                LEGACY_MIGRATE_FILE
-            )
-        ).forEach { runCatching { it.delete() } }
-    }
-
     private fun migrateIfNeeded(context: Context) {
         if (migrated.get()) return
         synchronized(this) {
@@ -294,11 +230,10 @@ object ApiKeyStore {
                     .getString(KEY_DEEPGRAM, null)
                     ?.trim()
                     .orEmpty()
+                // Solo migra llaves que el propio usuario guardó en versiones anteriores de la app.
                 val candidate = when {
                     fromLegacyEnc.isNotEmpty() -> fromLegacyEnc
                     fromPlain.isNotEmpty() -> fromPlain
-                    BuildConfig.DEFAULT_DEEPGRAM_KEY.isNotBlank() ->
-                        BuildConfig.DEFAULT_DEEPGRAM_KEY.trim()
                     else -> ""
                 }
                 if (candidate.isNotEmpty()) {
