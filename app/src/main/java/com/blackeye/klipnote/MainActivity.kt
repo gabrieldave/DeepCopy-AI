@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
@@ -57,6 +58,8 @@ import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -115,7 +118,7 @@ private val Bg = Color(0xFF0B0F17)
 private val Card = Color(0xFF151C28)
 private val Accent = Color(0xFF10B981)
 private val OnBg = Color(0xFFE8EEF7)
-private val Muted = Color(0xFF8B9BB4)
+private val Muted = Color(0xFFB0BCCE)
 private val Amber = Color(0xFFFBBF24)
 
 private enum class MainTab { Capturar, Guiones, Motores }
@@ -232,6 +235,9 @@ private fun KlipNoteApp(
     var selectedTab by remember { mutableStateOf(MainTab.Capturar) }
     var showMotorSheet by remember { mutableStateOf(false) }
     var showKeyDialog by remember { mutableStateOf(false) }
+    var showOnboarding by remember {
+        mutableStateOf(!ApiKeyStore.hasAnyKey(context) && !OnboardingPrefs.isDone(context))
+    }
     var languageMode by remember { mutableStateOf(BillingManager.getLanguageMode(context)) }
     var forcedLanguage by remember { mutableStateOf(BillingManager.getForcedLanguage(context)) }
     var diarize by remember { mutableStateOf(BillingManager.getDiarizeEnabled(context)) }
@@ -694,7 +700,7 @@ private fun KlipNoteApp(
                     TopAppBar(
                         title = {
                             Text(
-                                text = "${stringResource(R.string.app_name)} · ${BuildConfig.VERSION_NAME}",
+                                text = stringResource(R.string.app_name),
                                 fontWeight = FontWeight.Bold,
                                 color = OnBg,
                                 maxLines = 1,
@@ -728,14 +734,7 @@ private fun KlipNoteApp(
                 MainTab.Motores -> {
                     TopAppBar(
                         title = {
-                            Column {
-                                Text("Motores", fontWeight = FontWeight.Bold, color = OnBg)
-                                Text(
-                                    "Admin · Escudo Anti-Gladia",
-                                    fontSize = 12.sp,
-                                    color = Muted
-                                )
-                            }
+                            Text("Ajustes", fontWeight = FontWeight.Bold, color = OnBg)
                         },
                         colors = TopAppBarDefaults.topAppBarColors(
                             containerColor = Bg,
@@ -768,7 +767,7 @@ private fun KlipNoteApp(
                     selected = selectedTab == MainTab.Motores,
                     onClick = { selectedTab = MainTab.Motores },
                     icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                    label = { Text("Motores") },
+                    label = { Text("Ajustes") },
                     colors = navColors()
                 )
             }
@@ -859,7 +858,15 @@ private fun KlipNoteApp(
                             copyFeedback = false
                         },
                         onBackToAuto = { setRouting(RoutingSelection.Auto) },
-                        onTextChange = { transcriptText = it }
+                        onTextChange = { transcriptText = it },
+                        hasKeys = ApiKeyStore.hasAnyKey(context),
+                        servicesSummary = buildServicesSummary(
+                            keyMasks = keyMasks,
+                            groqRemainingSeconds = groqRemaining,
+                            autoPrimary = autoPrimary
+                        ),
+                        onOpenOnboarding = { showOnboarding = true },
+                        onOpenKeys = { showKeyDialog = true }
                     )
                 }
                 MainTab.Guiones -> {
@@ -1014,11 +1021,22 @@ private fun KlipNoteApp(
                             scope.launch {
                                 snackbar.showSnackbar("Cuenta de ${site.label} desconectada")
                             }
-                        }
+                        },
+                        onShowTutorial = { showOnboarding = true }
                     )
                 }
             }
         }
+    }
+
+    if (showOnboarding) {
+        OnboardingWizard(
+            onFinished = { showOnboarding = false },
+            onSavedKey = {
+                syncKeysUi()
+                onKeysChanged()
+            }
+        )
     }
 
     cookieSheetSite?.let { sheetSite ->
@@ -1210,7 +1228,7 @@ private fun MotorPickerSheet(
             FilterChip(
                 selected = selection is RoutingSelection.Auto,
                 onClick = onSelectAuto,
-                label = { Text("⚡ Auto (Cascada)") },
+                label = { Text("Automático") },
                 modifier = Modifier.fillMaxWidth(),
                 colors = chipColors()
             )
@@ -1267,7 +1285,11 @@ private fun CapturarTab(
     onShare: () -> Unit,
     onClearResult: () -> Unit,
     onBackToAuto: () -> Unit,
-    onTextChange: (String) -> Unit
+    onTextChange: (String) -> Unit,
+    hasKeys: Boolean = false,
+    servicesSummary: String = "",
+    onOpenOnboarding: () -> Unit = {},
+    onOpenKeys: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -1315,7 +1337,7 @@ private fun CapturarTab(
                 fileName = pf.fileName,
                 durationLabel = BillingManager.formatDuration(pf.durationSeconds),
                 modeLabel = pf.estimate.mode.shortUiLabel(forcedLanguage) +
-                    if (pf.estimate.includeDiarize) " + Diarize" else "",
+                    if (pf.estimate.includeDiarize) " + separar voces" else "",
                 estimatedUsd = pf.estimatedUsdDisplay,
                 hardStopMessage = pf.hardStopMessage,
                 autoTranscribe = autoTranscribeOnShare,
@@ -1338,6 +1360,40 @@ private fun CapturarTab(
                 onShare = onShare,
                 onClear = onClearResult
             )
+        } else if (phase is UiPhase.Idle && preFlight == null) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Card)
+                    .padding(16.dp)
+                    .clickable {
+                        if (!hasKeys) onOpenOnboarding() else onOpenKeys()
+                    },
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                if (!hasKeys) {
+                    Text(
+                        "Paso 1: consigue tu llave gratis",
+                        color = OnBg,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp
+                    )
+                    Text(
+                        "Toca aquí para el tutorial. Tarda unos 2 minutos con Groq.",
+                        color = Muted,
+                        fontSize = 12.sp
+                    )
+                } else {
+                    Text(
+                        servicesSummary.ifBlank { "Servicios listos" },
+                        color = OnBg,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp
+                    )
+                    Text("Listo para pegar un enlace o elegir un archivo.", color = Muted, fontSize = 12.sp)
+                }
+            }
         }
     }
 }
@@ -1433,13 +1489,28 @@ private fun LinkHeroCard(
                 )
                 ModeChip(
                     selected = linkMode == SealDownloader.LinkMode.DOWNLOAD_ONLY,
-                    label = "Solo Bajar",
+                    label = "Solo descargar",
                     enabled = !busy,
                     modifier = Modifier.weight(1f),
                     onClick = { onModeChange(SealDownloader.LinkMode.DOWNLOAD_ONLY) }
                 )
             }
         }
+
+        Text(
+            when (linkMode) {
+                SealDownloader.LinkMode.TEXT_ONLY ->
+                    "Te damos el texto. No se guarda el video."
+                SealDownloader.LinkMode.AUDIO_AND_TEXT ->
+                    "Guardamos el audio en Descargas/KlipNote y te damos el texto."
+                SealDownloader.LinkMode.VIDEO_AND_TEXT ->
+                    "Guardamos el video en Descargas/KlipNote y te damos el texto."
+                SealDownloader.LinkMode.DOWNLOAD_ONLY ->
+                    "Solo guarda el archivo, sin texto."
+            },
+            color = Muted,
+            fontSize = 12.sp
+        )
 
         if (linkMode == SealDownloader.LinkMode.DOWNLOAD_ONLY) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1460,8 +1531,8 @@ private fun LinkHeroCard(
 
         val readyHint = when (sealReady) {
             SealDownloader.ReadyState.READY -> null
-            SealDownloader.ReadyState.IDLE -> "Inicializando yt-dlp / FFmpeg…"
-            SealDownloader.ReadyState.ERROR -> "yt-dlp no listo"
+            SealDownloader.ReadyState.IDLE -> "Preparando motor de descargas…"
+            SealDownloader.ReadyState.ERROR -> "Motor de descargas no listo"
         }
         if (readyHint != null) {
             Text(readyHint, color = Muted, fontSize = 12.sp)
@@ -1495,7 +1566,7 @@ private fun LinkHeroCard(
             Icon(Icons.Default.UploadFile, contentDescription = null, tint = Accent)
             Spacer(Modifier.size(8.dp))
             Text(
-                "📂 Elegir video o audio del teléfono",
+                "Elegir video o audio del teléfono",
                 color = Accent,
                 fontWeight = FontWeight.SemiBold
             )
@@ -1602,7 +1673,7 @@ private fun ErrorCard(
         }
         if (isManual) {
             TextButton(onClick = onBackToAuto) {
-                Text("Volver a Auto (Cascada)", color = Accent)
+                Text("Volver a Automático", color = Accent)
             }
         }
     }
@@ -1901,6 +1972,8 @@ private fun GuionesTab(
     val fmt = remember {
         SimpleDateFormat("dd MMM · HH:mm", Locale("es", "MX"))
     }
+    var menuOpen by remember { mutableStateOf(false) }
+    var confirmClear by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -1934,10 +2007,45 @@ private fun GuionesTab(
                 fontSize = 12.sp
             )
             if (entries.isNotEmpty()) {
-                TextButton(onClick = onClearAll) {
-                    Text("Borrar historial", color = Color(0xFFF87171))
+                Box {
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Más", tint = Muted)
+                    }
+                    DropdownMenu(
+                        expanded = menuOpen,
+                        onDismissRequest = { menuOpen = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Borrar historial", color = Color(0xFFF87171)) },
+                            onClick = {
+                                menuOpen = false
+                                confirmClear = true
+                            }
+                        )
+                    }
                 }
             }
+        }
+        if (confirmClear) {
+            AlertDialog(
+                onDismissRequest = { confirmClear = false },
+                containerColor = Card,
+                titleContentColor = OnBg,
+                textContentColor = OnBg,
+                title = { Text("¿Borrar todo el historial?") },
+                text = { Text("Se eliminarán todos los guiones guardados en este teléfono.", color = Muted) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        confirmClear = false
+                        onClearAll()
+                    }) { Text("Borrar", color = Color(0xFFF87171)) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmClear = false }) {
+                        Text("Cancelar", color = Muted)
+                    }
+                }
+            )
         }
         if (filtered.isEmpty()) {
             Box(
@@ -1946,7 +2054,7 @@ private fun GuionesTab(
                     .padding(top = 48.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text("Aún no hay guiones guardados.", color = Muted)
+                Text("Aún no hay guiones guardados.", color = Muted, fontSize = 12.sp)
             }
         } else {
             LazyColumn(
@@ -1955,6 +2063,10 @@ private fun GuionesTab(
             ) {
                 items(filtered, key = { it.id }) { entry ->
                     val expanded = expandedId == entry.id
+                    val origin = sourceKindLabel(entry.sourceTitleOrUrl)
+                    val dur = if (entry.durationSec > 0) {
+                        BillingManager.formatDuration(entry.durationSec)
+                    } else "—"
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1972,7 +2084,7 @@ private fun GuionesTab(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            "${fmt.format(Date(entry.timestampMs))} · ${entry.providerUsed}",
+                            "$origin · $dur · ${fmt.format(Date(entry.timestampMs))} · ${entry.providerUsed}",
                             color = Muted,
                             fontSize = 12.sp
                         )
@@ -1983,42 +2095,35 @@ private fun GuionesTab(
                             maxLines = if (expanded) Int.MAX_VALUE else 3,
                             overflow = TextOverflow.Ellipsis
                         )
-                        if (expanded) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                TextButton(onClick = { onCopy(entry.text) }) {
-                                    Icon(
-                                        Icons.Default.ContentCopy,
-                                        contentDescription = null,
-                                        tint = Accent,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(Modifier.size(4.dp))
-                                    Text("Copiar texto", color = Accent)
-                                }
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            TextButton(onClick = { onCopy(entry.text) }) {
+                                Icon(
+                                    Icons.Default.ContentCopy,
+                                    contentDescription = null,
+                                    tint = Accent,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.size(4.dp))
+                                Text("Copiar", color = Accent)
+                            }
+                            if (expanded) {
                                 TextButton(onClick = { onOpenLink(entry.sourceTitleOrUrl) }) {
-                                    Icon(
-                                        Icons.Default.OpenInNew,
-                                        contentDescription = null,
-                                        tint = Accent,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(Modifier.size(4.dp))
                                     Text("Abrir link", color = Accent)
                                 }
                                 TextButton(onClick = { onDelete(entry.id) }) {
                                     Text("Borrar", color = Color(0xFFF87171))
                                 }
                             }
-                            if (entry.text.isNotBlank()) {
-                                Spacer(Modifier.height(4.dp))
-                                AiStudyActionsSection(
-                                    transcript = entry.text,
-                                    sourceTitleOrUrl = entry.sourceTitleOrUrl
-                                )
-                            }
+                        }
+                        if (expanded && entry.text.isNotBlank()) {
+                            Spacer(Modifier.height(4.dp))
+                            AiStudyActionsSection(
+                                transcript = entry.text,
+                                sourceTitleOrUrl = entry.sourceTitleOrUrl
+                            )
                         }
                     }
                 }
@@ -2030,6 +2135,7 @@ private fun GuionesTab(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
+@Suppress("UNUSED_PARAMETER")
 private fun MotoresTab(
     routingSelection: RoutingSelection,
     keyMasks: Map<SttProvider, String?>,
@@ -2060,10 +2166,12 @@ private fun MotoresTab(
     cookiesRevision: Int,
     onConnectCookies: (CookieSite) -> Unit,
     onToggleCookies: (Boolean) -> Unit,
-    onClearCookies: (CookieSite) -> Unit
+    onClearCookies: (CookieSite) -> Unit,
+    onShowTutorial: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    var advancedOpen by remember { mutableStateOf(diarize) }
+    var advancedOpen by remember { mutableStateOf(false) }
+    var cookiesOpen by remember { mutableStateOf(false) }
     val connected = remember(cookiesRevision) { CookieStore.connectedSites(context).toSet() }
     Column(
         modifier = Modifier
@@ -2073,24 +2181,10 @@ private fun MotoresTab(
             .padding(top = 8.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        SectionLabel("1 · Modo de enrutado")
-        RoutingModeChips(
-            selection = routingSelection,
-            keyMasks = keyMasks,
-            onSelectAuto = onSelectAuto,
-            onSelectManual = onSelectManual,
-            onOpenKeys = onOpenKeys
-        )
-
-        SectionLabel("2 · Motores, ofertas y consumo")
-        CreditControlPanel(
-            state = creditState.copy(expanded = true),
-            onToggleExpand = onToggleExpand,
+        FreeServicesPanel(
+            state = creditState,
             onRefresh = onRefresh,
-            onOpenHistory = onOpenHistory,
-            onOpenCostSettings = onOpenCostSettings,
             onVerifyOffers = onVerifyOffers,
-            onAllowPaidChange = onAllowPaidChange,
             onInworldUsedMinutesSave = onInworldUsedMinutesSave,
             onAssemblyRemainingUsdSave = onAssemblyRemainingUsdSave,
             onOpenKeys = onOpenKeys,
@@ -2098,79 +2192,35 @@ private fun MotoresTab(
             onEngineEnabledChange = onEngineEnabledChange
         )
 
-        SectionLabel("3 · Llaves y mantenimiento")
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
                 .background(Card)
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Button(
-                onClick = onOpenKeys,
+            SectionHeader("¿En qué idioma hablan?", HelpCopy.LANGUAGE)
+            ModeChip(
+                selected = languageMode == LanguageMode.AUTO,
+                label = "Detectar solo (recomendado)",
+                enabled = true,
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF1A2436),
-                    contentColor = OnBg
-                ),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("API Keys (BYOK)", fontWeight = FontWeight.SemiBold)
-            }
-
-            Row(
+                onClick = { onLanguageModeChange(LanguageMode.AUTO) }
+            )
+            ModeChip(
+                selected = languageMode == LanguageMode.MULTI,
+                label = "Mezclan español e inglés",
+                enabled = true,
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    "Modo \$0 (nunca usar el motor de pago)",
-                    color = OnBg,
-                    fontSize = 14.sp,
-                    modifier = Modifier.weight(1f)
-                )
-                Switch(
-                    checked = !creditState.allowPaidFallback,
-                    onCheckedChange = { strict -> onAllowPaidChange(!strict) },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = Accent
-                    )
-                )
-            }
-
-            Text(stringResource(R.string.lang_detection_label), color = Muted, fontSize = 12.sp)
+                onClick = { onLanguageModeChange(LanguageMode.MULTI) }
+            )
+            Text("Siempre en:", color = Muted, fontSize = 12.sp)
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                ModeChip(
-                    selected = languageMode == LanguageMode.AUTO,
-                    label = stringResource(R.string.mode_auto),
-                    enabled = true,
-                    onClick = { onLanguageModeChange(LanguageMode.AUTO) }
-                )
-                ModeChip(
-                    selected = languageMode == LanguageMode.MULTI,
-                    label = stringResource(R.string.mode_multi),
-                    enabled = true,
-                    onClick = { onLanguageModeChange(LanguageMode.MULTI) }
-                )
-                ModeChip(
-                    selected = languageMode == LanguageMode.FIXED,
-                    label = stringResource(R.string.mode_fixed),
-                    enabled = true,
-                    onClick = { onLanguageModeChange(LanguageMode.FIXED) }
-                )
-            }
-
-            Text(stringResource(R.string.lang_target_label), color = Muted, fontSize = 12.sp)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                COMMON_STT_LANGUAGES.forEach { opt ->
+                COMMON_STT_LANGUAGES.filter { it.code != "multi" }.forEach { opt ->
                     ModeChip(
                         selected = languageMode == LanguageMode.FIXED &&
                             forcedLanguage.equals(opt.code, ignoreCase = true),
@@ -2180,49 +2230,163 @@ private fun MotoresTab(
                     )
                 }
             }
-            if (languageMode == LanguageMode.AUTO) {
-                Text(
-                    "Auto detecta el idioma hablado. Elige un código solo si quieres forzar reconocimiento.",
-                    color = Muted,
-                    fontSize = 11.sp
-                )
-            }
+        }
 
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(Card)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable { advancedOpen = !advancedOpen }
-                    .padding(vertical = 4.dp),
+                    .clickable { cookiesOpen = !cookiesOpen },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    stringResource(R.string.advanced_section),
-                    color = Muted,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    SectionHeader("Videos que piden iniciar sesión", HelpCopy.COOKIES)
+                    Text(
+                        HelpCopy.COOKIES,
+                        color = Muted,
+                        fontSize = 12.sp,
+                        maxLines = if (cookiesOpen) Int.MAX_VALUE else 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 Icon(
-                    imageVector = if (advancedOpen) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    if (cookiesOpen) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                     contentDescription = null,
-                    tint = Muted,
-                    modifier = Modifier.size(18.dp)
+                    tint = Muted
+                )
+            }
+            if (cookiesOpen) {
+                CookieSite.entries.forEach { site ->
+                    val isConnected = site in connected
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            "${site.label} · ${if (isConnected) "conectado" else "sin conectar"}",
+                            color = if (isConnected) Accent else OnBg,
+                            fontSize = 13.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (isConnected) {
+                            TextButton(onClick = { onClearCookies(site) }) {
+                                Text("Desconectar", color = Color(0xFFF87171), fontSize = 12.sp)
+                            }
+                        } else {
+                            TextButton(onClick = { onConnectCookies(site) }) {
+                                Text("Conectar", color = Accent, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+                if (connected.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Usar mis cuentas en descargas", color = OnBg, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = cookiesEnabled,
+                            onCheckedChange = onToggleCookies,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Accent
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(Card)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { advancedOpen = !advancedOpen },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Avanzado", color = OnBg, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                Icon(
+                    if (advancedOpen) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = null,
+                    tint = Muted
                 )
             }
             if (advancedOpen) {
+                SectionHeader("Automático", HelpCopy.AUTO)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        "Modo \$0 (nunca usar el servicio de pago)",
+                        color = OnBg,
+                        fontSize = 13.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Switch(
+                        checked = !creditState.allowPaidFallback,
+                        onCheckedChange = { strict -> onAllowPaidChange(!strict) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = Accent
+                        )
+                    )
+                }
+                if (creditState.allowPaidFallback) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Usar servicio de pago", color = OnBg, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = creditState.engineEnabled[SttProvider.PAID_FALLBACK] ?: true,
+                            onCheckedChange = { onEngineEnabledChange(SttProvider.PAID_FALLBACK, it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Amber
+                            )
+                        )
+                    }
+                }
+
+                Text("Probar un servicio a mano", color = OnBg, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                RoutingModeChips(
+                    selection = routingSelection,
+                    keyMasks = keyMasks,
+                    onSelectAuto = onSelectAuto,
+                    onSelectManual = onSelectManual,
+                    onOpenKeys = onOpenKeys
+                )
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                        Text(stringResource(R.string.diarize), color = OnBg, fontSize = 14.sp)
-                        Text(
-                            stringResource(R.string.diarize_hint),
-                            color = Muted,
-                            fontSize = 11.sp
-                        )
+                        Text("Separar quién habla", color = OnBg, fontSize = 13.sp)
+                        Text(HelpCopy.DIARIZE, color = Muted, fontSize = 12.sp)
                     }
                     Switch(
                         checked = diarize,
@@ -2233,28 +2397,18 @@ private fun MotoresTab(
                         )
                     )
                 }
-            }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF0F1623))
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text("Motor de descargas (yt-dlp)", color = OnBg, fontWeight = FontWeight.Medium)
-                Text(
-                    "Se actualiza solo cada 3 días y en cuanto una descarga falla porque un sitio cambió. " +
-                        "No necesitas tocar nada; este botón es solo para forzarlo.",
-                    color = Muted,
-                    fontSize = 11.sp
-                )
+                TextButton(onClick = onOpenCostSettings) {
+                    Text("Ajustes de costos de Deepgram", color = Accent)
+                }
+
+                SectionHeader("Motor de descargas", HelpCopy.YTDLP)
+                Text("Se actualiza solo", color = Muted, fontSize = 12.sp)
                 Text(
                     when (sealReady) {
                         SealDownloader.ReadyState.READY -> "Listo"
                         SealDownloader.ReadyState.IDLE -> "Inicializando…"
-                        SealDownloader.ReadyState.ERROR -> "Error — reintenta actualizar"
+                        SealDownloader.ReadyState.ERROR -> "Error — reintenta"
                     },
                     color = Muted,
                     fontSize = 12.sp
@@ -2266,72 +2420,22 @@ private fun MotoresTab(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text(
-                        if (updatingYtDlp) "Actualizando…" else "Actualizar motor yt-dlp",
+                        if (updatingYtDlp) "Actualizando…" else "Actualizar ahora",
                         color = Accent
                     )
                 }
-            }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF0F1623))
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text("Cuentas para descargar (cookies)", color = OnBg, fontWeight = FontWeight.Medium)
+                TextButton(onClick = onOpenHistory) {
+                    Text("Historial de grabaciones", color = Accent)
+                }
+                TextButton(onClick = onShowTutorial) {
+                    Text("Ver tutorial", color = Accent)
+                }
                 Text(
-                    "Solo hace falta si un sitio te pide iniciar sesión. Cada quien conecta SU cuenta; " +
-                        "las cookies se quedan en este teléfono, no se suben ni entran en backup.",
+                    "Versión ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
                     color = Muted,
-                    fontSize = 11.sp
+                    fontSize = 12.sp
                 )
-                CookieSite.entries.forEach { site ->
-                    val isConnected = site in connected
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(site.label, color = OnBg, fontSize = 14.sp)
-                            Text(
-                                if (isConnected) "✓ Conectado" else "Sin conectar",
-                                color = if (isConnected) Accent else Muted,
-                                fontSize = 11.sp
-                            )
-                        }
-                        if (isConnected) {
-                            TextButton(onClick = { onClearCookies(site) }) {
-                                Text("Desconectar", color = Color(0xFFF87171), fontSize = 12.sp)
-                            }
-                        } else {
-                            OutlinedButton(
-                                onClick = { onConnectCookies(site) },
-                                shape = RoundedCornerShape(10.dp)
-                            ) {
-                                Text("Conectar", color = Accent, fontSize = 12.sp)
-                            }
-                        }
-                    }
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("Usar cookies en descargas", color = OnBg, fontSize = 14.sp)
-                    Switch(
-                        checked = cookiesEnabled,
-                        onCheckedChange = onToggleCookies,
-                        enabled = connected.isNotEmpty(),
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = Accent
-                        )
-                    )
-                }
             }
         }
     }
@@ -2373,6 +2477,27 @@ private fun chipColors() = FilterChipDefaults.filterChipColors(
     selectedContainerColor = Accent.copy(alpha = 0.2f),
     selectedLabelColor = Accent
 )
+
+
+private fun buildServicesSummary(
+    keyMasks: Map<SttProvider, String?>,
+    groqRemainingSeconds: Double,
+    autoPrimary: SttProvider?
+): String {
+    val ready = listOf(
+        SttProvider.GROQ_FREE,
+        SttProvider.INWORLD,
+        SttProvider.ASSEMBLY_AI,
+        SttProvider.DEEPGRAM
+    ).count { !keyMasks[it].isNullOrBlank() }
+    val mins = (groqRemainingSeconds / 60.0).coerceAtLeast(0.0)
+    val primary = autoPrimary?.shortName() ?: "Groq"
+    return if (primary == "Groq" || !keyMasks[SttProvider.GROQ_FREE].isNullOrBlank()) {
+        "Groq: ${String.format("%.0f", mins)} min disponibles · $ready servicios listos"
+    } else {
+        "$primary listo · $ready servicios listos"
+    }
+}
 
 private fun readKeyMasks(context: android.content.Context): Map<SttProvider, String?> = mapOf(
     SttProvider.GROQ_FREE to ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.GROQ),

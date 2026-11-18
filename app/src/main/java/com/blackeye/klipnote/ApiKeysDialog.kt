@@ -168,7 +168,7 @@ fun MultiProviderKeysDialog(
             ) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
                     Text(
-                        "API Keys (BYOK cifrado)",
+                        "Mis llaves",
                         color = OnBg,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 18.sp
