@@ -1,16 +1,11 @@
-# DeepCopy AI — R8 comercial: conservar red/JSON/modelos y crypto.
+# KlipNote — R8 comercial: conservar red/JSON/modelos y crypto.
 
--keepclassmembers class com.blackeye.deepcopy.BuildConfig {
+-keepclassmembers class com.blackeye.klipnote.BuildConfig {
     public static <fields>;
 }
 
--keep class com.blackeye.deepcopy.TranscriptionResult { *; }
--keep class com.blackeye.deepcopy.LanguageMode { *; }
--keep class com.blackeye.deepcopy.BillingManager$HistoryEntry { *; }
--keep class com.blackeye.deepcopy.BillingManager$CostEstimate { *; }
--keep class com.blackeye.deepcopy.DeepgramBillingClient$BalanceSnapshot { *; }
--keep class com.blackeye.deepcopy.DeepgramBillingClient$BillingScopeStatus { *; }
--keep class com.blackeye.deepcopy.AudioExtractor$ExtractedAudio { *; }
+-keep class com.blackeye.klipnote.** { *; }
+-keepclassmembers class com.blackeye.klipnote.** { *; }
 
 -dontwarn okhttp3.**
 -dontwarn okio.**

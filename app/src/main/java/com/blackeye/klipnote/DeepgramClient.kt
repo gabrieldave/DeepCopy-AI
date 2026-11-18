@@ -1,4 +1,4 @@
-package com.blackeye.deepcopy
+package com.blackeye.klipnote
 
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -10,18 +10,6 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileInputStream
 import java.util.concurrent.TimeUnit
-
-enum class LanguageMode {
-    AUTO,   // detect_language=true
-    MULTI   // language=multi (Spanglish)
-}
-
-data class TranscriptionResult(
-    val transcript: String,
-    val durationSeconds: Double?,
-    val detectedLanguage: String?,
-    val wordCount: Int
-)
 
 object DeepgramClient {
 
@@ -41,12 +29,13 @@ object DeepgramClient {
         file: File,
         mimeType: String,
         mode: LanguageMode,
-        diarize: Boolean
+        diarize: Boolean,
+        model: String = "nova-3"
     ): TranscriptionResult {
         require(apiKey.isNotBlank()) { "API Key vacía" }
 
         val urlBuilder = BASE.toHttpUrl().newBuilder()
-            .addQueryParameter("model", "nova-3")
+            .addQueryParameter("model", model)
             .addQueryParameter("smart_format", "true")
 
         when (mode) {
@@ -71,11 +60,16 @@ object DeepgramClient {
         client.newCall(request).execute().use { response ->
             val raw = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                val msg = runCatching {
-                    JSONObject(raw).optString("err_msg")
-                        .ifBlank { JSONObject(raw).optString("message") }
-                }.getOrNull()?.takeIf { it.isNotBlank() } ?: raw.take(300)
-                error("Deepgram ${response.code}: ${msg.ifBlank { response.message }}")
+                throw SttProviderException.fromHttp(
+                    provider = SttProvider.DEEPGRAM,
+                    code = response.code,
+                    body = runCatching {
+                        JSONObject(raw).optString("err_msg")
+                            .ifBlank { JSONObject(raw).optString("message") }
+                            .ifBlank { raw }
+                    }.getOrDefault(raw),
+                    retryAfter = response.header("Retry-After")?.toLongOrNull()
+                )
             }
             return parseResponse(raw, diarize)
         }
@@ -92,7 +86,6 @@ object DeepgramClient {
         }
     }
 
-    /** Streaming RequestBody — NUNCA readBytes() del archivo completo. */
     private fun streamingFileBody(file: File, contentType: String): RequestBody {
         val mediaType = contentType.toMediaTypeOrNull()
         return object : RequestBody() {
@@ -140,11 +133,19 @@ object DeepgramClient {
         }
 
         val words = transcript.split(Regex("\\s+")).count { it.isNotBlank() }
+        val cost = BillingManager.actualCost(
+            durationSeconds = duration ?: 0.0,
+            mode = LanguageMode.AUTO,
+            diarizeUsed = diarize
+        )
         return TranscriptionResult(
             transcript = transcript.trim(),
             durationSeconds = duration,
             detectedLanguage = language,
-            wordCount = words
+            wordCount = words,
+            provider = SttProvider.DEEPGRAM,
+            providerLabel = "Deepgram Nova-3",
+            costUsd = cost
         )
     }
 

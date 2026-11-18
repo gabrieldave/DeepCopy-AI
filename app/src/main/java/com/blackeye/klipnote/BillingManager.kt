@@ -1,25 +1,29 @@
-package com.blackeye.deepcopy
+package com.blackeye.klipnote
 
 import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.OpenableColumns
+import androidx.annotation.Keep
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.max
 
 /**
- * Auditor de gasto Nova-3 Pre-Recorded.
- * Tarifas por minuto; cobro exacto por segundo: (durationSeconds / 60) * ratePerMinute.
+ * Auditor de gasto multi-proveedor + cuotas gratis (Groq diario, AssemblyAI bolsa, Deepgram USD).
  */
 object BillingManager {
 
-    private const val PREFS = "deepcopy_billing_prefs"
+    private const val PREFS = "klipnote_billing_prefs"
+    private const val LEGACY_PREFS = "deepcopy_billing_prefs"
     private const val KEY_INITIAL_CREDIT = "initial_credit_usd"
     private const val KEY_APP_CAP = "app_cap_usd"
     private const val KEY_MIN_RESERVE = "min_reserve_usd"
@@ -32,6 +36,13 @@ object BillingManager {
     private const val KEY_MONTH_SECONDS = "usage_month_seconds"
     private const val KEY_SESSION_TRANSCRIPTIONS = "usage_session_transcriptions"
     private const val KEY_SESSION_SECONDS = "usage_session_seconds"
+    private const val KEY_GROQ_DAY = "groq_day_key"
+    private const val KEY_GROQ_REMAINING = "groq_remaining_seconds"
+    private const val KEY_GROQ_LIMIT = "groq_limit_seconds"
+    private const val KEY_ASSEMBLY_USED = "assembly_used_seconds"
+    private const val KEY_ALLOW_PAID = "allow_paid_fallback"
+    private const val KEY_LAST_OFFER_CHECK = "last_offer_check_ms"
+    private const val KEY_REMOTE_CONFIG_URL = "remote_router_config_url"
     private const val HISTORY_FILE = "billing_history.json"
 
     const val RATE_AUTO_PER_MIN = 0.0043
@@ -41,12 +52,20 @@ object BillingManager {
     const val DEFAULT_APP_CAP = 195.0
     const val DEFAULT_MIN_RESERVE = 5.0
     const val GIANT_FILE_THRESHOLD_USD = 0.50
+    const val DEEPGRAM_SAFE_FLOOR_USD = 1.0
+    const val GROQ_DAILY_SECONDS = 28_800.0
+    const val ASSEMBLY_POOL_SECONDS = 666_000.0 // 185h
 
+    private val cooldownUntilMs = ConcurrentHashMap<SttProvider, Long>()
+    private val promoEnded = ConcurrentHashMap.newKeySet<SttProvider>()
+
+    @Keep
     data class MediaProbe(
         val displayName: String,
         val durationSeconds: Double
     )
 
+    @Keep
     data class CostEstimate(
         val durationSeconds: Double,
         val mode: LanguageMode,
@@ -59,8 +78,10 @@ object BillingManager {
         data object Ok : HardStop()
         data class ReserveBreach(val remainingAfter: Double, val reserve: Double) : HardStop()
         data class AppCapBreach(val projectedSpent: Double, val cap: Double) : HardStop()
+        data class StrictZeroMode(val message: String) : HardStop()
     }
 
+    @Keep
     data class HistoryEntry(
         val id: String,
         val timestampMs: Long,
@@ -73,13 +94,15 @@ object BillingManager {
         val balanceAfter: Double?,
         val officialDeltaUsd: Double?,
         val transcript: String,
-        val audioPath: String? = null
+        val audioPath: String? = null,
+        val provider: String? = null
     ) {
         val formattedWhen: String
             get() = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
                 .format(Date(timestampMs))
     }
 
+    @Keep
     data class LocalUsage(
         val monthTranscriptions: Int,
         val monthMinutes: Double,
@@ -129,7 +152,6 @@ object BillingManager {
         )
     }
 
-    /** Costo exacto post-transcripción (usa duración real de metadata.duration). */
     fun actualCost(
         durationSeconds: Double,
         mode: LanguageMode,
@@ -146,8 +168,16 @@ object BillingManager {
     fun checkHardStop(
         context: Context,
         estimatedUsd: Double,
-        officialBalance: Double?
+        officialBalance: Double?,
+        hasFreePath: Boolean
     ): HardStop {
+        if (hasFreePath) return HardStop.Ok
+
+        if (!getAllowPaidFallback(context) && estimatedUsd > 0.0 && officialBalance == null) {
+            // Solo Deepgram estimado sin free path — dejar que el router decida;
+            // hard-stop clásico si hay balance oficial bajo.
+        }
+
         val reserve = getMinReserve(context)
         val cap = getAppCap(context)
         val appSpent = getAppSpent(context)
@@ -242,6 +272,134 @@ object BillingManager {
         prefs(context).edit().putFloat(KEY_APP_SPENT, next.toFloat()).apply()
     }
 
+    fun getAllowPaidFallback(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_ALLOW_PAID, false)
+
+    fun setAllowPaidFallback(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_ALLOW_PAID, value).apply()
+    }
+
+    fun getRemoteConfigUrl(context: Context): String =
+        prefs(context).getString(KEY_REMOTE_CONFIG_URL, "")?.trim().orEmpty()
+            .ifBlank { "https://klipnote.iareal.net/config/stt-router.json" }
+
+    fun setRemoteConfigUrl(context: Context, url: String) {
+        prefs(context).edit().putString(KEY_REMOTE_CONFIG_URL, url.trim()).apply()
+    }
+
+    fun getLastOfferCheckMs(context: Context): Long =
+        prefs(context).getLong(KEY_LAST_OFFER_CHECK, 0L)
+
+    fun setLastOfferCheckMs(context: Context, ms: Long) {
+        prefs(context).edit().putLong(KEY_LAST_OFFER_CHECK, ms).apply()
+    }
+
+    // --- Groq daily ---
+
+    fun getGroqRemainingSeconds(context: Context): Double {
+        ensureGroqDay(context)
+        return prefs(context).getFloat(KEY_GROQ_REMAINING, GROQ_DAILY_SECONDS.toFloat()).toDouble()
+    }
+
+    fun getGroqLimitSeconds(context: Context): Double {
+        ensureGroqDay(context)
+        return prefs(context).getFloat(KEY_GROQ_LIMIT, GROQ_DAILY_SECONDS.toFloat()).toDouble()
+    }
+
+    fun setGroqRemainingFromHeaders(
+        context: Context,
+        remaining: Double,
+        limit: Double?,
+        resetSeconds: Double?
+    ) {
+        ensureGroqDay(context)
+        val ed = prefs(context).edit()
+            .putFloat(KEY_GROQ_REMAINING, remaining.toFloat().coerceAtLeast(0f))
+        if (limit != null && limit > 0) {
+            ed.putFloat(KEY_GROQ_LIMIT, limit.toFloat())
+        }
+        ed.apply()
+        // resetSeconds informativo; el reset diario local cubre medianoche.
+        resetSeconds
+    }
+
+    fun consumeGroqSeconds(context: Context, seconds: Double) {
+        ensureGroqDay(context)
+        val next = (getGroqRemainingSeconds(context) - seconds).coerceAtLeast(0.0)
+        prefs(context).edit().putFloat(KEY_GROQ_REMAINING, next.toFloat()).apply()
+    }
+
+    private fun ensureGroqDay(context: Context) {
+        val day = utcDayKey()
+        val p = prefs(context)
+        if (p.getString(KEY_GROQ_DAY, null) == day) return
+        p.edit()
+            .putString(KEY_GROQ_DAY, day)
+            .putFloat(KEY_GROQ_REMAINING, GROQ_DAILY_SECONDS.toFloat())
+            .putFloat(KEY_GROQ_LIMIT, GROQ_DAILY_SECONDS.toFloat())
+            .apply()
+    }
+
+    private fun utcDayKey(): String {
+        val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+        return String.format(
+            Locale.US,
+            "%04d-%02d-%02d",
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH) + 1,
+            cal.get(Calendar.DAY_OF_MONTH)
+        )
+    }
+
+    // --- AssemblyAI pool ---
+
+    fun getAssemblyUsedSeconds(context: Context): Double =
+        prefs(context).getFloat(KEY_ASSEMBLY_USED, 0f).toDouble()
+
+    fun setAssemblyUsedSeconds(context: Context, seconds: Double) {
+        prefs(context).edit()
+            .putFloat(KEY_ASSEMBLY_USED, seconds.toFloat().coerceAtLeast(0f))
+            .apply()
+    }
+
+    fun getAssemblyRemainingSeconds(context: Context): Double =
+        (ASSEMBLY_POOL_SECONDS - getAssemblyUsedSeconds(context)).coerceAtLeast(0.0)
+
+    fun consumeAssemblySeconds(context: Context, seconds: Double) {
+        setAssemblyUsedSeconds(context, getAssemblyUsedSeconds(context) + seconds)
+    }
+
+    // --- Circuit breaker state ---
+
+    fun markPromoEnded(provider: SttProvider) {
+        promoEnded.add(provider)
+    }
+
+    fun isPromoEnded(provider: SttProvider): Boolean = promoEnded.contains(provider)
+
+    fun clearPromoEnded(provider: SttProvider) {
+        promoEnded.remove(provider)
+    }
+
+    fun markCooldown(provider: SttProvider, retryAfterSeconds: Long?) {
+        val wait = (retryAfterSeconds ?: 60L).coerceAtLeast(5L)
+        cooldownUntilMs[provider] = System.currentTimeMillis() + wait * 1000L
+    }
+
+    fun isInCooldown(provider: SttProvider): Boolean {
+        val until = cooldownUntilMs[provider] ?: return false
+        if (System.currentTimeMillis() >= until) {
+            cooldownUntilMs.remove(provider)
+            return false
+        }
+        return true
+    }
+
+    fun cooldownRemainingSeconds(provider: SttProvider): Long {
+        val until = cooldownUntilMs[provider] ?: return 0L
+        return ((until - System.currentTimeMillis()) / 1000L).coerceAtLeast(0L)
+    }
+
     fun recordLocalUsage(context: Context, durationSeconds: Double) {
         ensureCurrentMonth(context)
         val p = prefs(context)
@@ -329,7 +487,8 @@ object BillingManager {
                             balanceAfter = o.optDoubleOrNull("balanceAfter"),
                             officialDeltaUsd = o.optDoubleOrNull("officialDeltaUsd"),
                             transcript = o.optString("transcript"),
-                            audioPath = o.optString("audioPath").takeIf { it.isNotBlank() }
+                            audioPath = o.optString("audioPath").takeIf { it.isNotBlank() },
+                            provider = o.optString("provider").takeIf { it.isNotBlank() }
                         )
                     )
                 }
@@ -346,7 +505,8 @@ object BillingManager {
         balanceBefore: Double?,
         balanceAfter: Double?,
         transcript: String,
-        audioPath: String? = null
+        audioPath: String? = null,
+        provider: String? = null
     ): HistoryEntry {
         val delta = if (balanceBefore != null && balanceAfter != null) {
             balanceBefore - balanceAfter
@@ -365,7 +525,8 @@ object BillingManager {
             balanceAfter = balanceAfter,
             officialDeltaUsd = delta,
             transcript = transcript,
-            audioPath = audioPath
+            audioPath = audioPath,
+            provider = provider
         )
     }
 
@@ -390,6 +551,8 @@ object BillingManager {
                     put("transcript", e.transcript)
                     if (e.audioPath != null) put("audioPath", e.audioPath)
                     else put("audioPath", JSONObject.NULL)
+                    if (e.provider != null) put("provider", e.provider)
+                    else put("provider", JSONObject.NULL)
                 }
             )
         }
@@ -405,8 +568,27 @@ object BillingManager {
     private fun historyFile(context: Context): File =
         File(context.filesDir, HISTORY_FILE)
 
-    private fun prefs(context: Context) =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private fun prefs(context: Context): android.content.SharedPreferences {
+        val app = context.applicationContext
+        val modern = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (modern.all.isNotEmpty()) return modern
+        // Migración one-shot desde prefs DeepCopy.
+        val legacy = app.getSharedPreferences(LEGACY_PREFS, Context.MODE_PRIVATE)
+        if (legacy.all.isEmpty()) return modern
+        modern.edit().apply {
+            legacy.all.forEach { (k, v) ->
+                when (v) {
+                    is String -> putString(k, v)
+                    is Int -> putInt(k, v)
+                    is Long -> putLong(k, v)
+                    is Float -> putFloat(k, v)
+                    is Boolean -> putBoolean(k, v)
+                }
+            }
+            apply()
+        }
+        return modern
+    }
 
     private fun resolveDisplayName(context: Context, uri: Uri): String {
         context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
