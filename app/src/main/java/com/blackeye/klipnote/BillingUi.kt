@@ -671,7 +671,10 @@ fun CostHistorySheet(
     onDismiss: () -> Unit,
     onOpen: (BillingManager.HistoryEntry) -> Unit,
     onDelete: (BillingManager.HistoryEntry) -> Unit,
-    onCopyTranscript: (String) -> Unit
+    onCopyTranscript: (String) -> Unit,
+    onOpenSavedMedia: ((SavedMediaInfo) -> Unit)? = null,
+    onShareSavedMedia: ((SavedMediaInfo) -> Unit)? = null,
+    onOpenDownloads: (() -> Unit)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
@@ -708,7 +711,10 @@ fun CostHistorySheet(
                             entry = entry,
                             onOpen = { onOpen(entry) },
                             onDelete = { onDelete(entry) },
-                            onCopy = { onCopyTranscript(entry.transcript) }
+                            onCopy = { onCopyTranscript(entry.transcript) },
+                            onOpenSavedMedia = onOpenSavedMedia,
+                            onShareSavedMedia = onShareSavedMedia,
+                            onOpenDownloads = onOpenDownloads
                         )
                     }
                 }
@@ -722,8 +728,16 @@ private fun HistoryRow(
     entry: BillingManager.HistoryEntry,
     onOpen: () -> Unit,
     onDelete: () -> Unit,
-    onCopy: () -> Unit
+    onCopy: () -> Unit,
+    onOpenSavedMedia: ((SavedMediaInfo) -> Unit)? = null,
+    onShareSavedMedia: ((SavedMediaInfo) -> Unit)? = null,
+    onOpenDownloads: (() -> Unit)? = null
 ) {
+    val saved = SavedMediaActions.fromHistory(
+        entry.downloadUri,
+        entry.downloadDisplayName,
+        entry.downloadIsVideo
+    )
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -746,8 +760,28 @@ private fun HistoryRow(
             color = Muted,
             fontSize = 12.sp
         )
+        if (saved != null) {
+            Text(
+                "✅ Guardado en Descargas/KlipNote: ${saved.displayName}",
+                color = Accent,
+                fontSize = 12.sp
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(0.dp)) {
+                TextButton(onClick = { onOpenSavedMedia?.invoke(saved) }) {
+                    Text(saved.openLabel, color = Accent, fontSize = 12.sp)
+                }
+                TextButton(onClick = { onOpenDownloads?.invoke() }) {
+                    Text("Ver en Descargas", color = Accent, fontSize = 12.sp)
+                }
+                TextButton(onClick = { onShareSavedMedia?.invoke(saved) }) {
+                    Text("Compartir", color = Accent, fontSize = 12.sp)
+                }
+            }
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            TextButton(onClick = onOpen) { Text("Abrir", color = Accent) }
+            TextButton(onClick = onOpen, enabled = entry.transcript.isNotBlank()) {
+                Text("Abrir", color = Accent)
+            }
             TextButton(onClick = onCopy, enabled = entry.transcript.isNotBlank()) {
                 Text("Copiar", color = Accent)
             }

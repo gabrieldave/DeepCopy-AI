@@ -69,14 +69,11 @@ jobs:
           ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/release.jks
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: gradle assembleRelease --console=plain
 
       # ---------- Camino 2: APK debug (forks / PRs) ----------
       - name: Assemble debug APK
         if: steps.signing.outputs.signed != 'true'
-        env:
-          GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: gradle assembleDebug --console=plain
 
       - name: Resolve APK and version
@@ -84,10 +81,8 @@ jobs:
         run: |
           if [ "${{ steps.signing.outputs.signed }}" = "true" ]; then
             SRC=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
-            SUFFIX=""
           else
             SRC=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
-            SUFFIX="-debug"
           fi
           test -n "$SRC"
           AAPT2=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort | tail -n 1)
@@ -96,7 +91,8 @@ jobs:
           VCODE=$(echo "$BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")
           echo "versionName=$VNAME" >> "$GITHUB_OUTPUT"
           echo "versionCode=$VCODE" >> "$GITHUB_OUTPUT"
-          DEST="KlipNote-v${VNAME}${SUFFIX}.apk"
+          # versionNameSuffix="-debug" del buildType ya va en VNAME; no duplicar.
+          DEST="KlipNote-v${VNAME}.apk"
           cp "$SRC" "$DEST"
           echo "APK_PATH=$DEST" >> "$GITHUB_ENV"
           ls -lh "$DEST"
