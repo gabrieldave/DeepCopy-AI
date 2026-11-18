@@ -109,7 +109,10 @@ object BillingManager {
         val officialDeltaUsd: Double?,
         val transcript: String,
         val audioPath: String? = null,
-        val provider: String? = null
+        val provider: String? = null,
+        val downloadUri: String? = null,
+        val downloadDisplayName: String? = null,
+        val downloadIsVideo: Boolean = false
     ) {
         val formattedWhen: String
             get() = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
@@ -641,7 +644,11 @@ object BillingManager {
                             officialDeltaUsd = o.optDoubleOrNull("officialDeltaUsd"),
                             transcript = o.optString("transcript"),
                             audioPath = o.optString("audioPath").takeIf { it.isNotBlank() },
-                            provider = o.optString("provider").takeIf { it.isNotBlank() }
+                            provider = o.optString("provider").takeIf { it.isNotBlank() },
+                            downloadUri = o.optString("downloadUri").takeIf { it.isNotBlank() },
+                            downloadDisplayName = o.optString("downloadDisplayName")
+                                .takeIf { it.isNotBlank() },
+                            downloadIsVideo = o.optBoolean("downloadIsVideo", false)
                         )
                     )
                 }
@@ -659,7 +666,10 @@ object BillingManager {
         balanceAfter: Double?,
         transcript: String,
         audioPath: String? = null,
-        provider: String? = null
+        provider: String? = null,
+        downloadUri: String? = null,
+        downloadDisplayName: String? = null,
+        downloadIsVideo: Boolean = false
     ): HistoryEntry {
         val delta = if (balanceBefore != null && balanceAfter != null) {
             balanceBefore - balanceAfter
@@ -679,7 +689,10 @@ object BillingManager {
             officialDeltaUsd = delta,
             transcript = transcript,
             audioPath = audioPath,
-            provider = provider
+            provider = provider,
+            downloadUri = downloadUri,
+            downloadDisplayName = downloadDisplayName,
+            downloadIsVideo = downloadIsVideo
         )
     }
 
@@ -706,6 +719,14 @@ object BillingManager {
                     else put("audioPath", JSONObject.NULL)
                     if (e.provider != null) put("provider", e.provider)
                     else put("provider", JSONObject.NULL)
+                    if (e.downloadUri != null) put("downloadUri", e.downloadUri)
+                    else put("downloadUri", JSONObject.NULL)
+                    if (e.downloadDisplayName != null) {
+                        put("downloadDisplayName", e.downloadDisplayName)
+                    } else {
+                        put("downloadDisplayName", JSONObject.NULL)
+                    }
+                    put("downloadIsVideo", e.downloadIsVideo)
                 }
             )
         }

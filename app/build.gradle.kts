@@ -16,8 +16,8 @@ android {
         targetSdk = 35
 
         // Fuente de verdad única (local). CI no sobrescribe con GITHUB_RUN_NUMBER.
-        versionCode = 123
-        versionName = "1.5.1"
+        versionCode = 124
+        versionName = "1.5.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -121,7 +121,9 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+    implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("androidx.annotation:annotation:1.9.1")
 
