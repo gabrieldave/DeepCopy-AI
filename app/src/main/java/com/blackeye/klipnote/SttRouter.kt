@@ -178,6 +178,8 @@ object SttRouter {
         val hopLog = mutableListOf<String>()
         val started = System.currentTimeMillis()
         var lastError: Exception? = null
+        var sizeSkipCount = 0
+        var otherAttemptFailures = 0
 
         for (provider in cfg.priority) {
             val block = preflightBlockReason(context, provider, deepgramBalanceUsd, cfg)
@@ -207,24 +209,30 @@ object SttRouter {
                 lastError = e
                 when (e.kind) {
                     SttFailureKind.SIZE_SKIP -> {
-                        hopLog += e.message ?: "Tamaño excedido → salto"
+                        sizeSkipCount++
+                        hopLog += "${provider.displayName()}: ${e.message ?: "archivo demasiado grande"} → salto"
                     }
                     SttFailureKind.PROMO_ENDED -> {
+                        otherAttemptFailures++
                         BillingManager.markPromoEnded(provider)
                         hopLog += "${provider.displayName()}: ${e.message} → salto"
                     }
                     SttFailureKind.COOLDOWN -> {
+                        otherAttemptFailures++
                         BillingManager.markCooldown(provider, e.retryAfterSeconds)
                         hopLog += "${provider.displayName()}: COOLDOWN → salto"
                     }
                     SttFailureKind.UNAUTHORIZED, SttFailureKind.MODEL_GONE -> {
+                        otherAttemptFailures++
                         hopLog += "${provider.displayName()}: ${e.message} → salto"
                     }
                     else -> {
+                        otherAttemptFailures++
                         hopLog += "${provider.displayName()}: ${e.message} → salto"
                     }
                 }
             } catch (e: Exception) {
+                otherAttemptFailures++
                 lastError = e
                 hopLog += "${provider.displayName()}: ${e.message?.take(120)} → salto"
             }
@@ -232,12 +240,20 @@ object SttRouter {
 
         val strict = !BillingManager.getAllowPaidFallback(context)
         val detail = hopLog.joinToString(" | ")
-        val msg = if (strict) {
-            "Ningún motor gratis pudo transcribir este audio (sin llave, apagado o sin cuota). " +
-                "Revisa tus llaves en Motores o espera a que se renueve la cuota. " +
-                "Modo \$0 está activo, así que no se usó el de pago. Detalle: $detail"
-        } else {
-            "Ningún motor pudo transcribir este audio. Detalle: $detail"
+        val sizeWasTheBlocker = sizeSkipCount > 0 && otherAttemptFailures == 0
+        val msg = when {
+            sizeWasTheBlocker -> {
+                val mb = String.format("%.1f", audioFile.length() / (1024.0 * 1024.0))
+                "Este audio (${mb} MB) supera el límite de tamaño del motor gratis que tienes " +
+                    "(p. ej. Groq: 25 MB). Agrega otra llave (AssemblyAI o Deepgram aceptan archivos grandes) " +
+                    "o usa un video más corto. Detalle: $detail"
+            }
+            strict -> {
+                "Ningún motor gratis pudo transcribir este audio (sin llave, apagado o sin cuota). " +
+                    "Revisa tus llaves en Motores o espera a que se renueve la cuota. " +
+                    "Modo \$0 está activo, así que no se usó el de pago. Detalle: $detail"
+            }
+            else -> "Ningún motor pudo transcribir este audio. Detalle: $detail"
         }
         // Siempre se muestra el recorrido completo; el último error solo va como causa.
         throw IllegalStateException(msg, lastError)
