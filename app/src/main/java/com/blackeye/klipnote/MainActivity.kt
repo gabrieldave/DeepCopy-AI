@@ -225,6 +225,9 @@ private fun KlipNoteApp(
     var appCap by remember { mutableStateOf(BillingManager.getAppCap(context)) }
     var minReserve by remember { mutableStateOf(BillingManager.getMinReserve(context)) }
     var groqRemaining by remember { mutableStateOf(BillingManager.getGroqRemainingSeconds(context)) }
+    var inworldRemaining by remember {
+        mutableStateOf(BillingManager.getInworldRemainingSeconds(context))
+    }
     var assemblyRemaining by remember {
         mutableStateOf(BillingManager.getAssemblyRemainingSeconds(context))
     }
@@ -249,6 +252,7 @@ private fun KlipNoteApp(
             appSpent = BillingManager.getAppSpent(context)
             localUsage = BillingManager.getLocalUsage(context)
             groqRemaining = BillingManager.getGroqRemainingSeconds(context)
+            inworldRemaining = BillingManager.getInworldRemainingSeconds(context)
             assemblyRemaining = BillingManager.getAssemblyRemainingSeconds(context)
             routeChain = SttRouter.summarizeActiveRoute(context).chainLabel
             historyEntries = BillingManager.loadHistory(context)
@@ -265,6 +269,7 @@ private fun KlipNoteApp(
             }
             providerStatuses = report.statuses
             groqRemaining = BillingManager.getGroqRemainingSeconds(context)
+            inworldRemaining = BillingManager.getInworldRemainingSeconds(context)
             assemblyRemaining = BillingManager.getAssemblyRemainingSeconds(context)
             routeChain = SttRouter.summarizeActiveRoute(context).chainLabel
             verifyingOffers = false
@@ -342,6 +347,7 @@ private fun KlipNoteApp(
                     appSpent = it
                     localUsage = BillingManager.getLocalUsage(context)
                     groqRemaining = BillingManager.getGroqRemainingSeconds(context)
+                    inworldRemaining = BillingManager.getInworldRemainingSeconds(context)
                     assemblyRemaining = BillingManager.getAssemblyRemainingSeconds(context)
                     routeChain = SttRouter.summarizeActiveRoute(context).chainLabel
                 },
@@ -469,6 +475,11 @@ private fun KlipNoteApp(
                     allowPaidFallback = allowPaidFallback,
                     verifyingOffers = verifyingOffers,
                     groqRemainingSeconds = groqRemaining,
+                    inworldRemainingSeconds = inworldRemaining,
+                    inworldUsedMinutesEditable = String.format(
+                        "%.1f",
+                        BillingManager.getInworldUsedSeconds(context) / 60.0
+                    ),
                     assemblyRemainingSeconds = assemblyRemaining,
                     assemblyUsedHoursEditable = String.format(
                         "%.2f",
@@ -487,6 +498,10 @@ private fun KlipNoteApp(
                     allowPaidFallback = enabled
                     BillingManager.setAllowPaidFallback(context, enabled)
                     routeChain = SttRouter.summarizeActiveRoute(context).chainLabel
+                },
+                onInworldUsedMinutesSave = { minutes ->
+                    BillingManager.setInworldUsedSeconds(context, minutes * 60.0)
+                    inworldRemaining = BillingManager.getInworldRemainingSeconds(context)
                 },
                 onAssemblyUsedHoursSave = { hours ->
                     BillingManager.setAssemblyUsedSeconds(context, hours * 3600.0)
@@ -583,6 +598,7 @@ private fun KlipNoteApp(
     if (showKeyDialog) {
         MultiProviderKeysDialog(
             groqMask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.GROQ),
+            inworldMask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.INWORLD),
             assemblyMask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.ASSEMBLY_AI),
             deepgramMask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.DEEPGRAM),
             paidMask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.PAID_FALLBACK),
@@ -595,6 +611,14 @@ private fun KlipNoteApp(
             },
             onClearGroq = {
                 ApiKeyStore.clearGroq(context)
+                refreshDashboard()
+            },
+            onSaveInworld = {
+                ApiKeyStore.setInworld(context, it)
+                refreshDashboard()
+            },
+            onClearInworld = {
+                ApiKeyStore.clearInworld(context)
                 refreshDashboard()
             },
             onSaveAssembly = {

@@ -30,6 +30,7 @@ object OfferHealthMonitor {
         return try {
             val statuses = listOf(
                 checkGroq(context, probe),
+                checkInworld(context, probe),
                 checkAssembly(context),
                 checkDeepgram(context),
                 checkPaid(context)
@@ -61,6 +62,29 @@ object OfferHealthMonitor {
             // Igual re-probar: la oferta pudo volver.
         }
         return GroqClient.healthCheck(context, key, probe)
+    }
+
+    private fun checkInworld(context: Context, probe: File): ProviderStatus {
+        val key = ApiKeyStore.getInworld(context)
+        if (key.isBlank()) {
+            return ProviderStatus(
+                provider = SttProvider.INWORLD,
+                health = ProviderHealth.NO_KEY,
+                label = "Inworld Free",
+                detail = "SIN KEY"
+            )
+        }
+        val remaining = BillingManager.getInworldRemainingSeconds(context)
+        if (remaining <= 0.0) {
+            return ProviderStatus(
+                provider = SttProvider.INWORLD,
+                health = ProviderHealth.PAUSED_LIMIT,
+                label = "Inworld Free",
+                detail = "LÍMITE MENSUAL",
+                remainingSeconds = 0.0
+            )
+        }
+        return InworldClient.healthCheck(context, key, probe)
     }
 
     private fun checkAssembly(context: Context): ProviderStatus =

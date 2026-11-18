@@ -5,7 +5,8 @@ import androidx.annotation.Keep
 import java.io.File
 
 /**
- * Router STT en cascada con auto-salto (failover) y circuit breaker reactivo.
+ * Router STT en cascada (5 niveles) con auto-salto y circuit breaker reactivo.
+ * 1 Groq Free → 2 Inworld Free → 3 AssemblyAI → 4 Deepgram → 5 Pagado
  */
 object SttRouter {
 
@@ -25,6 +26,10 @@ object SttRouter {
                 val h = BillingManager.getGroqRemainingSeconds(context) / 3600.0
                 "Groq Free (${String.format("%.1fh", h)} hoy)"
             }
+            SttProvider.INWORLD -> {
+                val m = BillingManager.getInworldRemainingSeconds(context) / 60.0
+                "Inworld Free (${String.format("%.0fm", m)}/mes)"
+            }
             SttProvider.ASSEMBLY_AI -> {
                 val h = BillingManager.getAssemblyRemainingSeconds(context) / 3600.0
                 "AssemblyAI (${String.format("%.1fh", h)} bolsa)"
@@ -43,7 +48,10 @@ object SttRouter {
             }
         }
         val hasFree = available.any {
-            it == SttProvider.GROQ_FREE || it == SttProvider.ASSEMBLY_AI || it == SttProvider.DEEPGRAM
+            it == SttProvider.GROQ_FREE ||
+                it == SttProvider.INWORLD ||
+                it == SttProvider.ASSEMBLY_AI ||
+                it == SttProvider.DEEPGRAM
         }
         return ActiveRouteSummary(
             primaryLabel = primaryLabel,
@@ -93,6 +101,12 @@ object SttRouter {
                 hopLog += "Groq Free: cuota diaria agotada → salto"
                 continue
             }
+            if (provider == SttProvider.INWORLD &&
+                BillingManager.getInworldRemainingSeconds(context) <= 0.0
+            ) {
+                hopLog += "Inworld Free: 400m/mes agotados → salto"
+                continue
+            }
             if (provider == SttProvider.ASSEMBLY_AI &&
                 BillingManager.getAssemblyRemainingSeconds(context) <= 0.0
             ) {
@@ -115,6 +129,16 @@ object SttRouter {
                         mimeType = mimeType,
                         model = cfg.groqModel,
                         enforceFreeSizeLimit = true
+                    )
+                    SttProvider.INWORLD -> InworldClient.transcribe(
+                        context = context,
+                        apiKey = ApiKeyStore.getInworld(context),
+                        file = audioFile,
+                        mimeType = mimeType,
+                        languageHint = when (mode) {
+                            LanguageMode.AUTO -> null
+                            LanguageMode.MULTI -> null
+                        }
                     )
                     SttProvider.ASSEMBLY_AI -> AssemblyAiClient.transcribe(
                         context = context,
@@ -155,7 +179,7 @@ object SttRouter {
                 lastError = e
                 when (e.kind) {
                     SttFailureKind.SIZE_SKIP -> {
-                        hopLog += e.message ?: "Archivo >24MB → Saltando a Nivel 2"
+                        hopLog += e.message ?: "Tamaño excedido → salto"
                     }
                     SttFailureKind.PROMO_ENDED -> {
                         BillingManager.markPromoEnded(provider)
@@ -190,6 +214,7 @@ object SttRouter {
 
     private fun isConfigured(context: Context, provider: SttProvider): Boolean = when (provider) {
         SttProvider.GROQ_FREE -> ApiKeyStore.hasSlot(context, ApiKeyStore.ProviderSlot.GROQ)
+        SttProvider.INWORLD -> ApiKeyStore.hasSlot(context, ApiKeyStore.ProviderSlot.INWORLD)
         SttProvider.ASSEMBLY_AI -> ApiKeyStore.hasSlot(context, ApiKeyStore.ProviderSlot.ASSEMBLY_AI)
         SttProvider.DEEPGRAM -> ApiKeyStore.hasSlot(context, ApiKeyStore.ProviderSlot.DEEPGRAM)
         SttProvider.PAID_FALLBACK -> ApiKeyStore.hasSlot(context, ApiKeyStore.ProviderSlot.PAID_FALLBACK)

@@ -23,6 +23,7 @@ data class TranscriptionResult(
 @Keep
 enum class SttProvider {
     GROQ_FREE,
+    INWORLD,
     ASSEMBLY_AI,
     DEEPGRAM,
     PAID_FALLBACK
@@ -108,6 +109,7 @@ data class ProviderStatus(
 
 fun SttProvider.displayName(): String = when (this) {
     SttProvider.GROQ_FREE -> "Groq Free"
+    SttProvider.INWORLD -> "Inworld Free"
     SttProvider.ASSEMBLY_AI -> "AssemblyAI"
     SttProvider.DEEPGRAM -> "Deepgram"
     SttProvider.PAID_FALLBACK -> "Respaldo Pagado"

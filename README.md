@@ -15,9 +15,12 @@ App Android nativa (`com.blackeye.klipnote`) para transcribir audio/video local 
 ## Motores (prioridad)
 
 1. **Groq Free** — `whisper-large-v3-turbo`, tope 25MB, cuota diaria (~8h)
-2. **AssemblyAI** — bolsa gratis 185h (ajustable manualmente)
-3. **Deepgram Nova-3** — créditos $200 USD con umbral de seguridad $1
-4. **Respaldo Pagado** — Microsoft MAI / Groq Paid (switch explícito)
+2. **Inworld Free** — `inworld/inworld-stt-1`, sync `POST /stt/v1/transcribe`, ~16 MiB/request, 400 min/mes renovables
+3. **AssemblyAI** — bolsa gratis $50 USD (~185h)
+4. **Deepgram Nova-3** — créditos $200 USD con umbral de seguridad $1
+5. **Respaldo Pagado** — Microsoft MAI / Groq Paid (switch explícito)
+
+Versión: `versionName = 1.2.1`, `versionCode = 109`.
 
 ## Requisitos
 

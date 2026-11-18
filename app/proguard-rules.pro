@@ -6,6 +6,8 @@
 
 -keep class com.blackeye.klipnote.** { *; }
 -keepclassmembers class com.blackeye.klipnote.** { *; }
+-keep class com.blackeye.klipnote.InworldClient { *; }
+-keep class com.blackeye.klipnote.InworldClient$InworldUsage { *; }
 
 -dontwarn okhttp3.**
 -dontwarn okio.**

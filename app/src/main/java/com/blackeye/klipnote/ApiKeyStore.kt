@@ -25,6 +25,8 @@ object ApiKeyStore {
     private const val KEY_GROQ_LAST4 = "groq_api_key_last4"
     private const val KEY_ASSEMBLY = "assemblyai_api_key"
     private const val KEY_ASSEMBLY_LAST4 = "assemblyai_api_key_last4"
+    private const val KEY_INWORLD = "inworld_api_key"
+    private const val KEY_INWORLD_LAST4 = "inworld_api_key_last4"
     private const val KEY_PAID = "paid_fallback_api_key"
     private const val KEY_PAID_LAST4 = "paid_fallback_api_key_last4"
     private const val KEY_PAID_ENDPOINT = "paid_fallback_endpoint"
@@ -38,7 +40,7 @@ object ApiKeyStore {
 
     @Keep
     enum class ProviderSlot {
-        GROQ, ASSEMBLY_AI, DEEPGRAM, PAID_FALLBACK
+        GROQ, INWORLD, ASSEMBLY_AI, DEEPGRAM, PAID_FALLBACK
     }
 
     fun getDeepgram(context: Context): String = getSlot(context, ProviderSlot.DEEPGRAM)
@@ -48,6 +50,11 @@ object ApiKeyStore {
     fun getGroq(context: Context): String = getSlot(context, ProviderSlot.GROQ)
     fun setGroq(context: Context, value: String) = setSlot(context, ProviderSlot.GROQ, value)
     fun clearGroq(context: Context) = clearSlot(context, ProviderSlot.GROQ)
+
+    fun getInworld(context: Context): String = getSlot(context, ProviderSlot.INWORLD)
+    fun setInworld(context: Context, value: String) =
+        setSlot(context, ProviderSlot.INWORLD, InworldClient.normalizeCredential(value))
+    fun clearInworld(context: Context) = clearSlot(context, ProviderSlot.INWORLD)
 
     fun getAssemblyAi(context: Context): String = getSlot(context, ProviderSlot.ASSEMBLY_AI)
     fun setAssemblyAi(context: Context, value: String) = setSlot(context, ProviderSlot.ASSEMBLY_AI, value)
@@ -216,6 +223,7 @@ object ApiKeyStore {
 
     private fun keyFor(slot: ProviderSlot): String = when (slot) {
         ProviderSlot.GROQ -> KEY_GROQ
+        ProviderSlot.INWORLD -> KEY_INWORLD
         ProviderSlot.ASSEMBLY_AI -> KEY_ASSEMBLY
         ProviderSlot.DEEPGRAM -> KEY_DEEPGRAM
         ProviderSlot.PAID_FALLBACK -> KEY_PAID
@@ -223,6 +231,7 @@ object ApiKeyStore {
 
     private fun last4KeyFor(slot: ProviderSlot): String = when (slot) {
         ProviderSlot.GROQ -> KEY_GROQ_LAST4
+        ProviderSlot.INWORLD -> KEY_INWORLD_LAST4
         ProviderSlot.ASSEMBLY_AI -> KEY_ASSEMBLY_LAST4
         ProviderSlot.DEEPGRAM -> KEY_DEEPGRAM_LAST4
         ProviderSlot.PAID_FALLBACK -> KEY_PAID_LAST4

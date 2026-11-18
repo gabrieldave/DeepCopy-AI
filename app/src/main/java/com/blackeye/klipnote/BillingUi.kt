@@ -70,6 +70,8 @@ data class CreditUiState(
     val allowPaidFallback: Boolean = false,
     val verifyingOffers: Boolean = false,
     val groqRemainingSeconds: Double = BillingManager.GROQ_DAILY_SECONDS,
+    val inworldRemainingSeconds: Double = BillingManager.INWORLD_MONTHLY_SECONDS,
+    val inworldUsedMinutesEditable: String = "0",
     val assemblyRemainingSeconds: Double = BillingManager.ASSEMBLY_POOL_SECONDS,
     val assemblyUsedHoursEditable: String = "0"
 )
@@ -83,6 +85,7 @@ fun CreditControlPanel(
     onOpenCostSettings: () -> Unit,
     onVerifyOffers: () -> Unit,
     onAllowPaidChange: (Boolean) -> Unit,
+    onInworldUsedMinutesSave: (Double) -> Unit,
     onAssemblyUsedHoursSave: (Double) -> Unit,
     onOpenKeys: () -> Unit
 ) {
@@ -167,15 +170,25 @@ fun CreditControlPanel(
                 )
                 MotorQuotaCard(
                     level = "2",
+                    title = "Inworld Free",
+                    detail = "${String.format("%.0f", state.inworldRemainingSeconds / 60.0)}m / 400m mes",
+                    progress = (state.inworldRemainingSeconds / BillingManager.INWORLD_MONTHLY_SECONDS)
+                        .toFloat()
+                        .coerceIn(0f, 1f),
+                    status = state.providerStatuses.firstOrNull { it.provider == SttProvider.INWORLD }
+                )
+                MotorQuotaCard(
+                    level = "3",
                     title = "AssemblyAI",
-                    detail = "${String.format("%.1f", state.assemblyRemainingSeconds / 3600.0)}h / 185h bolsa",
+                    detail = "Bolsa Gratis \$50 USD (~185h) · " +
+                        "${String.format("%.1f", state.assemblyRemainingSeconds / 3600.0)}h rest.",
                     progress = (state.assemblyRemainingSeconds / BillingManager.ASSEMBLY_POOL_SECONDS)
                         .toFloat()
                         .coerceIn(0f, 1f),
                     status = state.providerStatuses.firstOrNull { it.provider == SttProvider.ASSEMBLY_AI }
                 )
                 MotorQuotaCard(
-                    level = "3",
+                    level = "4",
                     title = "Deepgram \$200",
                     detail = if (official != null) {
                         BillingManager.formatUsd(official, 2)
@@ -187,14 +200,20 @@ fun CreditControlPanel(
                     barColor = barColor
                 )
                 MotorQuotaCard(
-                    level = "4",
+                    level = "5",
                     title = "Respaldo Pagado",
                     detail = if (state.allowPaidFallback) "Habilitado" else "Modo \$0 Estricto",
                     progress = if (state.allowPaidFallback) 1f else 0f,
                     status = state.providerStatuses.firstOrNull { it.provider == SttProvider.PAID_FALLBACK }
                 )
 
-                AssemblyUsedEditor(
+                QuotaAdjustEditor(
+                    label = "Minutos Inworld ya usados (mes)",
+                    initialText = state.inworldUsedMinutesEditable,
+                    onSave = onInworldUsedMinutesSave
+                )
+                QuotaAdjustEditor(
+                    label = "Horas AssemblyAI ya usadas",
                     initialText = state.assemblyUsedHoursEditable,
                     onSave = onAssemblyUsedHoursSave
                 )
@@ -280,9 +299,18 @@ private fun MotorQuotaCard(
     barColor: Color = Accent
 ) {
     val health = status?.health ?: ProviderHealth.NO_KEY
+    val isInworld = status?.provider == SttProvider.INWORLD
     val (emoji, healthLabel, tint) = when (health) {
-        ProviderHealth.ACTIVE_FREE -> Triple("🟢", "ACTIVO (Gratis)", Accent)
-        ProviderHealth.PAUSED_LIMIT -> Triple("🟡", "EN PAUSA / LÍMITE DIARIO", Amber)
+        ProviderHealth.ACTIVE_FREE -> Triple(
+            "🟢",
+            if (isInworld) "ACTIVO 400m/mes" else "ACTIVO (Gratis)",
+            Accent
+        )
+        ProviderHealth.PAUSED_LIMIT -> Triple(
+            "🟡",
+            if (isInworld) "LÍMITE MENSUAL" else "EN PAUSA / LÍMITE DIARIO",
+            Amber
+        )
         ProviderHealth.OFFER_ENDED -> Triple("🔴", "OFERTA TERMINADA / SIN SALDO", Red)
         ProviderHealth.COOLDOWN -> Triple("🟡", "COOLDOWN", Amber)
         ProviderHealth.NO_KEY -> Triple("⚪", "SIN KEY", Muted)
@@ -320,7 +348,8 @@ private fun MotorQuotaCard(
 }
 
 @Composable
-private fun AssemblyUsedEditor(
+private fun QuotaAdjustEditor(
+    label: String,
     initialText: String,
     onSave: (Double) -> Unit
 ) {
@@ -333,15 +362,15 @@ private fun AssemblyUsedEditor(
         OutlinedTextField(
             value = text,
             onValueChange = { text = it },
-            label = { Text("Horas AssemblyAI ya usadas") },
+            label = { Text(label) },
             singleLine = true,
             modifier = Modifier.weight(1f),
             colors = fieldColors()
         )
         TextButton(
             onClick = {
-                val hours = text.toDoubleOrNull() ?: return@TextButton
-                onSave(hours)
+                val value = text.toDoubleOrNull() ?: return@TextButton
+                onSave(value)
             }
         ) {
             Text("Ajustar", color = Accent)
@@ -598,6 +627,7 @@ fun CostSettingsDialog(
 @Composable
 fun MultiProviderKeysDialog(
     groqMask: String?,
+    inworldMask: String?,
     assemblyMask: String?,
     deepgramMask: String?,
     paidMask: String?,
@@ -606,6 +636,8 @@ fun MultiProviderKeysDialog(
     onDismiss: () -> Unit,
     onSaveGroq: (String) -> Unit,
     onClearGroq: () -> Unit,
+    onSaveInworld: (String) -> Unit,
+    onClearInworld: () -> Unit,
     onSaveAssembly: (String) -> Unit,
     onClearAssembly: () -> Unit,
     onSaveDeepgram: (String) -> Unit,
@@ -633,13 +665,19 @@ fun MultiProviderKeysDialog(
                     onClear = onClearGroq
                 )
                 KeySlotRow(
-                    title = "2 · AssemblyAI",
+                    title = "2 · Inworld Free (Basic Base64)",
+                    mask = inworldMask,
+                    onSave = onSaveInworld,
+                    onClear = onClearInworld
+                )
+                KeySlotRow(
+                    title = "3 · AssemblyAI",
                     mask = assemblyMask,
                     onSave = onSaveAssembly,
                     onClear = onClearAssembly
                 )
                 KeySlotRow(
-                    title = "3 · Deepgram",
+                    title = "4 · Deepgram",
                     mask = deepgramMask,
                     onSave = onSaveDeepgram,
                     onClear = onClearDeepgram
@@ -714,7 +752,7 @@ private fun PaidKeySlot(
     var endpointText by remember { mutableStateOf(endpoint) }
     var engineSel by remember { mutableStateOf(engine) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("4 · Respaldo Pagado", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Text("5 · Respaldo Pagado", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextButton(onClick = { engineSel = PaidFallbackEngine.GROQ_PAID }) {
                 Text(
