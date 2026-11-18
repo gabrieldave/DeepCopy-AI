@@ -136,10 +136,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
-    // Seal / junkfood02 fork — Maven Central verificado 0.17.3
-    implementation("io.github.junkfood02.youtubedl-android:library:0.17.3")
-    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.17.3")
-    implementation("io.github.junkfood02.youtubedl-android:aria2c:0.17.3")
+    // Seal / junkfood02 fork — 0.18.1 incluye QuickJS (libqjs.so) para YouTube EJS
+    implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
+    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
+    implementation("io.github.junkfood02.youtubedl-android:aria2c:0.18.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
