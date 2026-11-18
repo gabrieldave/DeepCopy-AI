@@ -65,7 +65,10 @@ object BillingManager {
     /** Tope provisional hasta la primera respuesta con headers de Groq (ventana ~1h). */
     const val GROQ_DEFAULT_LIMIT_SECONDS = 7_200.0
     const val INWORLD_MONTHLY_SECONDS = 24_000.0 // 400 minutos
-    const val ASSEMBLY_POOL_SECONDS = 666_000.0 // 185h
+    const val ASSEMBLY_POOL_SECONDS = 666_000.0 // 185h (estimación del regalo de $50)
+    /** Regalo de AssemblyAI en USD y tarifa estimada usada para convertir saldo ↔ horas. */
+    const val ASSEMBLY_POOL_USD = 50.0
+    const val ASSEMBLY_EST_USD_PER_HOUR = ASSEMBLY_POOL_USD / (ASSEMBLY_POOL_SECONDS / 3600.0)
 
     private val cooldownUntilMs = ConcurrentHashMap<SttProvider, Long>()
     private val promoEnded = ConcurrentHashMap.newKeySet<SttProvider>()
@@ -317,9 +320,31 @@ object BillingManager {
         prefs(context).edit().putBoolean(KEY_ALLOW_PAID, value).apply()
     }
 
+    /**
+     * URL de config remota. Por defecto: config/stt-router.json del repo de GitHub
+     * con el que se compiló el APK (BuildConfig). Vacía = desactivada (la app usa sus valores).
+     */
     fun getRemoteConfigUrl(context: Context): String =
         prefs(context).getString(KEY_REMOTE_CONFIG_URL, "")?.trim().orEmpty()
-            .ifBlank { "https://klipnote.iareal.net/config/stt-router.json" }
+            .ifBlank { BuildConfig.REMOTE_CONFIG_URL.trim() }
+
+    // --- Interruptor por motor (el usuario elige cuáles usar) ---
+
+    private fun engineKey(provider: SttProvider) = "engine_enabled_${provider.name}"
+
+    /** El respaldo pagado se controla con Modo $0 (getAllowPaidFallback), no con este interruptor. */
+    fun isEngineEnabled(context: Context, provider: SttProvider): Boolean {
+        if (provider == SttProvider.PAID_FALLBACK) return getAllowPaidFallback(context)
+        return prefs(context).getBoolean(engineKey(provider), true)
+    }
+
+    fun setEngineEnabled(context: Context, provider: SttProvider, enabled: Boolean) {
+        if (provider == SttProvider.PAID_FALLBACK) {
+            setAllowPaidFallback(context, enabled)
+            return
+        }
+        prefs(context).edit().putBoolean(engineKey(provider), enabled).apply()
+    }
 
     fun setRemoteConfigUrl(context: Context, url: String) {
         prefs(context).edit().putString(KEY_REMOTE_CONFIG_URL, url.trim()).apply()
@@ -504,6 +529,17 @@ object BillingManager {
 
     fun getAssemblyRemainingSeconds(context: Context): Double =
         (ASSEMBLY_POOL_SECONDS - getAssemblyUsedSeconds(context)).coerceAtLeast(0.0)
+
+    /** Saldo estimado en USD (lo que el usuario ve en su panel de AssemblyAI). */
+    fun getAssemblyRemainingUsdEstimate(context: Context): Double =
+        (getAssemblyRemainingSeconds(context) / 3600.0) * ASSEMBLY_EST_USD_PER_HOUR
+
+    /** Corrige el contador con el saldo real que el usuario ve en su panel. */
+    fun setAssemblyRemainingUsd(context: Context, remainingUsd: Double) {
+        val usd = remainingUsd.coerceIn(0.0, ASSEMBLY_POOL_USD)
+        val remainingSeconds = (usd / ASSEMBLY_EST_USD_PER_HOUR) * 3600.0
+        setAssemblyUsedSeconds(context, ASSEMBLY_POOL_SECONDS - remainingSeconds)
+    }
 
     fun consumeAssemblySeconds(context: Context, seconds: Double) {
         setAssemblyUsedSeconds(context, getAssemblyUsedSeconds(context) + seconds)

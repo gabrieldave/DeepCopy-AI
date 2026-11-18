@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -173,11 +174,13 @@ fun MultiProviderKeysDialog(
                         fontSize = 18.sp
                     )
                     Text(
-                        "Se guardan y cifran en automático",
+                        "Cada quien pone sus propias llaves. Se cifran y se quedan solo en este teléfono. " +
+                            "No necesitas las 5: con una basta, y la app usa las gratis primero.",
                         color = Muted,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(top = 2.dp)
                     )
+                    ZeroCostWarning(modifier = Modifier.padding(top = 8.dp))
                 }
                 HorizontalDivider(color = BorderSubtle)
                 val scroll = rememberScrollState()
@@ -193,6 +196,7 @@ fun MultiProviderKeysDialog(
                 ) {
                     AutosaveKeyCard(
                         title = "1 · Groq Free",
+                        provider = SttProvider.GROQ_FREE,
                         mask = groqMask,
                         cardBg = LevelBgs[0],
                         flushers = flushers,
@@ -207,6 +211,7 @@ fun MultiProviderKeysDialog(
                     )
                     AutosaveKeyCard(
                         title = "2 · Inworld Free (Basic Base64)",
+                        provider = SttProvider.INWORLD,
                         mask = inworldMask,
                         cardBg = LevelBgs[1],
                         flushers = flushers,
@@ -221,6 +226,7 @@ fun MultiProviderKeysDialog(
                     )
                     AutosaveKeyCard(
                         title = "3 · AssemblyAI",
+                        provider = SttProvider.ASSEMBLY_AI,
                         mask = assemblyMask,
                         cardBg = LevelBgs[2],
                         flushers = flushers,
@@ -296,6 +302,7 @@ fun MultiProviderKeysDialog(
 @Composable
 private fun AutosaveKeyCard(
     title: String,
+    provider: SttProvider,
     mask: String?,
     cardBg: Color,
     flushers: MutableList<() -> Unit>,
@@ -329,7 +336,7 @@ private fun AutosaveKeyCard(
         if (value.isNotBlank()) commit(value)
     }
 
-    LevelCard(title = title, cardBg = cardBg) {
+    LevelCard(title = title, cardBg = cardBg, provider = provider) {
         if (mask != null && !replacing) {
             SavedChip(mask)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -425,7 +432,7 @@ private fun DeepgramAutosaveCard(
         if (projectText.isNotBlank()) commitProject(projectText)
     }
 
-    LevelCard(title = "4 · Deepgram", cardBg = cardBg) {
+    LevelCard(title = "4 · Deepgram", cardBg = cardBg, provider = SttProvider.DEEPGRAM) {
         if (mask != null && !replacing) {
             SavedChip(mask)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -612,7 +619,7 @@ private fun PaidAutosaveCard(
     }
 
     val focusManager = LocalFocusManager.current
-    LevelCard(title = "5 · Respaldo Pagado", cardBg = cardBg) {
+    LevelCard(title = "5 · Respaldo Pagado", cardBg = cardBg, provider = SttProvider.PAID_FALLBACK) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             EngineChip(
                 label = "Groq Paid",
@@ -722,6 +729,7 @@ private fun EngineChip(
 private fun LevelCard(
     title: String,
     cardBg: Color,
+    provider: SttProvider? = null,
     content: @Composable () -> Unit
 ) {
     OutlinedCard(
@@ -737,7 +745,40 @@ private fun LevelCard(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(title, color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            if (provider != null) ProviderGuide(provider)
             content()
+        }
+    }
+}
+
+/** Oferta + "¿Cómo consigo mi llave?" + botón que abre la página del proveedor. */
+@Composable
+private fun ProviderGuide(provider: SttProvider) {
+    val info = ProviderCatalog.info(provider)
+    val uriHandler = LocalUriHandler.current
+    var showSteps by remember { mutableStateOf(false) }
+    Text(
+        ProviderCatalog.offerText(provider),
+        color = if (info.isFree) OnBg else Color(0xFFFBBF24),
+        fontSize = 12.sp
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(
+            onClick = { runCatching { uriHandler.openUri(info.keyUrl) } },
+            border = BorderStroke(1.dp, Accent.copy(alpha = 0.55f)),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+        ) {
+            Text("Conseguir mi llave", color = Accent, fontSize = 12.sp)
+        }
+        TextButton(onClick = { showSteps = !showSteps }) {
+            Text(if (showSteps) "Ocultar pasos" else "¿Cómo?", color = Muted, fontSize = 12.sp)
+        }
+    }
+    AnimatedVisibility(visible = showSteps) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            info.steps.forEachIndexed { i, step ->
+                Text("${i + 1}. $step", color = Muted, fontSize = 11.sp)
+            }
         }
     }
 }
