@@ -59,7 +59,7 @@ import androidx.compose.ui.unit.sp
 private val CardBg = Color(0xFF151C28)
 private val Accent = Color(0xFF10B981)
 private val OnBg = Color(0xFFE8EEF7)
-private val Muted = Color(0xFF8B9BB4)
+private val Muted = Color(0xFFB0BCCE)
 private val Amber = Color(0xFFFBBF24)
 private val Red = Color(0xFFF87171)
 
@@ -103,7 +103,7 @@ fun RoutingModeChips(
                 FilterChip(
                     selected = selection is RoutingSelection.Auto,
                     onClick = onSelectAuto,
-                    label = { Text("⚡ Auto (Cascada)") },
+                    label = { Text("Automático") },
                     colors = FilterChipDefaults.filterChipColors(
                         containerColor = Color(0xFF0F1623),
                         labelColor = Muted,
@@ -141,14 +141,14 @@ fun RoutingModeChips(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "📌 Modo Prueba: ${selection.provider.displayName()}",
+                    "📌 Probando: ${selection.provider.displayName()}",
                     color = Accent,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(onClick = onSelectAuto) {
-                    Text("Volver a Auto", color = Accent)
+                    Text("Volver a Automático", color = Accent)
                 }
             }
         }
@@ -156,6 +156,7 @@ fun RoutingModeChips(
 }
 
 @Composable
+@Suppress("UNUSED_PARAMETER")
 fun CreditControlPanel(
     state: CreditUiState,
     onToggleExpand: () -> Unit,
@@ -170,23 +171,45 @@ fun CreditControlPanel(
     onProbeProvider: (SttProvider) -> Unit = {},
     onEngineEnabledChange: (SttProvider, Boolean) -> Unit = { _, _ -> }
 ) {
+    FreeServicesPanel(
+        state = state,
+        onRefresh = onRefresh,
+        onVerifyOffers = onVerifyOffers,
+        onInworldUsedMinutesSave = onInworldUsedMinutesSave,
+        onAssemblyRemainingUsdSave = onAssemblyRemainingUsdSave,
+        onOpenKeys = onOpenKeys,
+        onProbeProvider = onProbeProvider,
+        onEngineEnabledChange = onEngineEnabledChange
+    )
+}
+
+@Composable
+fun FreeServicesPanel(
+    state: CreditUiState,
+    onRefresh: () -> Unit,
+    onVerifyOffers: () -> Unit,
+    onInworldUsedMinutesSave: (Double) -> Unit,
+    onAssemblyRemainingUsdSave: (Double) -> Unit,
+    onOpenKeys: () -> Unit,
+    onProbeProvider: (SttProvider) -> Unit = {},
+    onEngineEnabledChange: (SttProvider, Boolean) -> Unit = { _, _ -> }
+) {
     val official = state.snapshot?.balanceUsd
-    val localOnly = official == null
     val remainingForBar = official ?: (state.initialCredit - state.appSpent)
-    val progress = (remainingForBar / state.initialCredit).toFloat().coerceIn(0f, 1f)
-    val barColor = when {
-        localOnly -> Accent
+    val progressDg = (remainingForBar / state.initialCredit).toFloat().coerceIn(0f, 1f)
+    val barColorDg = when {
+        official == null -> Accent
         remainingForBar > 50.0 -> Accent
         remainingForBar >= 15.0 -> Amber
         else -> Red
     }
-    val officialSpent = official?.let { state.initialCredit - it }
-    val delta = officialSpent?.let { it - state.appSpent }
-    val hoursLeft = BillingManager.hoursRemainingAtRate(
-        remainingUsd = remainingForBar,
-        mode = state.languageMode,
-        includeDiarize = state.includeDiarizeCost
+    val freeProviders = listOf(
+        SttProvider.GROQ_FREE,
+        SttProvider.INWORLD,
+        SttProvider.ASSEMBLY_AI,
+        SttProvider.DEEPGRAM
     )
+    val connected = freeProviders.count { !state.keyMasks[it].isNullOrBlank() }
 
     Column(
         modifier = Modifier
@@ -194,290 +217,192 @@ fun CreditControlPanel(
             .clip(RoundedCornerShape(16.dp))
             .background(CardBg)
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        if (state.routeChain.isNotBlank()) {
-            Text(state.routeChain, color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-        }
-        ZeroCostWarning()
-
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onToggleExpand),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column(modifier = Modifier.weight(1f)) {
+                SectionHeader("Tus servicios gratis", HelpCopy.SERVICES)
                 Text(
-                    "Motores y Cuotas",
-                    color = OnBg,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp
-                )
-                Text(
-                    "Se usan en orden: si uno se acaba, salta solo al siguiente",
+                    "Tienes $connected de 4 conectados",
                     color = Muted,
-                    fontSize = 11.sp
+                    fontSize = 13.sp
                 )
             }
-            IconButton(onClick = onRefresh, enabled = !state.refreshing) {
-                Icon(
-                    Icons.Default.Refresh,
-                    contentDescription = "Refrescar",
-                    tint = Accent,
-                    modifier = Modifier.size(20.dp)
-                )
+            TextButton(onClick = onOpenKeys) {
+                Text("Mis llaves", color = Accent, fontWeight = FontWeight.SemiBold)
             }
-            IconButton(onClick = onOpenCostSettings) {
-                Icon(Icons.Default.Settings, contentDescription = "Ajustes", tint = Muted)
-            }
-            Icon(
-                if (state.expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                contentDescription = null,
-                tint = Muted
-            )
         }
 
-        AnimatedVisibility(visible = state.expanded) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                MotorQuotaCard(
-                    level = "1",
-                    title = "Groq Free",
-                    detail = BillingManager.formatGroqQuotaDetail(
-                        remainingSeconds = state.groqRemainingSeconds,
-                        limitSeconds = state.groqLimitSeconds,
-                        usedTodaySeconds = state.groqUsedTodaySeconds,
-                        hasLiveQuota = state.groqHasLiveQuota
-                    ),
-                    progress = BillingManager.groqQuotaProgress(
-                        remainingSeconds = state.groqRemainingSeconds,
-                        limitSeconds = state.groqLimitSeconds,
-                        hasLiveQuota = state.groqHasLiveQuota
-                    ),
-                    provider = SttProvider.GROQ_FREE,
-                    status = state.providerStatuses.firstOrNull { it.provider == SttProvider.GROQ_FREE },
-                    keyMask = state.keyMasks[SttProvider.GROQ_FREE],
-                    pinned = state.routingSelection is RoutingSelection.Manual &&
-                        state.routingSelection.provider == SttProvider.GROQ_FREE,
-                    onOpenKeys = onOpenKeys,
-                    onProbe = { onProbeProvider(SttProvider.GROQ_FREE) },
-                    enabled = state.engineEnabled[SttProvider.GROQ_FREE] ?: true,
-                    onEnabledChange = { onEngineEnabledChange(SttProvider.GROQ_FREE, it) }
-                )
-                MotorQuotaCard(
-                    level = "2",
-                    title = "Inworld Free",
-                    detail = "Quedan ~${String.format("%.0f", state.inworldRemainingSeconds / 60.0)} min de 400 este mes",
-                    progress = (state.inworldRemainingSeconds / BillingManager.INWORLD_POOL_SECONDS)
-                        .toFloat()
-                        .coerceIn(0f, 1f),
-                    provider = SttProvider.INWORLD,
-                    status = state.providerStatuses.firstOrNull { it.provider == SttProvider.INWORLD },
-                    keyMask = state.keyMasks[SttProvider.INWORLD],
-                    pinned = state.routingSelection is RoutingSelection.Manual &&
-                        state.routingSelection.provider == SttProvider.INWORLD,
-                    onOpenKeys = onOpenKeys,
-                    onProbe = { onProbeProvider(SttProvider.INWORLD) },
-                    enabled = state.engineEnabled[SttProvider.INWORLD] ?: true,
-                    onEnabledChange = { onEngineEnabledChange(SttProvider.INWORLD, it) }
-                )
-                MotorQuotaCard(
-                    level = "3",
-                    title = "AssemblyAI",
-                    detail = "Saldo ~${BillingManager.formatUsd(
-                        state.assemblyRemainingSeconds / 3600.0 * BillingManager.ASSEMBLY_EST_USD_PER_HOUR, 2
-                    )} de \$50 · ~${String.format("%.1f", state.assemblyRemainingSeconds / 3600.0)} h",
-                    progress = (state.assemblyRemainingSeconds / BillingManager.ASSEMBLY_POOL_SECONDS)
-                        .toFloat()
-                        .coerceIn(0f, 1f),
-                    provider = SttProvider.ASSEMBLY_AI,
-                    status = state.providerStatuses.firstOrNull { it.provider == SttProvider.ASSEMBLY_AI },
-                    keyMask = state.keyMasks[SttProvider.ASSEMBLY_AI],
-                    pinned = state.routingSelection is RoutingSelection.Manual &&
-                        state.routingSelection.provider == SttProvider.ASSEMBLY_AI,
-                    onOpenKeys = onOpenKeys,
-                    onProbe = { onProbeProvider(SttProvider.ASSEMBLY_AI) },
-                    enabled = state.engineEnabled[SttProvider.ASSEMBLY_AI] ?: true,
-                    onEnabledChange = { onEngineEnabledChange(SttProvider.ASSEMBLY_AI, it) }
-                )
-                MotorQuotaCard(
-                    level = "4",
-                    title = "Deepgram \$200",
-                    detail = if (official != null) {
-                        BillingManager.formatUsd(official, 2)
-                    } else {
-                        "Saldo no disponible (la llave no tiene permiso de facturación) · " +
-                            "gastado según la app: ${BillingManager.formatUsd(state.appSpent, 2)}"
-                    },
-                    progress = progress,
-                    provider = SttProvider.DEEPGRAM,
-                    status = state.providerStatuses.firstOrNull { it.provider == SttProvider.DEEPGRAM },
-                    keyMask = state.keyMasks[SttProvider.DEEPGRAM],
-                    pinned = state.routingSelection is RoutingSelection.Manual &&
-                        state.routingSelection.provider == SttProvider.DEEPGRAM,
-                    onOpenKeys = onOpenKeys,
-                    onProbe = { onProbeProvider(SttProvider.DEEPGRAM) },
-                    enabled = state.engineEnabled[SttProvider.DEEPGRAM] ?: true,
-                    onEnabledChange = { onEngineEnabledChange(SttProvider.DEEPGRAM, it) },
-                    barColor = barColor
-                )
-                MotorQuotaCard(
-                    level = "5",
-                    title = "Respaldo Pagado",
-                    detail = if (state.allowPaidFallback) {
-                        "Permitido: se usa solo si fallan todos los gratis"
-                    } else {
-                        "Bloqueado por Modo \$0"
-                    },
-                    progress = if (state.allowPaidFallback) 1f else 0f,
-                    provider = SttProvider.PAID_FALLBACK,
-                    status = state.providerStatuses.firstOrNull { it.provider == SttProvider.PAID_FALLBACK },
-                    keyMask = state.keyMasks[SttProvider.PAID_FALLBACK],
-                    pinned = state.routingSelection is RoutingSelection.Manual &&
-                        state.routingSelection.provider == SttProvider.PAID_FALLBACK,
-                    onOpenKeys = onOpenKeys,
-                    onProbe = { onProbeProvider(SttProvider.PAID_FALLBACK) },
-                    enabled = state.engineEnabled[SttProvider.PAID_FALLBACK] ?: true,
-                    onEnabledChange = { onEngineEnabledChange(SttProvider.PAID_FALLBACK, it) }
-                )
+        ClearServiceRow(
+            name = "Groq",
+            primary = BillingManager.formatGroqQuotaDetail(
+                remainingSeconds = state.groqRemainingSeconds,
+                limitSeconds = state.groqLimitSeconds,
+                usedTodaySeconds = state.groqUsedTodaySeconds,
+                hasLiveQuota = state.groqHasLiveQuota
+            ).let { raw ->
+                val mins = (state.groqRemainingSeconds / 60.0).coerceAtLeast(0.0)
+                if (state.groqHasLiveQuota || state.groqRemainingSeconds > 0) {
+                    "${String.format("%.0f", mins)} min disponibles esta hora"
+                } else raw
+            },
+            progress = BillingManager.groqQuotaProgress(
+                remainingSeconds = state.groqRemainingSeconds,
+                limitSeconds = state.groqLimitSeconds,
+                hasLiveQuota = state.groqHasLiveQuota
+            ),
+            provider = SttProvider.GROQ_FREE,
+            status = state.providerStatuses.firstOrNull { it.provider == SttProvider.GROQ_FREE },
+            keyMask = state.keyMasks[SttProvider.GROQ_FREE],
+            pinned = state.routingSelection is RoutingSelection.Manual &&
+                state.routingSelection.provider == SttProvider.GROQ_FREE,
+            enabled = state.engineEnabled[SttProvider.GROQ_FREE] ?: true,
+            onEnabledChange = { onEngineEnabledChange(SttProvider.GROQ_FREE, it) },
+            onProbe = { onProbeProvider(SttProvider.GROQ_FREE) },
+            onOpenKeys = onOpenKeys,
+            showMeterAdjust = false,
+            meterAdjustLabel = "",
+            meterAdjustInitial = "",
+            onMeterAdjustSave = {}
+        )
+        ClearServiceRow(
+            name = "Inworld",
+            primary = "~${String.format("%.0f", state.inworldRemainingSeconds / 60.0)} min de 400",
+            progress = (state.inworldRemainingSeconds / BillingManager.INWORLD_POOL_SECONDS)
+                .toFloat().coerceIn(0f, 1f),
+            provider = SttProvider.INWORLD,
+            status = state.providerStatuses.firstOrNull { it.provider == SttProvider.INWORLD },
+            keyMask = state.keyMasks[SttProvider.INWORLD],
+            pinned = state.routingSelection is RoutingSelection.Manual &&
+                state.routingSelection.provider == SttProvider.INWORLD,
+            enabled = state.engineEnabled[SttProvider.INWORLD] ?: true,
+            onEnabledChange = { onEngineEnabledChange(SttProvider.INWORLD, it) },
+            onProbe = { onProbeProvider(SttProvider.INWORLD) },
+            onOpenKeys = onOpenKeys,
+            showMeterAdjust = true,
+            meterAdjustLabel = "Minutos usados este mes (según la página)",
+            meterAdjustInitial = state.inworldUsedMinutesEditable,
+            onMeterAdjustSave = onInworldUsedMinutesSave
+        )
+        ClearServiceRow(
+            name = "AssemblyAI",
+            primary = run {
+                val usd = state.assemblyRemainingSeconds / 3600.0 * BillingManager.ASSEMBLY_EST_USD_PER_HOUR
+                "~${BillingManager.formatUsd(usd, 2)} de $50"
+            },
+            progress = (state.assemblyRemainingSeconds / BillingManager.ASSEMBLY_POOL_SECONDS)
+                .toFloat().coerceIn(0f, 1f),
+            provider = SttProvider.ASSEMBLY_AI,
+            status = state.providerStatuses.firstOrNull { it.provider == SttProvider.ASSEMBLY_AI },
+            keyMask = state.keyMasks[SttProvider.ASSEMBLY_AI],
+            pinned = state.routingSelection is RoutingSelection.Manual &&
+                state.routingSelection.provider == SttProvider.ASSEMBLY_AI,
+            enabled = state.engineEnabled[SttProvider.ASSEMBLY_AI] ?: true,
+            onEnabledChange = { onEngineEnabledChange(SttProvider.ASSEMBLY_AI, it) },
+            onProbe = { onProbeProvider(SttProvider.ASSEMBLY_AI) },
+            onOpenKeys = onOpenKeys,
+            showMeterAdjust = true,
+            meterAdjustLabel = "Saldo que ves en la página (USD)",
+            meterAdjustInitial = state.assemblyRemainingUsdEditable,
+            onMeterAdjustSave = onAssemblyRemainingUsdSave
+        )
+        ClearServiceRow(
+            name = "Deepgram",
+            primary = if (official != null) {
+                "${BillingManager.formatUsd(official, 2)} de ${BillingManager.formatUsd(state.initialCredit, 0)}"
+            } else {
+                "Gastado en la app: ${BillingManager.formatUsd(state.appSpent, 2)}"
+            },
+            progress = progressDg,
+            provider = SttProvider.DEEPGRAM,
+            status = state.providerStatuses.firstOrNull { it.provider == SttProvider.DEEPGRAM },
+            keyMask = state.keyMasks[SttProvider.DEEPGRAM],
+            pinned = state.routingSelection is RoutingSelection.Manual &&
+                state.routingSelection.provider == SttProvider.DEEPGRAM,
+            enabled = state.engineEnabled[SttProvider.DEEPGRAM] ?: true,
+            onEnabledChange = { onEngineEnabledChange(SttProvider.DEEPGRAM, it) },
+            onProbe = { onProbeProvider(SttProvider.DEEPGRAM) },
+            onOpenKeys = onOpenKeys,
+            barColor = barColorDg,
+            showMeterAdjust = false,
+            meterAdjustLabel = "",
+            meterAdjustInitial = "",
+            onMeterAdjustSave = {}
+        )
 
-                Text(
-                    "Corregir los medidores «Estimado» con lo que ves en el panel de cada proveedor:",
-                    color = Muted,
-                    fontSize = 11.sp
-                )
-                QuotaAdjustEditor(
-                    label = "Inworld: minutos usados este mes",
-                    initialText = state.inworldUsedMinutesEditable,
-                    onSave = onInworldUsedMinutesSave
-                )
-                QuotaAdjustEditor(
-                    label = "AssemblyAI: saldo que ves (USD)",
-                    initialText = state.assemblyRemainingUsdEditable,
-                    onSave = onAssemblyRemainingUsdSave
-                )
+        InlineHelpLink(
+            label = "ℹ️ Cómo gastar $0",
+            helpTitle = "Cómo gastar $0",
+            helpBody = HelpCopy.ZERO_COST
+        )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        "Modo \$0 (nunca usar el motor de pago)",
-                        color = OnBg,
-                        fontSize = 13.sp,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Switch(
-                        checked = !state.allowPaidFallback,
-                        onCheckedChange = { strict -> onAllowPaidChange(!strict) },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = Accent
-                        )
-                    )
-                }
-
-                Button(
-                    onClick = onVerifyOffers,
-                    enabled = !state.verifyingOffers,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF1A2436),
-                        contentColor = OnBg
-                    ),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Default.Shield, contentDescription = null, tint = Accent)
-                    Spacer(Modifier.size(8.dp))
-                    Text(
-                        if (state.verifyingOffers) "Verificando…" else "Verificar mis llaves y ofertas",
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-                Text(
-                    "Prueba cada llave con un audio de silencio de 0.3 s y te dice si sigue gratis, " +
-                        "en pausa o sin saldo. También se hace sola una vez por semana.",
-                    color = Muted,
-                    fontSize = 11.sp
-                )
-
-                TextButton(onClick = onOpenKeys) {
-                    Text("Configurar API keys (BYOK)", color = Accent)
-                }
-
-                if (state.snapshot?.status == DeepgramBillingClient.BillingScopeStatus.UNAUTHORIZED) {
-                    Text(
-                        "API Key Deepgram rechazada. Usa Reemplazar en llaves.",
-                        color = Amber,
-                        fontSize = 12.sp
-                    )
-                }
-
-                if (!localOnly && official != null) {
-                    Text(
-                        "Te alcanza ~${String.format("%.1f", hoursLeft)}h Deepgram · Δ ${
-                            delta?.let { BillingManager.formatUsd(it, 4) } ?: "—"
-                        }",
-                        color = Muted,
-                        fontSize = 12.sp
-                    )
-                }
-
-                TextButton(onClick = onOpenHistory) {
-                    Icon(Icons.Default.History, contentDescription = null, tint = Accent)
-                    Spacer(Modifier.size(6.dp))
-                    Text("Historial de grabaciones", color = Accent)
-                }
-            }
+        Button(
+            onClick = onVerifyOffers,
+            enabled = !state.verifyingOffers,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF1A2436),
+                contentColor = OnBg
+            ),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Icon(Icons.Default.Shield, contentDescription = null, tint = Accent)
+            Spacer(Modifier.size(8.dp))
+            Text(
+                if (state.verifyingOffers) "Verificando…" else "Verificar mis llaves y ofertas",
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        Text(
+            "Prueba cada llave con un audio corto y te dice si sigue gratis, en pausa o sin saldo.",
+            color = Muted,
+            fontSize = 12.sp
+        )
+        TextButton(onClick = onRefresh, enabled = !state.refreshing) {
+            Icon(Icons.Default.Refresh, contentDescription = null, tint = Accent, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.size(6.dp))
+            Text("Actualizar medidores", color = Accent)
         }
     }
 }
 
 @Composable
-private fun MotorQuotaCard(
-    level: String,
-    title: String,
-    detail: String,
+private fun ClearServiceRow(
+    name: String,
+    primary: String,
     progress: Float,
     provider: SttProvider,
     status: ProviderStatus?,
     keyMask: String?,
     pinned: Boolean,
-    onOpenKeys: () -> Unit,
+    enabled: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
     onProbe: () -> Unit,
+    onOpenKeys: () -> Unit,
     barColor: Color = Accent,
-    enabled: Boolean = true,
-    onEnabledChange: (Boolean) -> Unit = {}
+    showMeterAdjust: Boolean,
+    meterAdjustLabel: String,
+    meterAdjustInitial: String,
+    onMeterAdjustSave: (Double) -> Unit
 ) {
+    var expanded by remember { mutableStateOf(false) }
     val info = ProviderCatalog.info(provider)
     val hasKey = !keyMask.isNullOrBlank()
-    // Regla estricta: con llave en ApiKeyStore NUNCA mostrar SIN KEY.
     val health = when {
         !hasKey -> ProviderHealth.NO_KEY
         status == null || status.health == ProviderHealth.NO_KEY -> ProviderHealth.KEY_READY
         else -> status.health
     }
-    val isInworld = provider == SttProvider.INWORLD
-    val (emoji, healthLabel, tint) = when (health) {
-        ProviderHealth.ACTIVE_FREE -> Triple(
-            "🟢",
-            if (isInworld) "ACTIVO 400m bolsa" else "ACTIVO (Gratis)",
-            Accent
-        )
-        ProviderHealth.KEY_READY -> Triple("🟢", "KEY LISTA", Accent)
-        ProviderHealth.PAUSED_LIMIT -> Triple(
-            "🟡",
-            if (isInworld) "BOLSA AGOTADA" else "EN PAUSA / LÍMITE DIARIO",
-            Amber
-        )
-        ProviderHealth.OFFER_ENDED -> Triple("🔴", "OFERTA TERMINADA / SIN SALDO", Red)
-        ProviderHealth.COOLDOWN -> Triple("🟡", "COOLDOWN", Amber)
-        ProviderHealth.NO_KEY -> Triple("⚪", "SIN KEY", Muted)
-        ProviderHealth.UNKNOWN -> Triple("⚪", status?.detail ?: "—", Muted)
+    val (dot, tint) = when (health) {
+        ProviderHealth.ACTIVE_FREE, ProviderHealth.KEY_READY -> "🟢" to Accent
+        ProviderHealth.PAUSED_LIMIT, ProviderHealth.COOLDOWN -> "🟡" to Amber
+        ProviderHealth.OFFER_ENDED -> "🔴" to Red
+        ProviderHealth.NO_KEY, ProviderHealth.UNKNOWN -> "⚪" to Muted
     }
-    val maskLine = if (hasKey) "Key $keyMask" else "SIN KEY"
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -487,89 +412,89 @@ private fun MotorQuotaCard(
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded },
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "Nivel $level · $title",
-                color = OnBg,
-                fontWeight = FontWeight.Medium,
-                fontSize = 13.sp,
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable(onClick = onOpenKeys)
-            )
-            Text(
-                "$emoji $healthLabel",
-                color = tint,
-                fontSize = 11.sp,
-                modifier = Modifier.clickable(onClick = onOpenKeys)
-            )
-        }
-        Text(
-            maskLine,
-            color = if (hasKey) Accent else Muted,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.clickable(onClick = onOpenKeys)
-        )
-        Text(ProviderCatalog.offerText(provider), color = Muted, fontSize = 11.sp)
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            MeterBadge(info.meterKind)
-            Text(detail, color = Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
-        }
-        Text(info.meterNote, color = Muted.copy(alpha = 0.8f), fontSize = 10.sp)
-        status?.detail
-            ?.takeIf { it.isNotBlank() && it != healthLabel && !it.startsWith("SIN KEY") }
-            ?.let {
-                Text(it, color = Muted, fontSize = 11.sp)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "$name $dot · $primary",
+                    color = OnBg,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 13.sp,
+                    maxLines = 2
+                )
             }
+            Icon(
+                if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = if (expanded) "Ver menos" else "Ver más",
+                tint = Muted,
+                modifier = Modifier.size(20.dp)
+            )
+        }
         LinearProgressIndicator(
             progress = { progress },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(6.dp)
                 .clip(RoundedCornerShape(3.dp)),
-            color = barColor,
+            color = if (hasKey) barColor else Muted,
             trackColor = Color(0xFF151C28)
         )
-        if (hasKey) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    if (provider == SttProvider.PAID_FALLBACK) {
-                        "Permitir gastar dinero"
-                    } else {
-                        "Usar este motor"
-                    },
-                    color = OnBg,
-                    fontSize = 13.sp,
-                    modifier = Modifier.weight(1f)
-                )
-                Switch(
-                    checked = enabled,
-                    onCheckedChange = onEnabledChange,
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = if (provider == SttProvider.PAID_FALLBACK) Amber else Accent
+        TextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth()) {
+            Text(if (expanded) "Ver menos" else "Ver más", color = Accent)
+        }
+        AnimatedVisibility(visible = expanded) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(ProviderCatalog.offerText(provider), color = Muted, fontSize = 12.sp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    MeterBadge(info.meterKind)
+                    Text(info.meterNote, color = Muted, fontSize = 12.sp)
+                }
+                status?.detail?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, color = Muted, fontSize = 12.sp)
+                }
+                if (hasKey) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Usar este servicio", color = OnBg, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = enabled,
+                            onCheckedChange = onEnabledChange,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Accent
+                            )
+                        )
+                    }
+                    TextButton(onClick = onProbe, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            if (pinned) "📌 Probando ahora" else "Probar este servicio",
+                            color = Accent,
+                            fontWeight = if (pinned) FontWeight.SemiBold else FontWeight.Normal
+                        )
+                    }
+                } else {
+                    TextButton(onClick = onOpenKeys, modifier = Modifier.fillMaxWidth()) {
+                        Text("Conseguir llave", color = Accent)
+                    }
+                }
+                if (showMeterAdjust && hasKey) {
+                    Text("Ajustar contador", color = OnBg, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text(HelpCopy.METER_ADJUST, color = Muted, fontSize = 12.sp)
+                    QuotaAdjustEditor(
+                        label = meterAdjustLabel,
+                        initialText = meterAdjustInitial,
+                        onSave = onMeterAdjustSave
                     )
-                )
-            }
-            TextButton(
-                onClick = onProbe,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    if (pinned) "📌 FIJADO" else "Probar",
-                    color = Accent,
-                    fontWeight = if (pinned) FontWeight.SemiBold else FontWeight.Normal
-                )
+                }
             }
         }
     }
@@ -600,7 +525,7 @@ fun ZeroCostWarning(modifier: Modifier = Modifier) {
     Text(
         "⚠️ ${ProviderCatalog.ZERO_COST_WARNING}",
         color = Amber,
-        fontSize = 11.sp,
+        fontSize = 12.sp,
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
@@ -859,7 +784,7 @@ fun CostSettingsDialog(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        "Incluir \$0.0020/min por Diarize en estimado",
+                        "Incluir costo de «Separar quién habla» en el estimado",
                         color = OnBg,
                         fontSize = 13.sp,
                         modifier = Modifier.weight(1f)

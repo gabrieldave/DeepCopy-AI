@@ -44,9 +44,9 @@ fun LanguageMode.billingBaseMode(): LanguageMode = when (this) {
 }
 
 fun LanguageMode.shortUiLabel(forcedCode: String? = null): String = when (this) {
-    LanguageMode.AUTO -> "Auto"
-    LanguageMode.MULTI -> "Multi"
-    LanguageMode.FIXED -> "Fijar${forcedCode?.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: ""}"
+    LanguageMode.AUTO -> "Detectar"
+    LanguageMode.MULTI -> "ES+EN"
+    LanguageMode.FIXED -> forcedCode?.takeIf { it.isNotBlank() }?.uppercase() ?: "Fijo"
 }
 
 @Keep
@@ -216,9 +216,9 @@ fun activeMotorPillText(
     autoPrimary: SttProvider?
 ): String = when (selection) {
     is RoutingSelection.Auto ->
-        "⚡ Auto · ${autoPrimary?.shortName() ?: "—"}"
+        "Usando: ${autoPrimary?.shortName() ?: "—"}"
     is RoutingSelection.Manual ->
-        "🧪 Prueba · ${selection.provider.shortName()}"
+        "Probando: ${selection.provider.shortName()}"
 }
 
 /** Falla exclusiva de Modo Prueba: no hay failover silencioso. */
