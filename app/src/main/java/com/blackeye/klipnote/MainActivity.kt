@@ -292,6 +292,9 @@ private fun KlipNoteApp(
     var appCap by remember { mutableStateOf(BillingManager.getAppCap(context)) }
     var minReserve by remember { mutableStateOf(BillingManager.getMinReserve(context)) }
     var groqRemaining by remember { mutableStateOf(BillingManager.getGroqRemainingSeconds(context)) }
+    var groqLimit by remember { mutableStateOf(BillingManager.getGroqLimitSeconds(context)) }
+    var groqUsedToday by remember { mutableStateOf(BillingManager.getGroqUsedTodaySeconds(context)) }
+    var groqHasLive by remember { mutableStateOf(BillingManager.hasGroqLiveQuota(context)) }
     var inworldRemaining by remember {
         mutableStateOf(BillingManager.getInworldRemainingSeconds(context))
     }
@@ -345,6 +348,9 @@ private fun KlipNoteApp(
             appSpent = BillingManager.getAppSpent(context)
             localUsage = BillingManager.getLocalUsage(context)
             groqRemaining = BillingManager.getGroqRemainingSeconds(context)
+            groqLimit = BillingManager.getGroqLimitSeconds(context)
+            groqUsedToday = BillingManager.getGroqUsedTodaySeconds(context)
+            groqHasLive = BillingManager.hasGroqLiveQuota(context)
             inworldRemaining = BillingManager.getInworldRemainingSeconds(context)
             assemblyRemaining = BillingManager.getAssemblyRemainingSeconds(context)
             syncKeysUi()
@@ -364,6 +370,9 @@ private fun KlipNoteApp(
             providerStatuses = report.statuses
             keyMasks = readKeyMasks(context)
             groqRemaining = BillingManager.getGroqRemainingSeconds(context)
+            groqLimit = BillingManager.getGroqLimitSeconds(context)
+            groqUsedToday = BillingManager.getGroqUsedTodaySeconds(context)
+            groqHasLive = BillingManager.hasGroqLiveQuota(context)
             inworldRemaining = BillingManager.getInworldRemainingSeconds(context)
             assemblyRemaining = BillingManager.getAssemblyRemainingSeconds(context)
             syncKeysUi()
@@ -466,6 +475,9 @@ private fun KlipNoteApp(
                     appSpent = it
                     localUsage = BillingManager.getLocalUsage(context)
                     groqRemaining = BillingManager.getGroqRemainingSeconds(context)
+                    groqLimit = BillingManager.getGroqLimitSeconds(context)
+                    groqUsedToday = BillingManager.getGroqUsedTodaySeconds(context)
+                    groqHasLive = BillingManager.hasGroqLiveQuota(context)
                     inworldRemaining = BillingManager.getInworldRemainingSeconds(context)
                     assemblyRemaining = BillingManager.getAssemblyRemainingSeconds(context)
                     syncKeysUi()
@@ -548,6 +560,9 @@ private fun KlipNoteApp(
                         appSpent = it
                         localUsage = BillingManager.getLocalUsage(context)
                         groqRemaining = BillingManager.getGroqRemainingSeconds(context)
+                        groqLimit = BillingManager.getGroqLimitSeconds(context)
+                        groqUsedToday = BillingManager.getGroqUsedTodaySeconds(context)
+                        groqHasLive = BillingManager.hasGroqLiveQuota(context)
                         inworldRemaining = BillingManager.getInworldRemainingSeconds(context)
                         assemblyRemaining = BillingManager.getAssemblyRemainingSeconds(context)
                         syncKeysUi()
@@ -912,6 +927,9 @@ private fun KlipNoteApp(
                             allowPaidFallback = allowPaidFallback,
                             verifyingOffers = verifyingOffers,
                             groqRemainingSeconds = groqRemaining,
+                            groqLimitSeconds = groqLimit,
+                            groqUsedTodaySeconds = groqUsedToday,
+                            groqHasLiveQuota = groqHasLive,
                             inworldRemainingSeconds = inworldRemaining,
                             inworldUsedMinutesEditable = String.format(
                                 "%.1f",
@@ -1677,13 +1695,22 @@ private fun AiStudyActionsSection(
     var replyInSpanish by remember {
         mutableStateOf(AiStudyPrompts.isReplyInSpanish(context))
     }
-    var lastCopiedMode by remember { mutableStateOf<AiStudyMode?>(null) }
+    /** null = nada; MASTER_ALL_8 o AiStudyMode.name */
+    var lastCopiedId by remember { mutableStateOf<String?>(null) }
+    var lastCopiedLabel by remember { mutableStateOf<String?>(null) }
     var lastCopiedPrompt by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(lastCopiedMode) {
-        val mode = lastCopiedMode ?: return@LaunchedEffect
+    LaunchedEffect(lastCopiedId) {
+        val id = lastCopiedId ?: return@LaunchedEffect
         delay(2_500)
-        if (lastCopiedMode == mode) lastCopiedMode = null
+        if (lastCopiedId == id) lastCopiedId = null
+    }
+
+    fun markCopied(id: String, label: String, prompt: String) {
+        copyToClipboard(context, prompt)
+        lastCopiedPrompt = prompt
+        lastCopiedLabel = label
+        lastCopiedId = id
     }
 
     fun copyMode(mode: AiStudyMode) {
@@ -1693,9 +1720,20 @@ private fun AiStudyActionsSection(
             sourceTitleOrUrl = sourceTitleOrUrl,
             replyInSpanish = replyInSpanish
         )
-        copyToClipboard(context, prompt)
-        lastCopiedPrompt = prompt
-        lastCopiedMode = mode
+        markCopied(mode.name, mode.modeName, prompt)
+    }
+
+    fun copyMasterAll8() {
+        val prompt = AiStudyPrompts.buildMasterAll8(
+            transcript = transcript,
+            sourceTitleOrUrl = sourceTitleOrUrl,
+            replyInSpanish = replyInSpanish
+        )
+        markCopied(
+            AiStudyPrompts.MASTER_ALL_8,
+            AiStudyPrompts.MASTER_ALL_8_MODE_NAME,
+            prompt
+        )
     }
 
     Column(
@@ -1725,7 +1763,11 @@ private fun AiStudyActionsSection(
                 },
                 label = {
                     Text(
-                        if (replyInSpanish) "🇲🇽 En Español" else "🌐 Idioma original",
+                        if (replyInSpanish) {
+                            "🇲🇽 Responder en Español"
+                        } else {
+                            "🌐 Idioma original"
+                        },
                         fontSize = 11.sp,
                         maxLines = 1
                     )
@@ -1739,18 +1781,44 @@ private fun AiStudyActionsSection(
             )
         }
 
+        val masterJustCopied = lastCopiedId == AiStudyPrompts.MASTER_ALL_8
+        Button(
+            onClick = { copyMasterAll8() },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (masterJustCopied) {
+                    Accent.copy(alpha = 0.85f)
+                } else {
+                    Accent
+                },
+                contentColor = Color(0xFF04110A)
+            )
+        ) {
+            Text(
+                if (masterJustCopied) {
+                    "✓ Copiado al portapapeles"
+                } else {
+                    AiStudyPrompts.MASTER_ALL_8_LABEL
+                },
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                maxLines = 2
+            )
+        }
+
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             AiStudyMode.entries.forEach { mode ->
-                val justCopied = lastCopiedMode == mode
+                val justCopied = lastCopiedId == mode.name
                 AssistChip(
                     onClick = { copyMode(mode) },
                     label = {
                         Text(
-                            if (justCopied) "✓ Copiado" else mode.chipLabel,
+                            if (justCopied) "✓ Copiado al portapapeles" else mode.chipLabel,
                             fontSize = 12.sp,
                             maxLines = 1,
                             softWrap = false
@@ -1768,8 +1836,9 @@ private fun AiStudyActionsSection(
             }
         }
 
-        lastCopiedMode?.let { mode ->
+        lastCopiedId?.let {
             val prompt = lastCopiedPrompt
+            val label = lastCopiedLabel ?: "Prompt"
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1780,7 +1849,7 @@ private fun AiStudyActionsSection(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "✓ Prompt de ${mode.modeName} copiado al portapapeles",
+                    "✓ Copiado al portapapeles · $label",
                     color = Accent,
                     fontSize = 12.sp,
                     modifier = Modifier.weight(1f)

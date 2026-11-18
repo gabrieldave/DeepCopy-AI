@@ -42,6 +42,8 @@ object BillingManager {
     private const val KEY_GROQ_DAY = "groq_day_key"
     private const val KEY_GROQ_REMAINING = "groq_remaining_seconds"
     private const val KEY_GROQ_LIMIT = "groq_limit_seconds"
+    private const val KEY_GROQ_USED_TODAY = "groq_used_seconds_today"
+    private const val KEY_GROQ_LIVE = "groq_has_live_headers"
     private const val KEY_ASSEMBLY_USED = "assembly_used_seconds"
     private const val KEY_INWORLD_MONTH = "inworld_month_key"
     private const val KEY_INWORLD_USED = "inworld_used_seconds"
@@ -58,7 +60,10 @@ object BillingManager {
     const val DEFAULT_MIN_RESERVE = 5.0
     const val GIANT_FILE_THRESHOLD_USD = 0.50
     const val DEEPGRAM_SAFE_FLOOR_USD = 1.0
+    /** Fallback histórico; la UI usa el límite real de cabeceras (~7200s/ventana). */
     const val GROQ_DAILY_SECONDS = 28_800.0
+    /** Tope provisional hasta la primera respuesta con headers de Groq (ventana ~1h). */
+    const val GROQ_DEFAULT_LIMIT_SECONDS = 7_200.0
     const val INWORLD_MONTHLY_SECONDS = 24_000.0 // 400 minutos
     const val ASSEMBLY_POOL_SECONDS = 666_000.0 // 185h
 
@@ -327,16 +332,31 @@ object BillingManager {
         prefs(context).edit().putLong(KEY_LAST_OFFER_CHECK, ms).apply()
     }
 
-    // --- Groq daily ---
+    // --- Groq quota (ventana horaria vía headers; uso acumulado UTC day) ---
 
     fun getGroqRemainingSeconds(context: Context): Double {
         ensureGroqDay(context)
-        return prefs(context).getFloat(KEY_GROQ_REMAINING, GROQ_DAILY_SECONDS.toFloat()).toDouble()
+        return prefs(context)
+            .getFloat(KEY_GROQ_REMAINING, GROQ_DEFAULT_LIMIT_SECONDS.toFloat())
+            .toDouble()
     }
 
     fun getGroqLimitSeconds(context: Context): Double {
         ensureGroqDay(context)
-        return prefs(context).getFloat(KEY_GROQ_LIMIT, GROQ_DAILY_SECONDS.toFloat()).toDouble()
+        return prefs(context)
+            .getFloat(KEY_GROQ_LIMIT, GROQ_DEFAULT_LIMIT_SECONDS.toFloat())
+            .toDouble()
+            .coerceAtLeast(1.0)
+    }
+
+    fun getGroqUsedTodaySeconds(context: Context): Double {
+        ensureGroqDay(context)
+        return prefs(context).getFloat(KEY_GROQ_USED_TODAY, 0f).toDouble().coerceAtLeast(0.0)
+    }
+
+    fun hasGroqLiveQuota(context: Context): Boolean {
+        ensureGroqDay(context)
+        return prefs(context).getBoolean(KEY_GROQ_LIVE, false)
     }
 
     fun setGroqRemainingFromHeaders(
@@ -348,18 +368,62 @@ object BillingManager {
         ensureGroqDay(context)
         val ed = prefs(context).edit()
             .putFloat(KEY_GROQ_REMAINING, remaining.toFloat().coerceAtLeast(0f))
+            .putBoolean(KEY_GROQ_LIVE, true)
         if (limit != null && limit > 0) {
             ed.putFloat(KEY_GROQ_LIMIT, limit.toFloat())
         }
         ed.apply()
-        // resetSeconds informativo; el reset diario local cubre medianoche.
+        // resetSeconds informativo (ventana ~1h); el rollover UTC day reinicia «Usado hoy».
         resetSeconds
+    }
+
+    fun addGroqUsedSeconds(context: Context, seconds: Double) {
+        if (seconds <= 0.0) return
+        ensureGroqDay(context)
+        val next = getGroqUsedTodaySeconds(context) + seconds
+        prefs(context).edit().putFloat(KEY_GROQ_USED_TODAY, next.toFloat()).apply()
     }
 
     fun consumeGroqSeconds(context: Context, seconds: Double) {
         ensureGroqDay(context)
         val next = (getGroqRemainingSeconds(context) - seconds).coerceAtLeast(0.0)
-        prefs(context).edit().putFloat(KEY_GROQ_REMAINING, next.toFloat()).apply()
+        prefs(context).edit()
+            .putFloat(KEY_GROQ_REMAINING, next.toFloat())
+            .apply()
+        addGroqUsedSeconds(context, seconds)
+    }
+
+    fun formatGroqUsedToday(seconds: Double): String {
+        val total = seconds.toInt().coerceAtLeast(0)
+        val m = total / 60
+        val s = total % 60
+        return if (s == 0) "${m}m" else "${m}m ${s}s"
+    }
+
+    fun formatGroqQuotaDetail(
+        remainingSeconds: Double,
+        limitSeconds: Double,
+        usedTodaySeconds: Double,
+        hasLiveQuota: Boolean
+    ): String {
+        val usedLabel = formatGroqUsedToday(usedTodaySeconds)
+        if (!hasLiveQuota && usedTodaySeconds <= 0.0) {
+            return "Listo · Usado hoy: $usedLabel"
+        }
+        val remMin = (remainingSeconds / 60.0).toInt().coerceAtLeast(0)
+        val limMin = (limitSeconds / 60.0).toInt().coerceAtLeast(1)
+        val window = when {
+            limitSeconds <= 8_000.0 -> "ventana 1h"
+            limitSeconds <= 30_000.0 -> "ventana día"
+            else -> "ventana"
+        }
+        return "${remMin}m / ${limMin}m disp. ($window) · Usado hoy: $usedLabel"
+    }
+
+    fun groqQuotaProgress(remainingSeconds: Double, limitSeconds: Double, hasLiveQuota: Boolean): Float {
+        if (!hasLiveQuota) return 1f
+        val lim = limitSeconds.coerceAtLeast(1.0)
+        return (remainingSeconds / lim).toFloat().coerceIn(0f, 1f)
     }
 
     private fun ensureGroqDay(context: Context) {
@@ -368,8 +432,10 @@ object BillingManager {
         if (p.getString(KEY_GROQ_DAY, null) == day) return
         p.edit()
             .putString(KEY_GROQ_DAY, day)
-            .putFloat(KEY_GROQ_REMAINING, GROQ_DAILY_SECONDS.toFloat())
-            .putFloat(KEY_GROQ_LIMIT, GROQ_DAILY_SECONDS.toFloat())
+            .putFloat(KEY_GROQ_REMAINING, GROQ_DEFAULT_LIMIT_SECONDS.toFloat())
+            .putFloat(KEY_GROQ_LIMIT, GROQ_DEFAULT_LIMIT_SECONDS.toFloat())
+            .putFloat(KEY_GROQ_USED_TODAY, 0f)
+            .putBoolean(KEY_GROQ_LIVE, false)
             .apply()
     }
 
