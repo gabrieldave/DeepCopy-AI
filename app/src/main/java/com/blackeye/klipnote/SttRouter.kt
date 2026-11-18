@@ -97,7 +97,8 @@ object SttRouter {
         deepgramBalanceUsd: Double? = null,
         selection: RoutingSelection = RoutingSelection.Auto,
         forcedLanguageCode: String? = null,
-        savedInDownloads: Boolean = false
+        savedInDownloads: Boolean = false,
+        onStatus: ((String) -> Unit)? = null
     ): TranscriptionResult {
         val languageCode = mode.toApiLanguageCode(forcedLanguageCode)
         return when (selection) {
@@ -110,7 +111,8 @@ object SttRouter {
                 languageCode = languageCode,
                 diarize = diarize,
                 deepgramBalanceUsd = deepgramBalanceUsd,
-                savedInDownloads = savedInDownloads
+                savedInDownloads = savedInDownloads,
+                onStatus = onStatus
             )
             RoutingSelection.Auto -> transcribeCascade(
                 context = context,
@@ -120,7 +122,8 @@ object SttRouter {
                 languageCode = languageCode,
                 diarize = diarize,
                 deepgramBalanceUsd = deepgramBalanceUsd,
-                savedInDownloads = savedInDownloads
+                savedInDownloads = savedInDownloads,
+                onStatus = onStatus
             )
         }
     }
@@ -134,7 +137,8 @@ object SttRouter {
         languageCode: String?,
         diarize: Boolean,
         deepgramBalanceUsd: Double?,
-        savedInDownloads: Boolean
+        savedInDownloads: Boolean,
+        onStatus: ((String) -> Unit)?
     ): TranscriptionResult {
         val started = System.currentTimeMillis()
         val block = preflightBlockReason(
@@ -143,6 +147,7 @@ object SttRouter {
         if (block != null) {
             throw ManualRouteException(provider, "🧪 Prueba Manual · ${provider.displayName()}: $block")
         }
+        onStatus?.invoke("Transcribiendo con ${provider.displayName()}…")
         return try {
             runProviderWithNetworkRetry(
                 context = context,
@@ -197,7 +202,8 @@ object SttRouter {
         languageCode: String?,
         diarize: Boolean,
         deepgramBalanceUsd: Double?,
-        savedInDownloads: Boolean
+        savedInDownloads: Boolean,
+        onStatus: ((String) -> Unit)?
     ): TranscriptionResult {
         val cfg = RemoteRouterConfig.currentOrDefault()
         val hopLog = mutableListOf<String>()
@@ -214,6 +220,7 @@ object SttRouter {
                 continue
             }
 
+            onStatus?.invoke("Transcribiendo con ${provider.displayName()}…")
             try {
                 val result = runProviderWithNetworkRetry(
                     context = context,

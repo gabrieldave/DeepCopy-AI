@@ -250,11 +250,11 @@ object SealDownloader {
         val request = buildRequest(context, url, outTemplate, wantVideo, compressForStt)
 
         try {
-            onProgress("Descargando: 0% • preparando…")
+            onProgress("Descargando 0%…")
             YoutubeDL.getInstance().execute(request, processId) { progress, eta, _line ->
                 val pct = progress.coerceIn(0f, 100f).toInt()
-                val etaLabel = if (eta > 0) " • ETA ${eta}s" else ""
-                onProgress("Descargando: $pct%$etaLabel")
+                val etaLabel = if (eta > 0) " · ETA ${eta}s" else ""
+                onProgress("Descargando $pct%$etaLabel…")
             }
         } catch (e: YoutubeDL.CanceledException) {
             workDir.deleteRecursively()

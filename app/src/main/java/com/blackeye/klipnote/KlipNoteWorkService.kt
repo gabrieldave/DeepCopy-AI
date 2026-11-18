@@ -31,11 +31,29 @@ class KlipNoteWorkService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
+            ACTION_DISMISS_PROGRESS -> {
+                // Arranca FGS un instante para poder REMOVE una notificación huérfana (DETACH viejo).
+                // No toca JobHub: solo limpia la notificación.
+                val notif = KlipNoteNotify.progressNotification(this, "Limpiando…")
+                if (Build.VERSION.SDK_INT >= 34) {
+                    ServiceCompat.startForeground(
+                        this,
+                        KlipNoteNotify.NOTIF_PROGRESS_ID,
+                        notif,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    startForeground(KlipNoteNotify.NOTIF_PROGRESS_ID, notif)
+                }
+                dismissProgressForeground()
+                stopSelf()
+                return START_NOT_STICKY
+            }
             ACTION_CANCEL -> {
                 SealDownloader.cancelActive()
                 workJob?.cancel()
                 KlipNoteJobHub.setCancelled()
-                KlipNoteNotify.clearProgress(this)
                 stopSelfSafely()
                 return START_NOT_STICKY
             }
@@ -114,7 +132,7 @@ class KlipNoteWorkService : Service() {
         val app = applicationContext
         var artifact: SealDownloader.DownloadArtifact? = null
         try {
-            publish("Descargando: 0%…", 0)
+            publish("Descargando 0%…", 0)
             SealDownloader.initAsync(app)
             // Espera breve a que yt-dlp esté listo
             var waits = 0
@@ -135,7 +153,13 @@ class KlipNoteWorkService : Service() {
                 downloadKind = kind,
                 onProgress = { label ->
                     val pct = Regex("""(\d+)%""").find(label)?.groupValues?.getOrNull(1)?.toIntOrNull()
-                    publish(label, pct)
+                    val pretty = when {
+                        pct != null -> "Descargando $pct%…"
+                        label.contains("Actualizando", ignoreCase = true) -> label
+                        label.contains("Reintentando", ignoreCase = true) -> label
+                        else -> label
+                    }
+                    publish(pretty, pct)
                 }
             )
 
@@ -207,12 +231,7 @@ class KlipNoteWorkService : Service() {
                     extracted!!.file
                 }
                 val mimeForStt = if (sttCompact != null) "audio/mp4" else extracted!!.mimeType
-                val motorHint = when (selection) {
-                    is RoutingSelection.Auto -> "Transcribiendo con cascada Auto…"
-                    is RoutingSelection.Manual ->
-                        "Transcribiendo con ${selection.provider.displayName()}…"
-                }
-                publish(motorHint, null)
+                publish("Transcribiendo…", null)
 
                 var balanceBefore: Double? = null
                 val dgKey = ApiKeyStore.getDeepgram(app)
@@ -232,7 +251,8 @@ class KlipNoteWorkService : Service() {
                         deepgramBalanceUsd = balanceBefore,
                         selection = selection,
                         forcedLanguageCode = forcedLang,
-                        savedInDownloads = savesPublic
+                        savedInDownloads = savesPublic,
+                        onStatus = { status -> publish(status, null) }
                     )
                 }
 
@@ -298,11 +318,11 @@ class KlipNoteWorkService : Service() {
             }
         } catch (e: com.yausername.youtubedl_android.YoutubeDL.CanceledException) {
             KlipNoteJobHub.setCancelled()
-            KlipNoteNotify.clearProgress(app)
+            dismissProgressForeground()
         } catch (t: Throwable) {
             if (t is kotlinx.coroutines.CancellationException) {
                 KlipNoteJobHub.setCancelled()
-                KlipNoteNotify.clearProgress(app)
+                dismissProgressForeground()
                 return
             }
             val finalMsg = when {
@@ -311,6 +331,7 @@ class KlipNoteWorkService : Service() {
                 else -> t.message?.takeIf { it.isNotBlank() } ?: "Error al transcribir"
             }
             KlipNoteJobHub.setFailed(finalMsg)
+            dismissProgressForeground()
             KlipNoteNotify.showFinished(
                 context = app,
                 title = "KlipNote: error",
@@ -360,6 +381,8 @@ class KlipNoteWorkService : Service() {
             sourceLabel = sourceLabel,
             toastMessage = toastMessage
         )
+        // Quitar FGS + notificación de progreso ANTES del aviso "Listo".
+        dismissProgressForeground()
         KlipNoteNotify.showFinished(
             context = this,
             title = notifTitle,
@@ -369,15 +392,21 @@ class KlipNoteWorkService : Service() {
         if (KlipNoteJobHub.appInForeground) vibrateShort(this)
     }
 
-    private fun stopSelfSafely() {
+    /** Nunca deja pegada la notificación de progreso (éxito, error o cancelar). */
+    private fun dismissProgressForeground() {
         runCatching {
             if (Build.VERSION.SDK_INT >= 24) {
-                stopForeground(STOP_FOREGROUND_DETACH)
+                stopForeground(STOP_FOREGROUND_REMOVE)
             } else {
                 @Suppress("DEPRECATION")
-                stopForeground(false)
+                stopForeground(/* removeNotification = */ true)
             }
         }
+        KlipNoteNotify.clearProgress(this)
+    }
+
+    private fun stopSelfSafely() {
+        dismissProgressForeground()
         stopSelf()
     }
 
@@ -391,6 +420,7 @@ class KlipNoteWorkService : Service() {
         private const val TAG = "KlipNoteWork"
         const val ACTION_START_LINK = "com.blackeye.klipnote.action.START_LINK"
         const val ACTION_CANCEL = "com.blackeye.klipnote.action.CANCEL"
+        const val ACTION_DISMISS_PROGRESS = "com.blackeye.klipnote.action.DISMISS_PROGRESS"
         const val EXTRA_URL = "url"
         const val EXTRA_MODE = "mode"
         const val EXTRA_KIND = "kind"
@@ -431,6 +461,14 @@ class KlipNoteWorkService : Service() {
 
         fun cancel(context: Context) {
             val intent = Intent(context, KlipNoteWorkService::class.java).setAction(ACTION_CANCEL)
+            ContextCompat.startForegroundService(context, intent)
+        }
+
+        /** Quita una notificación de progreso huérfana (p. ej. DETACH de versiones anteriores). */
+        fun dismissOrphanProgress(context: Context) {
+            if (KlipNoteJobHub.isBusy()) return
+            val intent = Intent(context, KlipNoteWorkService::class.java)
+                .setAction(ACTION_DISMISS_PROGRESS)
             ContextCompat.startForegroundService(context, intent)
         }
     }
