@@ -48,7 +48,7 @@ jobs:
 
       - name: Assemble release APK
         env:
-          # BYOK: nunca inyectar DEEPGRAM_API_KEY en BuildConfig/release.
+          # BYOK: nunca inyectar API keys en BuildConfig/release.
           ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/release.jks
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -60,28 +60,27 @@ jobs:
         run: |
           SRC=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
           test -n "$SRC"
-          # aapt2 dump badging → versionName / versionCode reales (piso 107 en build.gradle.kts)
           AAPT2=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort | tail -n 1)
           BADGING=$("$AAPT2" dump badging "$SRC" | head -n 1)
           VNAME=$(echo "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
           VCODE=$(echo "$BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")
           echo "versionName=$VNAME" >> "$GITHUB_OUTPUT"
           echo "versionCode=$VCODE" >> "$GITHUB_OUTPUT"
-          DEST="DeepCopy-v${VNAME}.apk"
+          DEST="KlipNote-v${VNAME}.apk"
           cp "$SRC" "$DEST"
           echo "APK_PATH=$DEST" >> "$GITHUB_ENV"
           echo "Resolved versionCode=$VCODE versionName=$VNAME"
           ls -lh "$DEST"
-          # Guardrail: nunca publicar por debajo del piso comercial 107
-          if [ "${VCODE:-0}" -lt 107 ]; then
-            echo "versionCode $VCODE < 107 — abort"
+          # Guardrail: nunca publicar por debajo del piso comercial 108
+          if [ "${VCODE:-0}" -lt 108 ]; then
+            echo "versionCode $VCODE < 108 — abort"
             exit 1
           fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: DeepCopy-release-apk
+          name: KlipNote-release-apk
           path: ${{ env.APK_PATH }}
           if-no-files-found: error
 
@@ -90,12 +89,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="v${{ steps.ver.outputs.versionName }}"
-          NOTES="DeepCopy AI release APK firmado — ${TAG} (versionCode ${{ steps.ver.outputs.versionCode }}, BYOK cifrado, sin llaves en APK)"
+          NOTES="KlipNote release APK firmado — ${TAG} (versionCode ${{ steps.ver.outputs.versionCode }}, router STT en cascada, BYOK cifrado, sin llaves en APK)"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release delete "$TAG" --yes --cleanup-tag
           fi
           gh release create "$TAG" "$APK_PATH" \
-            --title "DeepCopy AI $TAG" \
+            --title "KlipNote $TAG" \
             --notes "$NOTES" \
             --latest
 

@@ -1,4 +1,4 @@
-package com.blackeye.deepcopy
+package com.blackeye.klipnote
 
 import android.content.Context
 import android.media.MediaCodec
@@ -38,7 +38,7 @@ object AudioExtractor {
         }
 
         // Intentar demux del track de audio a MPEG-4 (.m4a)
-        val tempOut = File(context.cacheDir, "deepcopy_audio_${System.currentTimeMillis()}.m4a")
+        val tempOut = File(context.cacheDir, "klipnote_audio_${System.currentTimeMillis()}.m4a")
         try {
             extractAudioTrack(context, uri, tempOut)
             return ExtractedAudio(
@@ -119,7 +119,7 @@ object AudioExtractor {
         mime: String,
         ext: String
     ): ExtractedAudio {
-        val out = File(context.cacheDir, "deepcopy_raw_${System.currentTimeMillis()}.$ext")
+        val out = File(context.cacheDir, "klipnote_raw_${System.currentTimeMillis()}.$ext")
         context.contentResolver.openInputStream(uri)?.use { input ->
             FileOutputStream(out).use { output ->
                 val buf = ByteArray(8 * 1024)

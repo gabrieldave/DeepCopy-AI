@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "DeepCopyAI"
+rootProject.name = "KlipNote"
 include(":app")

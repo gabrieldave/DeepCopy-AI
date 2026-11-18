@@ -1,4 +1,4 @@
-package com.blackeye.deepcopy
+package com.blackeye.klipnote
 
 import android.content.Context
 import okhttp3.OkHttpClient
