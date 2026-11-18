@@ -1,5 +1,8 @@
 package com.blackeye.klipnote
 
+import com.blackeye.klipnote.ui.KlipNeutrals
+import com.blackeye.klipnote.ui.KlipPalette
+
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
@@ -63,11 +66,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val CardBg = Color(0xFF151C28)
-private val Accent = Color(0xFF10B981)
-private val OnBg = Color(0xFFE8EEF7)
-private val Muted = Color(0xFF8B9BB4)
-private val Red = Color(0xFFF87171)
+private val CardBg get() = KlipNeutrals.Card
+private val Accent get() = KlipPalette.accent
+private val OnAccent get() = KlipPalette.onAccent
+private val OnBg get() = KlipNeutrals.OnBg
+private val Muted get() = KlipNeutrals.Muted
+private val Red get() = KlipNeutrals.Red
 private val ChipGreen = Color(0xFF0D3B2E)
 private val BorderSubtle = Color(0xFF2A3548)
 
@@ -288,7 +292,7 @@ fun MultiProviderKeysDialog(
                         .padding(horizontal = 14.dp, vertical = 12.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Accent,
-                        contentColor = Color(0xFF04140E)
+                        contentColor = OnAccent
                     ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
