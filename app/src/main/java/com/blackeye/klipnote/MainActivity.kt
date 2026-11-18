@@ -52,6 +52,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -100,6 +102,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -782,6 +785,7 @@ private fun KlipNoteApp(
                         busy = busy,
                         phase = phase,
                         transcriptText = transcriptText,
+                        sourceTitleOrUrl = lastSourceLabel.ifBlank { linkInput },
                         lastResultMeta = lastResultMeta,
                         copyFeedback = copyFeedback,
                         preFlight = preFlight,
@@ -1222,6 +1226,7 @@ private fun CapturarTab(
     busy: Boolean,
     phase: UiPhase,
     transcriptText: String,
+    sourceTitleOrUrl: String,
     lastResultMeta: TranscriptionResult?,
     copyFeedback: Boolean,
     preFlight: PreFlightState?,
@@ -1304,6 +1309,7 @@ private fun CapturarTab(
         if (transcriptText.isNotBlank() || phase is UiPhase.Done) {
             ResultWorkspaceCard(
                 text = transcriptText,
+                sourceTitleOrUrl = sourceTitleOrUrl,
                 metaLabel = lastResultMeta?.resultBadge(copiedHint = copyFeedback),
                 onTextChange = onTextChange,
                 onCopy = onCopy,
@@ -1583,6 +1589,7 @@ private fun ErrorCard(
 @Composable
 private fun ResultWorkspaceCard(
     text: String,
+    sourceTitleOrUrl: String,
     metaLabel: String?,
     onTextChange: (String) -> Unit,
     onCopy: () -> Unit,
@@ -1625,6 +1632,12 @@ private fun ResultWorkspaceCard(
                 Text("Limpiar", color = Muted)
             }
         }
+        if (text.isNotBlank()) {
+            AiStudyActionsSection(
+                transcript = text,
+                sourceTitleOrUrl = sourceTitleOrUrl
+            )
+        }
         SelectionContainer {
             OutlinedTextField(
                 value = text,
@@ -1647,6 +1660,146 @@ private fun ResultWorkspaceCard(
                 ),
                 shape = RoundedCornerShape(12.dp)
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@Composable
+private fun AiStudyActionsSection(
+    transcript: String,
+    sourceTitleOrUrl: String,
+    modifier: Modifier = Modifier
+) {
+    if (transcript.isBlank()) return
+
+    val context = LocalContext.current
+    var replyInSpanish by remember {
+        mutableStateOf(AiStudyPrompts.isReplyInSpanish(context))
+    }
+    var lastCopiedMode by remember { mutableStateOf<AiStudyMode?>(null) }
+    var lastCopiedPrompt by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(lastCopiedMode) {
+        val mode = lastCopiedMode ?: return@LaunchedEffect
+        delay(2_500)
+        if (lastCopiedMode == mode) lastCopiedMode = null
+    }
+
+    fun copyMode(mode: AiStudyMode) {
+        val prompt = AiStudyPrompts.build(
+            mode = mode,
+            transcript = transcript,
+            sourceTitleOrUrl = sourceTitleOrUrl,
+            replyInSpanish = replyInSpanish
+        )
+        copyToClipboard(context, prompt)
+        lastCopiedPrompt = prompt
+        lastCopiedMode = mode
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF0F1623))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "✨ Estudiar con IA",
+                color = OnBg,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp
+            )
+            FilterChip(
+                selected = replyInSpanish,
+                onClick = {
+                    replyInSpanish = !replyInSpanish
+                    AiStudyPrompts.setReplyInSpanish(context, replyInSpanish)
+                },
+                label = {
+                    Text(
+                        if (replyInSpanish) "🇲🇽 En Español" else "🌐 Idioma original",
+                        fontSize = 11.sp,
+                        maxLines = 1
+                    )
+                },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = Accent.copy(alpha = 0.22f),
+                    selectedLabelColor = Accent,
+                    containerColor = Color(0xFF1A2333),
+                    labelColor = Muted
+                )
+            )
+        }
+
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            AiStudyMode.entries.forEach { mode ->
+                val justCopied = lastCopiedMode == mode
+                AssistChip(
+                    onClick = { copyMode(mode) },
+                    label = {
+                        Text(
+                            if (justCopied) "✓ Copiado" else mode.chipLabel,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    },
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = if (justCopied) {
+                            Accent.copy(alpha = 0.28f)
+                        } else {
+                            Color(0xFF1A2333)
+                        },
+                        labelColor = if (justCopied) Accent else OnBg
+                    )
+                )
+            }
+        }
+
+        lastCopiedMode?.let { mode ->
+            val prompt = lastCopiedPrompt
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Accent.copy(alpha = 0.12f))
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "✓ Prompt de ${mode.modeName} copiado al portapapeles",
+                    color = Accent,
+                    fontSize = 12.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(
+                    onClick = {
+                        val sendText = prompt ?: return@TextButton
+                        val send = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, sendText)
+                        }
+                        context.startActivity(
+                            Intent.createChooser(send, "Enviar a IA")
+                        )
+                    }
+                ) {
+                    Text("🚀 Enviar a IA", color = Accent, fontSize = 12.sp)
+                }
+            }
         }
     }
 }
@@ -1785,6 +1938,13 @@ private fun GuionesTab(
                                 TextButton(onClick = { onDelete(entry.id) }) {
                                     Text("Borrar", color = Color(0xFFF87171))
                                 }
+                            }
+                            if (entry.text.isNotBlank()) {
+                                Spacer(Modifier.height(4.dp))
+                                AiStudyActionsSection(
+                                    transcript = entry.text,
+                                    sourceTitleOrUrl = entry.sourceTitleOrUrl
+                                )
                             }
                         }
                     }
