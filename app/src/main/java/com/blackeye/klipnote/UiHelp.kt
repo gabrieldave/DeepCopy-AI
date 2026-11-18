@@ -1,5 +1,8 @@
 package com.blackeye.klipnote
 
+import com.blackeye.klipnote.ui.KlipNeutrals
+import com.blackeye.klipnote.ui.KlipPalette
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -28,10 +31,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-val ClarityMuted = Color(0xFFB0BCCE)
-val ClarityOnBg = Color(0xFFE8EEF7)
-val ClarityAccent = Color(0xFF10B981)
-val ClarityCard = Color(0xFF151C28)
+val ClarityMuted get() = KlipNeutrals.Muted
+val ClarityOnBg get() = KlipNeutrals.OnBg
+val ClarityAccent get() = KlipPalette.accent
+val ClarityCard get() = KlipNeutrals.Card
 
 object HelpCopy {
     const val AUTO =

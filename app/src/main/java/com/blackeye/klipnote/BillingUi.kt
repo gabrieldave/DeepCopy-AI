@@ -1,5 +1,8 @@
 package com.blackeye.klipnote
 
+import com.blackeye.klipnote.ui.KlipNeutrals
+import com.blackeye.klipnote.ui.KlipPalette
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -56,12 +59,13 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val CardBg = Color(0xFF151C28)
-private val Accent = Color(0xFF10B981)
-private val OnBg = Color(0xFFE8EEF7)
-private val Muted = Color(0xFFB0BCCE)
-private val Amber = Color(0xFFFBBF24)
-private val Red = Color(0xFFF87171)
+private val CardBg get() = KlipNeutrals.Card
+private val Accent get() = KlipPalette.accent
+private val OnAccent get() = KlipPalette.onAccent
+private val OnBg get() = KlipNeutrals.OnBg
+private val Muted get() = KlipNeutrals.Muted
+private val Amber get() = KlipNeutrals.Amber
+private val Red get() = KlipNeutrals.Red
 
 data class CreditUiState(
     val expanded: Boolean = true,
@@ -648,7 +652,7 @@ fun PreFlightCard(
                 enabled = !busy && hardStopMessage == null,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Accent,
-                    contentColor = Color.Black,
+                    contentColor = OnAccent,
                     disabledContainerColor = Accent.copy(alpha = 0.35f)
                 ),
                 shape = RoundedCornerShape(12.dp),
