@@ -1,18 +1,32 @@
 package com.blackeye.klipnote
 
+import com.blackeye.klipnote.ui.KlipNeutrals
+import com.blackeye.klipnote.ui.KlipPalette
+
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedTextField
@@ -29,19 +43,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 
-private val Bg = Color(0xFF0B0F17)
-private val Card = Color(0xFF151C28)
-private val Accent = Color(0xFF10B981)
-private val OnBg = Color(0xFFE8EEF7)
-private val Muted = Color(0xFFB0BCCE)
-private val Amber = Color(0xFFFBBF24)
+private val Bg get() = KlipNeutrals.Bg
+private val Card get() = KlipNeutrals.Card
+private val Accent get() = KlipPalette.accent
+private val OnAccent get() = KlipPalette.onAccent
+private val OnBg get() = KlipNeutrals.OnBg
+private val Muted get() = KlipNeutrals.Muted
+private val Amber get() = KlipNeutrals.Amber
+
+private const val DEBUG_BORDERS = false
 
 object OnboardingPrefs {
     private const val PREFS = "klipnote_onboarding"
@@ -59,191 +78,280 @@ object OnboardingPrefs {
     }
 }
 
+/**
+ * Pantalla completa independiente (llamar desde setContent, nunca dentro de Scaffold).
+ */
 @Composable
 fun OnboardingWizard(
     onFinished: () -> Unit,
     onSavedKey: () -> Unit
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current
     var page by remember { mutableIntStateOf(0) }
     var keyText by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    var middleViewportPx by remember { mutableIntStateOf(0) }
 
     fun finish() {
         OnboardingPrefs.markDone(context)
         onFinished()
     }
 
-    Dialog(
-        onDismissRequest = { /* solo con Saltar / Listo */ },
-        properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = false)
+    fun goNextFromKeyPage() {
+        val trimmed = keyText.trim()
+        if (trimmed.isNotBlank()) {
+            ApiKeyStore.setGroq(context, trimmed)
+            onSavedKey()
+        }
+        error = null
+        page = 2
+    }
+
+    BackHandler {
+        if (page > 0) page -= 1 else finish()
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Bg)
+            .systemBarsPadding()
+            .padding(24.dp)
     ) {
-        Column(
+        // 1) Fila superior
+        Row(
             modifier = Modifier
-                .fillMaxSize()
-                .background(Bg)
-                .padding(24.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+                .fillMaxWidth()
+                .then(
+                    if (DEBUG_BORDERS) Modifier.border(2.dp, Color.Cyan) else Modifier
+                ),
+            horizontalArrangement = Arrangement.End
+        ) {
+            TextButton(onClick = { finish() }) {
+                Text("Saltar", color = Muted, fontSize = 15.sp)
+            }
+        }
+
+        // 2) Contenido central (único scroll). Box con weight fija el viewport;
+        // heightIn(min=viewport) permite Arrangement.Center sin aplastar los botones.
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .onSizeChanged { middleViewportPx = it.height }
+                .then(
+                    if (DEBUG_BORDERS) Modifier.border(2.dp, Color.Magenta) else Modifier
+                )
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.Start
-            ) {
-                Text(
-                    "KlipNote",
-                    color = Accent,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 22.sp
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Paso ${page + 1} de 3",
-                    color = Muted,
-                    fontSize = 13.sp
-                )
-                Spacer(Modifier.height(20.dp))
-                when (page) {
-                    0 -> Text(
-                        "KlipNote convierte videos y audios en texto, gratis.",
-                        color = OnBg,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        lineHeight = 30.sp
+                    .heightIn(
+                        min = with(density) {
+                            if (middleViewportPx > 0) middleViewportPx.toDp() else 0.dp
+                        }
                     )
-                    1 -> {
-                        Text(
-                            "Necesitas una llave gratis. Te recomendamos Groq: tarda 2 minutos.",
-                            color = OnBg,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            lineHeight = 28.sp
-                        )
-                        Spacer(Modifier.height(16.dp))
-                        Button(
-                            onClick = {
-                                context.startActivity(
-                                    Intent(
-                                        Intent.ACTION_VIEW,
-                                        Uri.parse("https://console.groq.com/keys")
-                                    )
-                                )
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Accent,
-                                contentColor = Color.Black
-                            ),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("Conseguir mi llave", fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(Modifier.height(14.dp))
-                        OutlinedTextField(
-                            value = keyText,
-                            onValueChange = {
-                                keyText = it
-                                error = null
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            placeholder = { Text("Pega aquí tu llave (gsk_…)", color = Muted) },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Accent,
-                                unfocusedBorderColor = Color(0xFF243044),
-                                focusedTextColor = OnBg,
-                                unfocusedTextColor = OnBg,
-                                cursorColor = Accent
-                            )
-                        )
-                        error?.let {
-                            Spacer(Modifier.height(6.dp))
-                            Text(it, color = Color(0xFFF87171), fontSize = 13.sp)
-                        }
-                        Spacer(Modifier.height(16.dp))
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Card)
-                                .padding(14.dp)
-                        ) {
-                            Text(
-                                "Para gastar \$0",
-                                color = Amber,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                "NO registres tarjeta en Groq ni en los otros servicios gratis. " +
-                                    "Si pones tarjeta y se acaba el regalo, te pueden cobrar.",
-                                color = OnBg,
-                                fontSize = 14.sp,
-                                lineHeight = 20.sp
-                            )
-                        }
-                    }
-                    else -> Text(
-                        "¡Listo! Pega un enlace o comparte un video a KlipNote.",
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+            Image(
+                painter = painterResource(R.drawable.ic_launcher_foreground),
+                contentDescription = "KlipNote",
+                modifier = Modifier.size(96.dp)
+            )
+            Spacer(Modifier.height(20.dp))
+
+            when (page) {
+                0 -> {
+                    Text(
+                        "Convierte videos y audios en texto",
                         color = OnBg,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        lineHeight = 30.sp
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 32.sp,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "Pega un enlace de YouTube, TikTok o Instagram, o comparte un video. " +
+                            "El texto se copia solo.",
+                        color = Muted,
+                        fontSize = 15.sp,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 22.sp,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                1 -> {
+                    Text(
+                        "Necesitas una llave gratis",
+                        color = OnBg,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 32.sp,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "Te recomendamos Groq: tarda 2 minutos.",
+                        color = Muted,
+                        fontSize = 15.sp,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 22.sp,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(20.dp))
+                    Button(
+                        onClick = {
+                            context.startActivity(
+                                Intent(
+                                    Intent.ACTION_VIEW,
+                                    Uri.parse("https://console.groq.com/keys")
+                                )
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Accent,
+                            contentColor = OnAccent
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Conseguir mi llave", fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    OutlinedTextField(
+                        value = keyText,
+                        onValueChange = {
+                            keyText = it
+                            error = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = {
+                            Text("Pega aquí tu llave (gsk_…)", color = Muted)
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Accent,
+                            unfocusedBorderColor = Color(0xFF243044),
+                            focusedTextColor = OnBg,
+                            unfocusedTextColor = OnBg,
+                            cursorColor = Accent
+                        )
+                    )
+                    error?.let {
+                        Spacer(Modifier.height(6.dp))
+                        Text(it, color = Color(0xFFF87171), fontSize = 13.sp)
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Card)
+                            .padding(14.dp),
+                        horizontalAlignment = Alignment.Start
+                    ) {
+                        Text(
+                            "Para gastar \$0",
+                            color = Amber,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "NO registres tarjeta en Groq ni en los otros servicios gratis. " +
+                                "Si pones tarjeta y se acaba el regalo, te pueden cobrar.",
+                            color = OnBg,
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp
+                        )
+                    }
+                }
+                else -> {
+                    Text(
+                        "¡Listo!",
+                        color = OnBg,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "Pega un enlace o comparte un video a KlipNote.",
+                        color = Muted,
+                        fontSize = 15.sp,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 22.sp,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
 
-            Column(modifier = Modifier.fillMaxWidth()) {
-                when (page) {
-                    0 -> Button(
-                        onClick = { page = 1 },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Accent,
-                            contentColor = Color.Black
-                        ),
-                        shape = RoundedCornerShape(12.dp)
-                    ) { Text("Continuar", fontWeight = FontWeight.Bold) }
-                    1 -> {
-                        Button(
-                            onClick = {
-                                val trimmed = keyText.trim()
-                                if (trimmed.isBlank()) {
-                                    error = "Pega tu llave o pulsa Saltar"
-                                    return@Button
-                                }
-                                ApiKeyStore.setGroq(context, trimmed)
-                                onSavedKey()
-                                page = 2
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Accent,
-                                contentColor = Color.Black
-                            ),
-                            shape = RoundedCornerShape(12.dp)
-                        ) { Text("Guardar llave y continuar", fontWeight = FontWeight.Bold) }
-                        TextButton(
-                            onClick = { page = 2 },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Continuar sin llave", color = Muted) }
-                    }
-                    else -> Button(
-                        onClick = { finish() },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Accent,
-                            contentColor = Color.Black
-                        ),
-                        shape = RoundedCornerShape(12.dp)
-                    ) { Text("Empezar", fontWeight = FontWeight.Bold) }
-                }
-                TextButton(onClick = { finish() }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Saltar", color = Muted)
-                }
+            Spacer(Modifier.height(28.dp))
+            ProgressDots(page = page, total = 3)
             }
+        }
+
+        // 3) Botones fuera del scroll
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 12.dp)
+                .then(
+                    if (DEBUG_BORDERS) Modifier.border(2.dp, Color.Yellow) else Modifier
+                ),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (page > 0) {
+                TextButton(onClick = { page -= 1 }) {
+                    Text("Atrás", color = Muted, fontSize = 15.sp)
+                }
+                Spacer(Modifier.width(8.dp))
+            }
+            Button(
+                onClick = {
+                    when (page) {
+                        0 -> page = 1
+                        1 -> goNextFromKeyPage()
+                        else -> finish()
+                    }
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(52.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Accent,
+                    contentColor = OnAccent
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    if (page == 2) "Empezar" else "Continuar",
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProgressDots(page: Int, total: Int) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        repeat(total) { index ->
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(if (index == page) Accent else Muted.copy(alpha = 0.35f))
+            )
         }
     }
 }
