@@ -81,7 +81,7 @@ data class CreditUiState(
     val groqLimitSeconds: Double = BillingManager.GROQ_DEFAULT_LIMIT_SECONDS,
     val groqUsedTodaySeconds: Double = 0.0,
     val groqHasLiveQuota: Boolean = false,
-    val inworldRemainingSeconds: Double = BillingManager.INWORLD_MONTHLY_SECONDS,
+    val inworldRemainingSeconds: Double = BillingManager.INWORLD_POOL_SECONDS,
     val inworldUsedMinutesEditable: String = "0",
     val assemblyRemainingSeconds: Double = BillingManager.ASSEMBLY_POOL_SECONDS,
     val assemblyRemainingUsdEditable: String = "50.00",
@@ -269,7 +269,7 @@ fun CreditControlPanel(
                     level = "2",
                     title = "Inworld Free",
                     detail = "Quedan ~${String.format("%.0f", state.inworldRemainingSeconds / 60.0)} min de 400 este mes",
-                    progress = (state.inworldRemainingSeconds / BillingManager.INWORLD_MONTHLY_SECONDS)
+                    progress = (state.inworldRemainingSeconds / BillingManager.INWORLD_POOL_SECONDS)
                         .toFloat()
                         .coerceIn(0f, 1f),
                     provider = SttProvider.INWORLD,
@@ -463,13 +463,13 @@ private fun MotorQuotaCard(
     val (emoji, healthLabel, tint) = when (health) {
         ProviderHealth.ACTIVE_FREE -> Triple(
             "🟢",
-            if (isInworld) "ACTIVO 400m/mes" else "ACTIVO (Gratis)",
+            if (isInworld) "ACTIVO 400m bolsa" else "ACTIVO (Gratis)",
             Accent
         )
         ProviderHealth.KEY_READY -> Triple("🟢", "KEY LISTA", Accent)
         ProviderHealth.PAUSED_LIMIT -> Triple(
             "🟡",
-            if (isInworld) "LÍMITE MENSUAL" else "EN PAUSA / LÍMITE DIARIO",
+            if (isInworld) "BOLSA AGOTADA" else "EN PAUSA / LÍMITE DIARIO",
             Amber
         )
         ProviderHealth.OFFER_ENDED -> Triple("🔴", "OFERTA TERMINADA / SIN SALDO", Red)

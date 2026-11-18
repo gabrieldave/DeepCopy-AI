@@ -45,7 +45,6 @@ object BillingManager {
     private const val KEY_GROQ_USED_TODAY = "groq_used_seconds_today"
     private const val KEY_GROQ_LIVE = "groq_has_live_headers"
     private const val KEY_ASSEMBLY_USED = "assembly_used_seconds"
-    private const val KEY_INWORLD_MONTH = "inworld_month_key"
     private const val KEY_INWORLD_USED = "inworld_used_seconds"
     private const val KEY_ALLOW_PAID = "allow_paid_fallback"
     private const val KEY_LAST_OFFER_CHECK = "last_offer_check_ms"
@@ -64,7 +63,8 @@ object BillingManager {
     const val GROQ_DAILY_SECONDS = 28_800.0
     /** Tope provisional hasta la primera respuesta con headers de Groq (ventana ~1h). */
     const val GROQ_DEFAULT_LIMIT_SECONDS = 7_200.0
-    const val INWORLD_MONTHLY_SECONDS = 24_000.0 // 400 minutos
+    /** Bolsa única On-Demand (~400 min); no se renueva sola cada mes. */
+    const val INWORLD_POOL_SECONDS = 24_000.0
     const val ASSEMBLY_POOL_SECONDS = 666_000.0 // 185h (estimación del regalo de $50)
     /** Regalo de AssemblyAI en USD y tarifa estimada usada para convertir saldo ↔ horas. */
     const val ASSEMBLY_POOL_USD = 50.0
@@ -475,45 +475,22 @@ object BillingManager {
         )
     }
 
-    // --- Inworld monthly (400 min, reset día 1 / YearMonth) ---
+    // --- Inworld pool (400 min On-Demand, bolsa única; no reset mensual) ---
 
-    fun getInworldUsedSeconds(context: Context): Double {
-        ensureInworldMonth(context)
-        return prefs(context).getFloat(KEY_INWORLD_USED, 0f).toDouble()
-    }
+    fun getInworldUsedSeconds(context: Context): Double =
+        prefs(context).getFloat(KEY_INWORLD_USED, 0f).toDouble()
 
     fun setInworldUsedSeconds(context: Context, seconds: Double) {
-        ensureInworldMonth(context)
         prefs(context).edit()
             .putFloat(KEY_INWORLD_USED, seconds.toFloat().coerceAtLeast(0f))
             .apply()
     }
 
     fun getInworldRemainingSeconds(context: Context): Double =
-        (INWORLD_MONTHLY_SECONDS - getInworldUsedSeconds(context)).coerceAtLeast(0.0)
+        (INWORLD_POOL_SECONDS - getInworldUsedSeconds(context)).coerceAtLeast(0.0)
 
     fun consumeInworldSeconds(context: Context, seconds: Double) {
         setInworldUsedSeconds(context, getInworldUsedSeconds(context) + seconds)
-    }
-
-    private fun ensureInworldMonth(context: Context) {
-        val month = yearMonthKey()
-        val p = prefs(context)
-        if (p.getString(KEY_INWORLD_MONTH, null) == month) return
-        p.edit()
-            .putString(KEY_INWORLD_MONTH, month)
-            .putFloat(KEY_INWORLD_USED, 0f)
-            .apply()
-    }
-
-    private fun yearMonthKey(): String {
-        val cal = Calendar.getInstance()
-        return String.format(
-            Locale.US,
-            "%04d-%02d",
-            cal.get(Calendar.YEAR),
-            cal.get(Calendar.MONTH) + 1
-        )
     }
 
     // --- AssemblyAI pool ---

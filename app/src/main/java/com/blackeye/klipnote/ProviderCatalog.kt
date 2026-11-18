@@ -51,7 +51,7 @@ object ProviderCatalog {
         ProviderInfo(
             provider = SttProvider.INWORLD,
             name = "Inworld (gratis)",
-            offer = "Hasta 400 min de STT gratis en plan On-Demand ($0). Archivos de hasta ~16 MB.",
+            offer = "Hasta 400 min de STT gratis una vez (plan On-Demand, $0). Archivos de hasta ~16 MB.",
             keyUrl = "https://platform.inworld.ai/",
             steps = listOf(
                 "Entra a platform.inworld.ai y crea tu cuenta.",
@@ -59,7 +59,7 @@ object ProviderCatalog {
                 "Copia la llave con «Copy key» (ya viene en Basic/Base64) y pégala aquí."
             ),
             meterKind = MeterKind.ESTIMATED,
-            meterNote = "Estimado: la app suma lo que transcribes (tope 400 min del plan On-Demand). Corrígelo si tu panel de Inworld dice otra cosa.",
+            meterNote = "Estimado: bolsa única de ~400 min; la app suma lo que transcribes. Corrígelo si tu panel de Inworld dice otra cosa.",
             isFree = true
         ),
         ProviderInfo(

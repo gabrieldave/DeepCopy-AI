@@ -29,7 +29,7 @@ En la app: pestaña **Motores → API Keys**. Cada tarjeta tiene un botón **«C
 | # | Servicio | Qué regala* | Dónde sacar la llave |
 |---|---|---|---|
 | 1 | Groq | Gratis siempre, con límite (~2 h de audio por hora, ~8 h por día) | console.groq.com/keys |
-| 2 | Inworld | Minutos gratis cada mes | platform.inworld.ai |
+| 2 | Inworld | Hasta ~400 min STT gratis una vez (On-Demand) | platform.inworld.ai |
 | 3 | AssemblyAI | Crédito de regalo una vez (~$50 USD) | assemblyai.com/app |
 | 4 | Deepgram | Crédito de regalo una vez (~$200 USD) | console.deepgram.com |
 | 5 | De pago (opcional) | Nada: aquí sí pagas | Groq de pago o Microsoft Azure |
@@ -87,6 +87,17 @@ cp local.properties.example local.properties   # ajusta sdk.dir
 **Stack:** Kotlin 2.0 · Jetpack Compose · Material 3 · OkHttp · youtubedl-android (yt-dlp + FFmpeg) · minSdk 26 · targetSdk 35.
 
 Versión actual: **1.5.0** (versionCode 122).
+
+## Licencia
+
+Este proyecto se publica bajo la **[GNU General Public License v3.0](LICENSE)** (GPL-3.0).
+
+Incluye / usa, entre otros:
+
+- **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** — Unlicense
+- **[youtubedl-android](https://github.com/yausername/youtubedl-android)** (fork junkfood02) — GPL-3.0
+
+Si redistribuyes KlipNote (APK o código), debes cumplir la GPL-3.0: incluir el texto de la licencia, ofrecer el código fuente correspondiente y mantener las mismas libertades para quien lo reciba.
 
 ## Aviso
 

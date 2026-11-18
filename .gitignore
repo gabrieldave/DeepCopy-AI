@@ -55,9 +55,6 @@ secrets.env
 *.pem
 *.key
 
-# Gradle wrapper binary (CI installs Gradle via setup-gradle)
-gradle/wrapper/gradle-wrapper.jar
-
 # Misc
 *.hprof
 .kotlin/

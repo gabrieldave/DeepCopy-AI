@@ -175,7 +175,7 @@ object OfferHealthMonitor {
                 provider = SttProvider.INWORLD,
                 health = ProviderHealth.PAUSED_LIMIT,
                 label = "Inworld Free",
-                detail = "LÍMITE MENSUAL",
+                detail = "BOLSA AGOTADA",
                 remainingSeconds = 0.0
             )
         }
