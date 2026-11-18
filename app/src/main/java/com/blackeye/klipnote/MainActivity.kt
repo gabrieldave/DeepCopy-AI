@@ -83,6 +83,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -96,12 +97,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -110,6 +114,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import android.os.Build
 
 private val Bg = Color(0xFF0B0F17)
 private val Card = Color(0xFF151C28)
@@ -152,6 +157,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        KlipNoteNotify.ensureChannels(this)
         handleShareIntent(intent)
         setContent {
             KlipNoteTheme {
@@ -176,6 +182,10 @@ class MainActivity : ComponentActivity() {
 
     private fun handleShareIntent(intent: Intent?) {
         if (intent == null) return
+        if (intent.getBooleanExtra(KlipNoteNotify.EXTRA_OPEN_RESULT, false)) {
+            // Abrir en Capturar; el JobHub ya habrá rellenado el resultado si aplica.
+            return
+        }
         if (intent.action != Intent.ACTION_SEND) return
         val uri = intent.getParcelableExtraCompat(Intent.EXTRA_STREAM)
         if (uri != null) {
@@ -305,6 +315,41 @@ private fun KlipNoteApp(
     var transcriptEntries by remember { mutableStateOf(TranscriptHistoryStore.load(context)) }
     var guionSearch by remember { mutableStateOf("") }
     var expandedGuionId by remember { mutableStateOf<String?>(null) }
+    var lastSavedMedia by remember { mutableStateOf<SavedMediaInfo?>(null) }
+    var notifyWhenDone by remember { mutableStateOf(KlipNoteNotify.isNotifyEnabled(context)) }
+    var showNotifPermissionRationale by remember { mutableStateOf(false) }
+    var pendingLinkAfterNotif by remember { mutableStateOf<String?>(null) }
+
+    fun launchLinkJob(url: String) {
+        phase = UiPhase.Downloading("Descargando: 0%…")
+        lastSavedMedia = null
+        KlipNoteWorkService.startLinkJob(
+            context = context,
+            url = url,
+            mode = linkMode,
+            kind = downloadKind,
+            languageMode = languageMode,
+            forcedLanguage = forcedLanguage,
+            diarize = diarize,
+            routingSelection = routingSelection
+        )
+    }
+
+    val notifPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        KlipNoteNotify.markAskedNotificationPermission(context)
+        if (!granted) {
+            Toast.makeText(
+                context,
+                "Sin notificaciones: la app sigue funcionando igual",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+        val pending = pendingLinkAfterNotif
+        pendingLinkAfterNotif = null
+        if (pending != null) launchLinkJob(pending)
+    }
 
     fun syncKeysUi() {
         keyMasks = readKeyMasks(context)
@@ -495,6 +540,10 @@ private fun KlipNoteApp(
             }
             return
         }
+        if (KlipNoteJobHub.isBusy()) {
+            Toast.makeText(context, "Ya hay una descarga/transcripción en curso", Toast.LENGTH_SHORT).show()
+            return
+        }
         linkInput = url
         lastSourceLabel = url
         val needsStt = linkMode != SealDownloader.LinkMode.DOWNLOAD_ONLY
@@ -516,81 +565,26 @@ private fun KlipNoteApp(
             ).show()
             return
         }
-        val modeSnap = linkMode
-        val kindSnap = downloadKind
-        val selectionSnap = routingSelection
-        val langSnap = languageMode
-        val forcedLangSnap = forcedLanguage
-        val diarizeSnap = diarize
-        scope.launch {
-            var artifact: SealDownloader.DownloadArtifact? = null
-            try {
-                phase = UiPhase.Downloading("Descargando: 0%…")
-                artifact = SealDownloader.download(
-                    context = context,
-                    rawInput = url,
-                    mode = modeSnap,
-                    downloadKind = kindSnap,
-                    onProgress = { label -> phase = UiPhase.Downloading(label) }
-                )
-                if (modeSnap == SealDownloader.LinkMode.DOWNLOAD_ONLY) {
-                    phase = UiPhase.Idle
-                    snackbar.showSnackbar("Guardado en Downloads/KlipNote · ${artifact.title}")
-                    return@launch
-                }
-                val uri = artifact.uri ?: Uri.fromFile(artifact.file)
-                lastSourceLabel = artifact.title.ifBlank { url }
-                val savesPublic = modeSnap == SealDownloader.LinkMode.AUDIO_AND_TEXT ||
-                    modeSnap == SealDownloader.LinkMode.VIDEO_AND_TEXT
-                runTranscription(
-                    context = context,
-                    uri = uri,
-                    fileName = artifact.title,
-                    mode = langSnap,
-                    forcedLanguageCode = forcedLangSnap,
-                    diarize = diarizeSnap,
-                    routingSelection = selectionSnap,
-                    // TEXT_ONLY ya baja audio liviano; Audio/Video+Texto guardan calidad completa
-                    // y comprimen una copia aparte solo para STT.
-                    compressForStt = savesPublic,
-                    savedInDownloads = savesPublic,
-                    onPhase = { phase = it },
-                    onText = { transcriptText = it },
-                    onMeta = {
-                        lastResultMeta = it
-                        persistGuion(lastSourceLabel.ifBlank { url }, it)
-                    },
-                    onBalance = { balanceSnapshot = it },
-                    onAppSpent = {
-                        appSpent = it
-                        localUsage = BillingManager.getLocalUsage(context)
-                        groqRemaining = BillingManager.getGroqRemainingSeconds(context)
-                        groqLimit = BillingManager.getGroqLimitSeconds(context)
-                        groqUsedToday = BillingManager.getGroqUsedTodaySeconds(context)
-                        groqHasLive = BillingManager.hasGroqLiveQuota(context)
-                        inworldRemaining = BillingManager.getInworldRemainingSeconds(context)
-                        assemblyRemaining = BillingManager.getAssemblyRemainingSeconds(context)
-                        syncKeysUi()
-                    },
-                    onHistoryChanged = { historyEntries = it },
-                    snackbar = snackbar
-                )
-            } catch (e: com.yausername.youtubedl_android.YoutubeDL.CanceledException) {
-                phase = UiPhase.Idle
-                snackbar.showSnackbar("Descarga cancelada")
-            } catch (t: Throwable) {
-                val msg = t.message ?: "Error de descarga"
-                CookieStore.siteForUrl(url)?.let { cookieSiteHint = it }
-                phase = UiPhase.Error(SealDownloader.friendlyDownloadError(msg, url))
-            } finally {
-                artifact?.let { SealDownloader.cleanupArtifact(it) }
-            }
+        // Android 13+: pedir notificaciones la 1ª vez (si el usuario quiere avisos).
+        if (Build.VERSION.SDK_INT >= 33 &&
+            KlipNoteNotify.isNotifyEnabled(context) &&
+            !KlipNoteNotify.canPostNotifications(context) &&
+            !KlipNoteNotify.hasAskedNotificationPermission(context)
+        ) {
+            pendingLinkAfterNotif = url
+            showNotifPermissionRationale = true
+            return
         }
+        launchLinkJob(url)
     }
 
     fun cancelWork() {
+        KlipNoteWorkService.cancel(context)
         SealDownloader.cancelActive()
-        if (phase is UiPhase.Downloading) {
+        if (phase is UiPhase.Downloading ||
+            phase is UiPhase.Extracting ||
+            phase is UiPhase.Transcribing
+        ) {
             phase = UiPhase.Idle
         }
     }
@@ -602,6 +596,73 @@ private fun KlipNoteApp(
         }
         preFlight = null
         startTranscription(pf.uri, pf.fileName)
+    }
+
+    val jobState by KlipNoteJobHub.state.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START, Lifecycle.Event.ON_RESUME ->
+                    KlipNoteJobHub.appInForeground = true
+                Lifecycle.Event.ON_STOP ->
+                    KlipNoteJobHub.appInForeground = false
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        KlipNoteJobHub.appInForeground =
+            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(jobState) {
+        when (val s = jobState) {
+            is KlipNoteJobHub.JobState.Running -> {
+                val label = s.label
+                phase = when {
+                    label.contains("Descarg", ignoreCase = true) -> UiPhase.Downloading(label)
+                    label.contains("Extra", ignoreCase = true) ||
+                        label.contains("Preparando audio", ignoreCase = true) -> UiPhase.Extracting
+                    else -> UiPhase.Transcribing(label)
+                }
+            }
+            is KlipNoteJobHub.JobState.Success -> {
+                transcriptText = s.transcript
+                lastResultMeta = s.meta
+                lastSavedMedia = s.savedMedia
+                lastSourceLabel = s.sourceLabel.ifBlank { lastSourceLabel }
+                s.meta?.let { persistGuion(lastSourceLabel, it) }
+                historyEntries = BillingManager.loadHistory(context)
+                appSpent = BillingManager.getAppSpent(context)
+                localUsage = BillingManager.getLocalUsage(context)
+                syncKeysUi()
+                phase = if (s.meta != null) {
+                    UiPhase.Done(s.meta)
+                } else {
+                    UiPhase.Idle
+                }
+                selectedTab = MainTab.Capturar
+                if (KlipNoteJobHub.appInForeground) {
+                    vibrateShort(context)
+                    snackbar.showSnackbar(s.toastMessage)
+                }
+                KlipNoteJobHub.consumeTerminal()
+            }
+            is KlipNoteJobHub.JobState.Failed -> {
+                CookieStore.siteForUrl(linkInput)?.let { cookieSiteHint = it }
+                phase = UiPhase.Error(s.message)
+                historyEntries = BillingManager.loadHistory(context)
+                if (KlipNoteJobHub.appInForeground) vibrateShort(context)
+                KlipNoteJobHub.consumeTerminal()
+            }
+            KlipNoteJobHub.JobState.Cancelled -> {
+                phase = UiPhase.Idle
+                snackbar.showSnackbar("Cancelado")
+                KlipNoteJobHub.consumeTerminal()
+            }
+            KlipNoteJobHub.JobState.Idle -> Unit
+        }
     }
 
     val keysRevision by ApiKeyStore.revision.collectAsState()
@@ -689,7 +750,8 @@ private fun KlipNoteApp(
 
     val busy = phase is UiPhase.Downloading ||
         phase is UiPhase.Extracting ||
-        phase is UiPhase.Transcribing
+        phase is UiPhase.Transcribing ||
+        KlipNoteJobHub.isBusy()
 
     val pillManual = routingSelection is RoutingSelection.Manual
     val pillText = activeMotorPillText(routingSelection, autoPrimary)
@@ -864,11 +926,16 @@ private fun KlipNoteApp(
                         onClearResult = {
                             transcriptText = ""
                             lastResultMeta = null
+                            lastSavedMedia = null
                             phase = UiPhase.Idle
                             copyFeedback = false
                         },
                         onBackToAuto = { setRouting(RoutingSelection.Auto) },
-                        onTextChange = { transcriptText = it }
+                        onTextChange = { transcriptText = it },
+                        savedMedia = lastSavedMedia,
+                        onOpenSavedMedia = { SavedMediaActions.openWithPlayer(context, it) },
+                        onShareSavedMedia = { SavedMediaActions.share(context, it) },
+                        onOpenDownloads = { SavedMediaActions.openDownloadsFolder(context) }
                     )
                 }
                 MainTab.Guiones -> {
@@ -1023,6 +1090,11 @@ private fun KlipNoteApp(
                             scope.launch {
                                 snackbar.showSnackbar("Cuenta de ${site.label} desconectada")
                             }
+                        },
+                        notifyWhenDone = notifyWhenDone,
+                        onNotifyWhenDoneChange = { enabled ->
+                            notifyWhenDone = enabled
+                            KlipNoteNotify.setNotifyEnabled(context, enabled)
                         }
                     )
                 }
@@ -1105,6 +1177,11 @@ private fun KlipNoteApp(
             onDismiss = { showHistory = false },
             onOpen = { entry ->
                 transcriptText = entry.transcript
+                lastSavedMedia = SavedMediaActions.fromHistory(
+                    entry.downloadUri,
+                    entry.downloadDisplayName,
+                    entry.downloadIsVideo
+                )
                 phase = UiPhase.Idle
                 selectedTab = MainTab.Capturar
                 showHistory = false
@@ -1116,6 +1193,59 @@ private fun KlipNoteApp(
             onCopyTranscript = { text ->
                 copyToClipboard(context, text)
                 notifyCopied()
+            },
+            onOpenSavedMedia = { SavedMediaActions.openWithPlayer(context, it) },
+            onShareSavedMedia = { SavedMediaActions.share(context, it) },
+            onOpenDownloads = { SavedMediaActions.openDownloadsFolder(context) }
+        )
+    }
+
+    if (showNotifPermissionRationale) {
+        AlertDialog(
+            onDismissRequest = {
+                showNotifPermissionRationale = false
+                KlipNoteNotify.markAskedNotificationPermission(context)
+                val pending = pendingLinkAfterNotif
+                pendingLinkAfterNotif = null
+                if (pending != null) launchLinkJob(pending)
+            },
+            containerColor = Card,
+            titleContentColor = OnBg,
+            textContentColor = OnBg,
+            title = { Text("Avisos al terminar") },
+            text = {
+                Text(
+                    "KlipNote puede avisarte con una notificación cuando termine la descarga " +
+                        "o el guion (útil si sales de la app). Puedes denegarlo y seguir usando " +
+                        "la app igual, solo sin avisos."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showNotifPermissionRationale = false
+                        if (Build.VERSION.SDK_INT >= 33) {
+                            notifPermissionLauncher.launch(
+                                android.Manifest.permission.POST_NOTIFICATIONS
+                            )
+                        } else {
+                            val pending = pendingLinkAfterNotif
+                            pendingLinkAfterNotif = null
+                            if (pending != null) launchLinkJob(pending)
+                        }
+                    }
+                ) { Text("Permitir", color = Accent) }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showNotifPermissionRationale = false
+                        KlipNoteNotify.markAskedNotificationPermission(context)
+                        val pending = pendingLinkAfterNotif
+                        pendingLinkAfterNotif = null
+                        if (pending != null) launchLinkJob(pending)
+                    }
+                ) { Text("Ahora no", color = Muted) }
             }
         )
     }
@@ -1276,7 +1406,11 @@ private fun CapturarTab(
     onShare: () -> Unit,
     onClearResult: () -> Unit,
     onBackToAuto: () -> Unit,
-    onTextChange: (String) -> Unit
+    onTextChange: (String) -> Unit,
+    savedMedia: SavedMediaInfo?,
+    onOpenSavedMedia: (SavedMediaInfo) -> Unit,
+    onShareSavedMedia: (SavedMediaInfo) -> Unit,
+    onOpenDownloads: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -1337,6 +1471,15 @@ private fun CapturarTab(
             )
         }
 
+        if (savedMedia != null) {
+            SavedMediaBanner(
+                media = savedMedia,
+                onOpen = { onOpenSavedMedia(savedMedia) },
+                onOpenDownloads = onOpenDownloads,
+                onShareFile = { onShareSavedMedia(savedMedia) }
+            )
+        }
+
         if (transcriptText.isNotBlank() || phase is UiPhase.Done) {
             ResultWorkspaceCard(
                 text = transcriptText,
@@ -1347,6 +1490,56 @@ private fun CapturarTab(
                 onShare = onShare,
                 onClear = onClearResult
             )
+        }
+    }
+}
+
+@Composable
+private fun SavedMediaBanner(
+    media: SavedMediaInfo,
+    onOpen: () -> Unit,
+    onOpenDownloads: () -> Unit,
+    onShareFile: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Card)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            "✅ Guardado en Descargas/KlipNote: ${media.displayName}",
+            color = Accent,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 14.sp
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(
+                onClick = onOpen,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text(media.openLabel, color = Accent, fontSize = 12.sp, maxLines = 1)
+            }
+            OutlinedButton(
+                onClick = onOpenDownloads,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("Ver en Descargas", color = Accent, fontSize = 12.sp, maxLines = 1)
+            }
+            OutlinedButton(
+                onClick = onShareFile,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("Compartir", color = Accent, fontSize = 12.sp, maxLines = 1)
+            }
         }
     }
 }
@@ -2069,7 +2262,9 @@ private fun MotoresTab(
     cookiesRevision: Int,
     onConnectCookies: (CookieSite) -> Unit,
     onToggleCookies: (Boolean) -> Unit,
-    onClearCookies: (CookieSite) -> Unit
+    onClearCookies: (CookieSite) -> Unit,
+    notifyWhenDone: Boolean,
+    onNotifyWhenDoneChange: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     var advancedOpen by remember { mutableStateOf(diarize) }
@@ -2126,6 +2321,26 @@ private fun MotoresTab(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Text("API Keys (BYOK)", fontWeight = FontWeight.SemiBold)
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Avisarme al terminar", color = OnBg, fontSize = 14.sp)
+                    Text(
+                        "Notificación cuando termine la descarga o el guion",
+                        color = Muted,
+                        fontSize = 12.sp
+                    )
+                }
+                Switch(
+                    checked = notifyWhenDone,
+                    onCheckedChange = onNotifyWhenDoneChange,
+                    colors = SwitchDefaults.colors(checkedTrackColor = Accent)
+                )
             }
 
             Row(
@@ -2390,11 +2605,6 @@ private fun readKeyMasks(context: android.content.Context): Map<SttProvider, Str
     SttProvider.DEEPGRAM to ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.DEEPGRAM),
     SttProvider.PAID_FALLBACK to ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.PAID_FALLBACK)
 )
-
-private fun copyToClipboard(context: android.content.Context, text: String) {
-    val cm = context.getSystemService(ClipboardManager::class.java)
-    cm.setPrimaryClip(ClipData.newPlainText("KlipNote", text))
-}
 
 private suspend fun runTranscription(
     context: android.content.Context,
