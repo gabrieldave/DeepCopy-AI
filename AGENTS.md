@@ -1,6 +1,8 @@
-# AGENTS.md: instrucciones para asistentes de IA (Cursor, OpenCode, Antigravity, etc.)
+# AGENTS.md: instrucciones para asistentes de IA (Cursor, OpenCode, Antigravity, Claude, etc.)
 
-Lee esto completo antes de tocar el proyecto. El dueño no es programador profesional: explícale en español sencillo y pide confirmación antes de cualquier cosa irreversible.
+> Sirve para el mantenedor y para cualquier persona que contribuya usando una IA.
+
+Lee esto completo antes de tocar el proyecto. Explica tus cambios en español sencillo y pide confirmación antes de cualquier cosa irreversible.
 
 ## Qué es
 **KlipNote**: app Android (Kotlin + Jetpack Compose, minSdk 26, targetSdk 35) que transcribe audio y video a texto, gratis y de código abierto (GPL-3.0). Repo: `gabrieldave/KlipNote`. Package: `com.blackeye.klipnote`; el debug usa `com.blackeye.klipnote.debug`.
@@ -11,19 +13,19 @@ Lee esto completo antes de tocar el proyecto. El dueño no es programador profes
 - **Descargas** con yt-dlp (youtubedl-android 0.18.x + QuickJS) y cookies por sitio en `CookieStore.kt`.
 
 ## Reglas (obligatorias)
-1. **Nunca** leas, copies, muestres ni subas el keystore ni sus contraseñas (`~/.blackeye-keys/`, `*.jks`, `keystore.properties`). La firma del release la hace GitHub Actions con secrets. No necesitas firmar en local.
-2. **Nunca** pongas API keys, cookies ni datos personales del dueño en el código, el repo, los logs o los commits.
+1. **Nunca** leas, copies, muestres ni subas keystores ni sus contraseñas (`*.jks`, `*.keystore`, `keystore.properties`, en cualquier carpeta). La firma del release la hace GitHub Actions con secrets. No necesitas firmar en local.
+2. **Nunca** pongas API keys, cookies ni datos personales en el código, el repo, los logs o los commits.
 3. **No modifiques `.github/workflows/`** sin explicar el cambio y pedir permiso primero.
 4. **Una versión a la vez**, cada una en su rama. No mezcles cambios de versiones distintas. No hagas `reset --hard`, `push --force` ni borres ramas sin permiso.
-5. **No cambies la lógica** de la cascada, el Modo $0 ni el cifrado de llaves salvo que el dueño lo pida explícitamente. La config remota nunca puede activar el motor de pago.
+5. **No cambies la lógica** de la cascada, el Modo $0 ni el cifrado de llaves salvo que el mantenedor lo pida explícitamente. La config remota nunca puede activar el motor de pago.
 6. La versión sale **solo** de `localVersionCode` / `localVersionName` en `app/build.gradle.kts`. Súbela en cada release (el `versionCode` siempre debe subir).
-7. Antes de pedirle al dueño que pruebe algo: compila (`./gradlew assembleDebug`), instala y **verifica tú con capturas** (ver abajo). Muéstrale las capturas.
-8. No publiques un Release sin el «ok» del dueño.
+7. Antes de pedir que se pruebe algo: compila (`./gradlew assembleDebug`), instala y **verifica tú con capturas** (ver abajo) y muéstralas.
+8. No publiques un Release sin el «ok» del mantenedor (gabrieldave).
 
 ## Comandos útiles
 ```bash
 ./gradlew assembleDebug                      # compilar debug
-adb devices                                  # ver el teléfono (Pixel 10 Pro, por cable y/o Wi-Fi)
+adb devices                                  # ver el teléfono conectado (cable y/o Wi-Fi)
 adb -d install -r app/build/outputs/apk/debug/*.apk   # -d = cable; usa -e si solo hay Wi-Fi
 adb shell pm clear com.blackeye.klipnote.debug        # borra datos SOLO de la Debug (ver asistente de inicio)
 adb exec-out screencap -p > captura.png      # captura de pantalla para verificar
@@ -41,4 +43,4 @@ Push o merge a `main` → GitHub Actions compila el APK firmado y crea o actuali
 ## Seguridad del repo (no cambiar sin permiso)
 - `main` protegida contra force push y borrado.
 - Actions con aprobación obligatoria para contribuidores externos.
-- Secrets: solo `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD` y `ANDROID_KEY_ALIAS`.
+- Los secrets de firma solo los usa el workflow del repo principal; los forks compilan APK debug sin ellos.
