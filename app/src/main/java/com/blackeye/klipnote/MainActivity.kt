@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -45,6 +46,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -59,6 +61,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -93,10 +96,14 @@ private val AiPrompts = listOf(
 
 sealed class UiPhase {
     data object Idle : UiPhase()
+    data class Downloading(val label: String) : UiPhase()
     data object Extracting : UiPhase()
-    data object Transcribing : UiPhase()
+    data class Transcribing(val motorHint: String = "") : UiPhase()
     data class Done(val meta: TranscriptionResult) : UiPhase()
-    data class Error(val message: String) : UiPhase()
+    data class Error(
+        val message: String,
+        val isManualTest: Boolean = false
+    ) : UiPhase()
 }
 
 data class PreFlightState(
@@ -113,6 +120,7 @@ data class PreFlightState(
 class MainActivity : ComponentActivity() {
 
     private var pendingShareUri by mutableStateOf<Uri?>(null)
+    private var pendingShareText by mutableStateOf<String?>(null)
     private var shareNonce by mutableStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -124,8 +132,12 @@ class MainActivity : ComponentActivity() {
             KlipNoteTheme {
                 KlipNoteApp(
                     shareUri = pendingShareUri,
+                    shareText = pendingShareText,
                     shareNonce = shareNonce,
-                    onShareConsumed = { pendingShareUri = null }
+                    onShareConsumed = {
+                        pendingShareUri = null
+                        pendingShareText = null
+                    }
                 )
             }
         }
@@ -153,6 +165,12 @@ class MainActivity : ComponentActivity() {
         val uri = intent.getParcelableExtraCompat(Intent.EXTRA_STREAM)
         if (uri != null) {
             pendingShareUri = uri
+            shareNonce += 1
+            return
+        }
+        val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+        if (!text.isNullOrBlank()) {
+            pendingShareText = text
             shareNonce += 1
         }
     }
@@ -187,17 +205,23 @@ private fun KlipNoteTheme(content: @Composable () -> Unit) {
 @Composable
 private fun KlipNoteApp(
     shareUri: Uri?,
+    shareText: String?,
     shareNonce: Int,
     onShareConsumed: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
+    val sealReady by SealDownloader.ready.collectAsState()
 
     var showKeyDialog by remember { mutableStateOf(false) }
     var languageMode by remember { mutableStateOf(LanguageMode.AUTO) }
     var diarize by remember { mutableStateOf(false) }
     var phase by remember { mutableStateOf<UiPhase>(UiPhase.Idle) }
+    var linkInput by remember { mutableStateOf("") }
+    var linkMode by remember { mutableStateOf(SealDownloader.LinkMode.TEXT_ONLY) }
+    var downloadKind by remember { mutableStateOf(SealDownloader.DownloadKind.AUDIO_M4A) }
+    var updatingYtDlp by remember { mutableStateOf(false) }
     var transcriptText by remember { mutableStateOf("") }
     var lastResultMeta by remember { mutableStateOf<TranscriptionResult?>(null) }
     var promptMenu by remember { mutableStateOf(false) }
@@ -215,7 +239,10 @@ private fun KlipNoteApp(
     var keyMasks by remember {
         mutableStateOf(readKeyMasks(context))
     }
-    var routeChain by remember { mutableStateOf(SttRouter.summarizeActiveRoute(context).chainLabel) }
+    var routingSelection by remember { mutableStateOf<RoutingSelection>(RoutingSelection.Auto) }
+    var routeChain by remember {
+        mutableStateOf(SttRouter.summarizeActiveRoute(context, RoutingSelection.Auto).chainLabel)
+    }
     var appSpent by remember { mutableStateOf(BillingManager.getAppSpent(context)) }
     var localUsage by remember { mutableStateOf(BillingManager.getLocalUsage(context)) }
     var includeDiarizeCost by remember {
@@ -251,7 +278,16 @@ private fun KlipNoteApp(
             context,
             providerStatuses
         )
-        routeChain = SttRouter.summarizeActiveRoute(context).chainLabel
+        routeChain = SttRouter.summarizeActiveRoute(context, routingSelection).chainLabel
+    }
+
+    fun setRouting(selection: RoutingSelection) {
+        routingSelection = selection
+        routeChain = SttRouter.summarizeActiveRoute(context, selection).chainLabel
+        val err = phase
+        if (err is UiPhase.Error && err.isManualTest && selection is RoutingSelection.Auto) {
+            phase = UiPhase.Idle
+        }
     }
 
     fun refreshDashboard() {
@@ -271,7 +307,7 @@ private fun KlipNoteApp(
             groqRemaining = BillingManager.getGroqRemainingSeconds(context)
             inworldRemaining = BillingManager.getInworldRemainingSeconds(context)
             assemblyRemaining = BillingManager.getAssemblyRemainingSeconds(context)
-            routeChain = SttRouter.summarizeActiveRoute(context).chainLabel
+            routeChain = SttRouter.summarizeActiveRoute(context, routingSelection).chainLabel
             historyEntries = BillingManager.loadHistory(context)
             allowPaidFallback = BillingManager.getAllowPaidFallback(context)
             syncKeysUi()
@@ -291,7 +327,7 @@ private fun KlipNoteApp(
             groqRemaining = BillingManager.getGroqRemainingSeconds(context)
             inworldRemaining = BillingManager.getInworldRemainingSeconds(context)
             assemblyRemaining = BillingManager.getAssemblyRemainingSeconds(context)
-            routeChain = SttRouter.summarizeActiveRoute(context).chainLabel
+            routeChain = SttRouter.summarizeActiveRoute(context, routingSelection).chainLabel
             verifyingOffers = false
             if (showSnackbar) {
                 snackbar.showSnackbar("Ofertas verificadas")
@@ -320,7 +356,7 @@ private fun KlipNoteApp(
         officialBalance: Double? = balanceSnapshot?.balanceUsd
     ): PreFlightState {
         val probe = BillingManager.probeMedia(context, uri)
-        val route = SttRouter.summarizeActiveRoute(context)
+        val route = SttRouter.summarizeActiveRoute(context, routingSelection)
         val estimate = BillingManager.estimate(
             durationSeconds = probe.durationSeconds,
             mode = mode,
@@ -359,6 +395,7 @@ private fun KlipNoteApp(
     }
 
     fun startTranscription(uri: Uri, fileName: String) {
+        val selectionSnap = routingSelection
         scope.launch {
             runTranscription(
                 context = context,
@@ -366,6 +403,7 @@ private fun KlipNoteApp(
                 fileName = fileName,
                 mode = languageMode,
                 diarize = diarize,
+                routingSelection = selectionSnap,
                 onPhase = { phase = it },
                 onText = { transcriptText = it },
                 onMeta = { lastResultMeta = it },
@@ -376,11 +414,101 @@ private fun KlipNoteApp(
                     groqRemaining = BillingManager.getGroqRemainingSeconds(context)
                     inworldRemaining = BillingManager.getInworldRemainingSeconds(context)
                     assemblyRemaining = BillingManager.getAssemblyRemainingSeconds(context)
-                    routeChain = SttRouter.summarizeActiveRoute(context).chainLabel
+                    routeChain = SttRouter.summarizeActiveRoute(context, selectionSnap).chainLabel
                 },
                 onHistoryChanged = { historyEntries = it },
                 snackbar = snackbar
             )
+        }
+    }
+
+    fun startFromLink(raw: String, auto: Boolean = false) {
+        val url = SealDownloader.extractFirstUrl(raw)
+        if (url.isNullOrBlank()) {
+            if (!auto) {
+                Toast.makeText(context, "No hay URL válida en el texto", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+        linkInput = url
+        val needsStt = linkMode != SealDownloader.LinkMode.DOWNLOAD_ONLY
+        if (needsStt && !ApiKeyStore.hasAnyKey(context)) {
+            showKeyDialog = true
+            Toast.makeText(context, context.getString(R.string.error_no_key), Toast.LENGTH_LONG).show()
+            return
+        }
+        if (sealReady != SealDownloader.ReadyState.READY) {
+            Toast.makeText(
+                context,
+                if (sealReady == SealDownloader.ReadyState.ERROR) {
+                    "yt-dlp no disponible: ${SealDownloader.readyError.value ?: "error"}"
+                } else {
+                    "Inicializando yt-dlp / FFmpeg…"
+                },
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+        val modeSnap = linkMode
+        val kindSnap = downloadKind
+        val selectionSnap = routingSelection
+        val langSnap = languageMode
+        val diarizeSnap = diarize
+        scope.launch {
+            var artifact: SealDownloader.DownloadArtifact? = null
+            try {
+                phase = UiPhase.Downloading("Descargando: 0%…")
+                artifact = SealDownloader.download(
+                    context = context,
+                    rawInput = url,
+                    mode = modeSnap,
+                    downloadKind = kindSnap,
+                    onProgress = { label -> phase = UiPhase.Downloading(label) }
+                )
+                if (modeSnap == SealDownloader.LinkMode.DOWNLOAD_ONLY) {
+                    phase = UiPhase.Idle
+                    snackbar.showSnackbar("Guardado en Downloads/KlipNote · ${artifact.title}")
+                    return@launch
+                }
+                val uri = artifact.uri ?: Uri.fromFile(artifact.file)
+                runTranscription(
+                    context = context,
+                    uri = uri,
+                    fileName = artifact.title,
+                    mode = langSnap,
+                    diarize = diarizeSnap,
+                    routingSelection = selectionSnap,
+                    onPhase = { phase = it },
+                    onText = { transcriptText = it },
+                    onMeta = { lastResultMeta = it },
+                    onBalance = { balanceSnapshot = it },
+                    onAppSpent = {
+                        appSpent = it
+                        localUsage = BillingManager.getLocalUsage(context)
+                        groqRemaining = BillingManager.getGroqRemainingSeconds(context)
+                        inworldRemaining = BillingManager.getInworldRemainingSeconds(context)
+                        assemblyRemaining = BillingManager.getAssemblyRemainingSeconds(context)
+                        routeChain =
+                            SttRouter.summarizeActiveRoute(context, selectionSnap).chainLabel
+                    },
+                    onHistoryChanged = { historyEntries = it },
+                    snackbar = snackbar
+                )
+            } catch (e: com.yausername.youtubedl_android.YoutubeDL.CanceledException) {
+                phase = UiPhase.Idle
+                snackbar.showSnackbar("Descarga cancelada")
+            } catch (t: Throwable) {
+                phase = UiPhase.Error(t.message ?: "Error de descarga")
+            } finally {
+                artifact?.let { SealDownloader.cleanupArtifact(it) }
+            }
+        }
+    }
+
+    fun cancelWork() {
+        SealDownloader.cancelActive()
+        if (phase is UiPhase.Downloading) {
+            phase = UiPhase.Idle
         }
     }
 
@@ -391,6 +519,14 @@ private fun KlipNoteApp(
         }
         preFlight = null
         startTranscription(pf.uri, pf.fileName)
+    }
+
+    val keysRevision by ApiKeyStore.revision.collectAsState()
+    LaunchedEffect(keysRevision) {
+        // Sync ligero de máscaras/estados locales. verifyAll solo vía onKeysChanged/verifyOffers.
+        syncKeysUi()
+        if (keysRevision == 0L) return@LaunchedEffect
+        providerStatuses = OfferHealthMonitor.reconcileWithStore(context, providerStatuses)
     }
 
     LaunchedEffect(Unit) {
@@ -404,7 +540,27 @@ private fun KlipNoteApp(
         }
     }
 
-    LaunchedEffect(shareNonce, shareUri) {
+    LaunchedEffect(shareNonce, shareUri, shareText) {
+        if (shareText != null) {
+            val text = shareText
+            onShareConsumed()
+            val url = SealDownloader.extractFirstUrl(text)
+            if (url != null) {
+                linkInput = url
+                // Espera breve a init nativo si hace falta.
+                var waits = 0
+                while (
+                    SealDownloader.ready.value == SealDownloader.ReadyState.IDLE && waits < 25
+                ) {
+                    kotlinx.coroutines.delay(200)
+                    waits++
+                }
+                startFromLink(url, auto = true)
+            } else {
+                linkInput = text
+            }
+            return@LaunchedEffect
+        }
         val uri = shareUri ?: return@LaunchedEffect
         onShareConsumed()
         if (!ApiKeyStore.hasAnyKey(context)) {
@@ -468,6 +624,28 @@ private fun KlipNoteApp(
                     }
                 },
                 actions = {
+                    TextButton(
+                        onClick = {
+                            if (updatingYtDlp) return@TextButton
+                            updatingYtDlp = true
+                            scope.launch {
+                                val msg = runCatching {
+                                    SealDownloader.updateYtDlpNightly(context)
+                                }.getOrElse { e ->
+                                    e.message ?: "Error al actualizar"
+                                }
+                                updatingYtDlp = false
+                                snackbar.showSnackbar("yt-dlp: $msg")
+                            }
+                        },
+                        enabled = !updatingYtDlp && sealReady == SealDownloader.ReadyState.READY
+                    ) {
+                        Text(
+                            if (updatingYtDlp) "…" else "Actualizar yt-dlp",
+                            color = Accent,
+                            fontSize = 12.sp
+                        )
+                    }
                     IconButton(onClick = { showKeyDialog = true }) {
                         Icon(
                             imageVector = Icons.Default.Key,
@@ -492,6 +670,37 @@ private fun KlipNoteApp(
                 .imePadding(),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            LinkActionCard(
+                linkInput = linkInput,
+                onLinkChange = { linkInput = it },
+                linkMode = linkMode,
+                onModeChange = { linkMode = it },
+                downloadKind = downloadKind,
+                onDownloadKindChange = { downloadKind = it },
+                sealReady = sealReady,
+                busy = phase is UiPhase.Downloading ||
+                    phase is UiPhase.Extracting ||
+                    phase is UiPhase.Transcribing,
+                onPasteLink = {
+                    val cm = context.getSystemService(ClipboardManager::class.java)
+                    val pasted = cm?.primaryClip?.getItemAt(0)?.coerceToText(context)
+                        ?.toString()?.trim().orEmpty()
+                    if (pasted.isNotBlank()) {
+                        linkInput = SealDownloader.extractFirstUrl(pasted) ?: pasted
+                    }
+                },
+                onRun = { startFromLink(linkInput) },
+                onCancel = { cancelWork() }
+            )
+
+            RoutingModeChips(
+                selection = routingSelection,
+                keyMasks = keyMasks,
+                onSelectAuto = { setRouting(RoutingSelection.Auto) },
+                onSelectManual = { setRouting(RoutingSelection.Manual(it)) },
+                onOpenKeys = { showKeyDialog = true }
+            )
+
             CreditControlPanel(
                 state = CreditUiState(
                     expanded = creditExpanded,
@@ -517,7 +726,8 @@ private fun KlipNoteApp(
                     assemblyUsedHoursEditable = String.format(
                         "%.2f",
                         BillingManager.getAssemblyUsedSeconds(context) / 3600.0
-                    )
+                    ),
+                    routingSelection = routingSelection
                 ),
                 onToggleExpand = { creditExpanded = !creditExpanded },
                 onRefresh = { refreshDashboard() },
@@ -530,7 +740,7 @@ private fun KlipNoteApp(
                 onAllowPaidChange = { enabled ->
                     allowPaidFallback = enabled
                     BillingManager.setAllowPaidFallback(context, enabled)
-                    routeChain = SttRouter.summarizeActiveRoute(context).chainLabel
+                    routeChain = SttRouter.summarizeActiveRoute(context, routingSelection).chainLabel
                 },
                 onInworldUsedMinutesSave = { minutes ->
                     BillingManager.setInworldUsedSeconds(context, minutes * 60.0)
@@ -540,10 +750,15 @@ private fun KlipNoteApp(
                     BillingManager.setAssemblyUsedSeconds(context, hours * 3600.0)
                     assemblyRemaining = BillingManager.getAssemblyRemainingSeconds(context)
                 },
-                onOpenKeys = { showKeyDialog = true }
+                onOpenKeys = { showKeyDialog = true },
+                onProbeProvider = { setRouting(RoutingSelection.Manual(it)) }
             )
 
-            StatusCard(phase = phase, lastMeta = lastResultMeta)
+            StatusCard(
+                phase = phase,
+                lastMeta = lastResultMeta,
+                onBackToAuto = { setRouting(RoutingSelection.Auto) }
+            )
 
             preFlight?.let { pf ->
                 PreFlightCard(
@@ -565,7 +780,9 @@ private fun KlipNoteApp(
                     },
                     onConfirm = { confirmPreFlight(pf) },
                     onDismiss = { preFlight = null },
-                    busy = phase is UiPhase.Extracting || phase is UiPhase.Transcribing
+                    busy = phase is UiPhase.Downloading ||
+                        phase is UiPhase.Extracting ||
+                        phase is UiPhase.Transcribing
                 )
             }
 
@@ -574,7 +791,9 @@ private fun KlipNoteApp(
                 onModeChange = { languageMode = it },
                 diarize = diarize,
                 onDiarizeChange = { diarize = it },
-                busy = phase is UiPhase.Extracting || phase is UiPhase.Transcribing,
+                busy = phase is UiPhase.Downloading ||
+                    phase is UiPhase.Extracting ||
+                    phase is UiPhase.Transcribing,
                 onPick = {
                     if (!ApiKeyStore.hasAnyKey(context)) {
                         showKeyDialog = true
@@ -593,11 +812,10 @@ private fun KlipNoteApp(
                 ResultCard(
                     text = transcriptText,
                     metaLabel = lastResultMeta?.let { meta ->
-                        val secs = meta.elapsedMs / 1000.0
-                        "Transcrito con ${meta.providerLabel} · " +
-                            BillingManager.formatUsd(meta.costUsd, 2) +
-                            " · ${String.format("%.1fs", secs)}" +
-                            if (copyFeedback) " · Copiado" else ""
+                        buildString {
+                            append(meta.resultBadge())
+                            if (copyFeedback) append(" · Copiado")
+                        }
                     },
                     onTextChange = { transcriptText = it },
                     promptMenuExpanded = promptMenu,
@@ -630,60 +848,11 @@ private fun KlipNoteApp(
 
     if (showKeyDialog) {
         MultiProviderKeysDialog(
-            groqMask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.GROQ),
-            inworldMask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.INWORLD),
-            assemblyMask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.ASSEMBLY_AI),
-            deepgramMask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.DEEPGRAM),
-            deepgramProjectId = ApiKeyStore.getDeepgramProjectId(context).orEmpty(),
-            paidMask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.PAID_FALLBACK),
-            paidEndpoint = ApiKeyStore.getPaidFallbackEndpoint(context),
-            paidEngine = ApiKeyStore.getPaidFallbackEngine(context),
             onDismiss = { showKeyDialog = false },
-            onSaveGroq = {
-                ApiKeyStore.setGroq(context, it)
-                onKeysChanged()
-            },
-            onClearGroq = {
-                ApiKeyStore.clearGroq(context)
-                onKeysChanged()
-            },
-            onSaveInworld = {
-                ApiKeyStore.setInworld(context, it)
-                onKeysChanged()
-            },
-            onClearInworld = {
-                ApiKeyStore.clearInworld(context)
-                onKeysChanged()
-            },
-            onSaveAssembly = {
-                ApiKeyStore.setAssemblyAi(context, it)
-                onKeysChanged()
-            },
-            onClearAssembly = {
-                ApiKeyStore.clearAssemblyAi(context)
-                onKeysChanged()
-            },
-            onSaveDeepgram = {
-                ApiKeyStore.setDeepgram(context, it)
-                onKeysChanged()
-            },
-            onClearDeepgram = {
-                ApiKeyStore.clearDeepgram(context)
-                balanceSnapshot = null
-                onKeysChanged()
-            },
-            onSaveDeepgramProjectId = {
-                ApiKeyStore.setDeepgramProjectId(context, it)
-                onKeysChanged()
-            },
-            onSavePaid = { key, endpoint, engine ->
-                ApiKeyStore.setPaidFallback(context, key)
-                ApiKeyStore.setPaidFallbackEndpoint(context, endpoint)
-                ApiKeyStore.setPaidFallbackEngine(context, engine)
-                onKeysChanged()
-            },
-            onClearPaid = {
-                ApiKeyStore.clearPaidFallback(context)
+            onChanged = {
+                if (ApiKeyStore.getDeepgram(context).isBlank()) {
+                    balanceSnapshot = null
+                }
                 onKeysChanged()
             }
         )
@@ -766,7 +935,11 @@ private fun KlipNoteApp(
 }
 
 @Composable
-private fun StatusCard(phase: UiPhase, lastMeta: TranscriptionResult?) {
+private fun StatusCard(
+    phase: UiPhase,
+    lastMeta: TranscriptionResult?,
+    onBackToAuto: () -> Unit
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -776,28 +949,30 @@ private fun StatusCard(phase: UiPhase, lastMeta: TranscriptionResult?) {
     ) {
         when (phase) {
             UiPhase.Idle -> {
-                Text("Comparte un audio/video o selecciónalo aquí.", color = Muted)
+                Text(
+                    "Pega un enlace (YT/TikTok/IG/X) o elige un archivo local.",
+                    color = Muted
+                )
             }
+            is UiPhase.Downloading -> BusyRow(phase.label)
             UiPhase.Extracting -> BusyRow(stringResource(R.string.extracting))
-            UiPhase.Transcribing -> BusyRow(stringResource(R.string.transcribing))
+            is UiPhase.Transcribing -> BusyRow(
+                phase.motorHint.ifBlank { stringResource(R.string.transcribing) }
+            )
             is UiPhase.Done -> {
                 val m = phase.meta
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(stringResource(R.string.ready), color = Accent, fontWeight = FontWeight.SemiBold)
+                    Text(m.resultBadge(), color = Accent, fontSize = 13.sp)
                     Text(
                         buildString {
-                            append(m.providerLabel)
-                            append(" · ")
                             m.durationSeconds?.let {
                                 append(String.format("%.1fs audio", it))
                                 append(" · ")
                             }
-                            append(String.format("%.1fs", m.elapsedMs / 1000.0))
-                            append(" · ")
                             append(m.detectedLanguage?.uppercase() ?: "—")
                             append(" · ")
-                            append("${m.wordCount} palabras · ")
-                            append(BillingManager.formatUsd(m.costUsd, 2))
+                            append("${m.wordCount} palabras")
                         },
                         color = Muted,
                         fontSize = 13.sp
@@ -805,7 +980,14 @@ private fun StatusCard(phase: UiPhase, lastMeta: TranscriptionResult?) {
                 }
             }
             is UiPhase.Error -> {
-                Text(phase.message, color = Color(0xFFF87171))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(phase.message, color = Color(0xFFF87171))
+                    if (phase.isManualTest) {
+                        TextButton(onClick = onBackToAuto) {
+                            Text("Volver a Auto (Cascada)", color = Accent)
+                        }
+                    }
+                }
             }
         }
     }
@@ -878,23 +1060,154 @@ private fun ControlsCard(
             )
         }
 
-        Button(
+        OutlinedButton(
             onClick = onPick,
             enabled = !busy,
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Accent,
-                contentColor = Color.Black,
-                disabledContainerColor = Accent.copy(alpha = 0.35f)
-            ),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Icon(Icons.Default.UploadFile, contentDescription = null)
+            Icon(Icons.Default.UploadFile, contentDescription = null, tint = Accent)
             Spacer(Modifier.size(8.dp))
             Text(
-                stringResource(R.string.select_media),
+                "Elegir archivo local (Video / Audio)",
+                color = Accent,
                 fontWeight = FontWeight.SemiBold
             )
+        }
+    }
+}
+
+@Composable
+private fun LinkActionCard(
+    linkInput: String,
+    onLinkChange: (String) -> Unit,
+    linkMode: SealDownloader.LinkMode,
+    onModeChange: (SealDownloader.LinkMode) -> Unit,
+    downloadKind: SealDownloader.DownloadKind,
+    onDownloadKindChange: (SealDownloader.DownloadKind) -> Unit,
+    sealReady: SealDownloader.ReadyState,
+    busy: Boolean,
+    onPasteLink: () -> Unit,
+    onRun: () -> Unit,
+    onCancel: () -> Unit
+) {
+    val primaryLabel = when (linkMode) {
+        SealDownloader.LinkMode.TEXT_ONLY -> "⚡ Solo Texto"
+        SealDownloader.LinkMode.AUDIO_AND_TEXT -> "🎵 Audio + Texto"
+        SealDownloader.LinkMode.VIDEO_AND_TEXT -> "🎬 Video + Texto"
+        SealDownloader.LinkMode.DOWNLOAD_ONLY -> "📥 Solo Bajar"
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Card)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text("Enlace", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        OutlinedTextField(
+            value = linkInput,
+            onValueChange = onLinkChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            placeholder = {
+                Text("Enlace de YouTube, TikTok, IG, X...", color = Muted)
+            },
+            trailingIcon = {
+                TextButton(onClick = onPasteLink, enabled = !busy) {
+                    Text("Pegar", color = Accent, fontSize = 12.sp)
+                }
+            },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Accent,
+                unfocusedBorderColor = Color(0xFF243044),
+                focusedTextColor = OnBg,
+                unfocusedTextColor = OnBg,
+                cursorColor = Accent
+            )
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                ModeChip(
+                    selected = linkMode == SealDownloader.LinkMode.TEXT_ONLY,
+                    label = "⚡ Solo Texto",
+                    enabled = !busy,
+                    onClick = { onModeChange(SealDownloader.LinkMode.TEXT_ONLY) }
+                )
+            }
+            item {
+                ModeChip(
+                    selected = linkMode == SealDownloader.LinkMode.AUDIO_AND_TEXT,
+                    label = "🎵 Audio + Texto",
+                    enabled = !busy,
+                    onClick = { onModeChange(SealDownloader.LinkMode.AUDIO_AND_TEXT) }
+                )
+            }
+            item {
+                ModeChip(
+                    selected = linkMode == SealDownloader.LinkMode.VIDEO_AND_TEXT,
+                    label = "🎬 Video + Texto",
+                    enabled = !busy,
+                    onClick = { onModeChange(SealDownloader.LinkMode.VIDEO_AND_TEXT) }
+                )
+            }
+            item {
+                ModeChip(
+                    selected = linkMode == SealDownloader.LinkMode.DOWNLOAD_ONLY,
+                    label = "📥 Solo Bajar",
+                    enabled = !busy,
+                    onClick = { onModeChange(SealDownloader.LinkMode.DOWNLOAD_ONLY) }
+                )
+            }
+        }
+        if (linkMode == SealDownloader.LinkMode.DOWNLOAD_ONLY) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ModeChip(
+                    selected = downloadKind == SealDownloader.DownloadKind.AUDIO_M4A,
+                    label = "Audio M4A",
+                    enabled = !busy,
+                    onClick = { onDownloadKindChange(SealDownloader.DownloadKind.AUDIO_M4A) }
+                )
+                ModeChip(
+                    selected = downloadKind == SealDownloader.DownloadKind.VIDEO_MP4,
+                    label = "Video MP4",
+                    enabled = !busy,
+                    onClick = { onDownloadKindChange(SealDownloader.DownloadKind.VIDEO_MP4) }
+                )
+            }
+        }
+        val readyHint = when (sealReady) {
+            SealDownloader.ReadyState.READY -> null
+            SealDownloader.ReadyState.IDLE -> "Inicializando yt-dlp / FFmpeg…"
+            SealDownloader.ReadyState.ERROR -> "yt-dlp no listo"
+        }
+        if (readyHint != null) {
+            Text(readyHint, color = Muted, fontSize = 12.sp)
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = onRun,
+                enabled = !busy && linkInput.isNotBlank() &&
+                    sealReady == SealDownloader.ReadyState.READY,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Accent,
+                    contentColor = Color.Black,
+                    disabledContainerColor = Accent.copy(alpha = 0.35f)
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(primaryLabel, fontWeight = FontWeight.SemiBold)
+            }
+            if (busy) {
+                OutlinedButton(onClick = onCancel, shape = RoundedCornerShape(12.dp)) {
+                    Text("Cancelar", color = Color(0xFFF87171))
+                }
+            }
         }
     }
 }
@@ -1060,6 +1373,7 @@ private suspend fun runTranscription(
     fileName: String,
     mode: LanguageMode,
     diarize: Boolean,
+    routingSelection: RoutingSelection,
     onPhase: (UiPhase) -> Unit,
     onText: (String) -> Unit,
     onMeta: (TranscriptionResult) -> Unit,
@@ -1070,6 +1384,17 @@ private suspend fun runTranscription(
 ) {
     if (!ApiKeyStore.hasAnyKey(context)) {
         onPhase(UiPhase.Error(context.getString(R.string.error_no_key)))
+        return
+    }
+    if (routingSelection is RoutingSelection.Manual &&
+        !SttRouter.isConfigured(context, routingSelection.provider)
+    ) {
+        onPhase(
+            UiPhase.Error(
+                message = "🧪 Prueba Manual · ${routingSelection.provider.displayName()}: sin key",
+                isManualTest = true
+            )
+        )
         return
     }
 
@@ -1090,7 +1415,12 @@ private suspend fun runTranscription(
             AudioExtractor.prepareAudio(context, uri)
         }
 
-        onPhase(UiPhase.Transcribing)
+        val motorHint = when (routingSelection) {
+            is RoutingSelection.Auto -> "Transcribiendo con cascada Auto…"
+            is RoutingSelection.Manual ->
+                "Transcribiendo con ${routingSelection.provider.displayName()}…"
+        }
+        onPhase(UiPhase.Transcribing(motorHint))
         val audio = extracted
         val result = withContext(Dispatchers.IO) {
             SttRouter.transcribe(
@@ -1099,7 +1429,8 @@ private suspend fun runTranscription(
                 mimeType = audio.mimeType,
                 mode = mode,
                 diarize = diarize,
-                deepgramBalanceUsd = balanceBefore
+                deepgramBalanceUsd = balanceBefore,
+                selection = routingSelection
             )
         }
 
@@ -1154,11 +1485,20 @@ private suspend fun runTranscription(
             copyToClipboard(context, result.transcript)
             snackbar.showSnackbar(context.getString(R.string.copied))
         }
+    } catch (e: ManualRouteException) {
+        onPhase(
+            UiPhase.Error(
+                message = e.message?.takeIf { it.isNotBlank() }
+                    ?: context.getString(R.string.error_generic),
+                isManualTest = true
+            )
+        )
     } catch (e: Exception) {
         onPhase(
             UiPhase.Error(
-                e.message?.takeIf { it.isNotBlank() }
-                    ?: context.getString(R.string.error_generic)
+                message = e.message?.takeIf { it.isNotBlank() }
+                    ?: context.getString(R.string.error_generic),
+                isManualTest = routingSelection is RoutingSelection.Manual
             )
         )
     } finally {

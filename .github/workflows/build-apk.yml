@@ -71,9 +71,9 @@ jobs:
           echo "APK_PATH=$DEST" >> "$GITHUB_ENV"
           echo "Resolved versionCode=$VCODE versionName=$VNAME"
           ls -lh "$DEST"
-          # Guardrail: nunca publicar por debajo del piso comercial 111
-          if [ "${VCODE:-0}" -lt 111 ]; then
-            echo "versionCode $VCODE < 111 — abort"
+          # Guardrail: nunca publicar por debajo del piso comercial 112
+          if [ "${VCODE:-0}" -lt 112 ]; then
+            echo "versionCode $VCODE < 112 — abort"
             exit 1
           fi
 

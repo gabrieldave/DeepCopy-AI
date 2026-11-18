@@ -17,12 +17,12 @@ android {
         targetSdk = 35
 
         // Fuente de verdad local; CI nunca baja de este piso.
-        val localVersionCode = 111
-        val localVersionName = "1.2.3"
+        val localVersionCode = 115
+        val localVersionName = "1.3.0"
         val ciCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 100 + it }
         versionCode = max(localVersionCode, ciCode ?: 0)
         versionName = if (ciCode != null && ciCode > localVersionCode) {
-            "1.2.${ciCode - 100}"
+            "1.3.${ciCode - 100}"
         } else {
             localVersionName
         }
@@ -31,6 +31,11 @@ android {
 
         // APK comercial: cero llaves quemadas. BYOK solo en almacén cifrado del dispositivo.
         buildConfigField("String", "DEFAULT_DEEPGRAM_KEY", "\"\"")
+
+        // libpython / libffmpeg / aria2c (Seal / youtubedl-android)
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     signingConfigs {
@@ -99,6 +104,9 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 
@@ -119,6 +127,11 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // Seal / junkfood02 fork — Maven Central verificado 0.17.3
+    implementation("io.github.junkfood02.youtubedl-android:library:0.17.3")
+    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.17.3")
+    implementation("io.github.junkfood02.youtubedl-android:aria2c:0.17.3")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
