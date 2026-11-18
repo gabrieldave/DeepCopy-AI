@@ -455,9 +455,15 @@ private fun ClearServiceRow(
                     MeterBadge(info.meterKind)
                     Text(info.meterNote, color = Muted, fontSize = 12.sp)
                 }
-                status?.detail?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, color = Muted, fontSize = 12.sp)
-                }
+                status?.detail
+                    ?.takeIf {
+                        it.isNotBlank() &&
+                            !it.contains("SIN KEY", ignoreCase = true) &&
+                            !it.contains("KEY LISTA", ignoreCase = true)
+                    }
+                    ?.let {
+                        Text(it, color = Muted, fontSize = 12.sp)
+                    }
                 if (hasKey) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
