@@ -41,6 +41,7 @@ object RemoteRouterConfig {
     fun defaultSnapshot(): Snapshot = Snapshot(
         priority = listOf(
             SttProvider.GROQ_FREE,
+            SttProvider.INWORLD,
             SttProvider.ASSEMBLY_AI,
             SttProvider.DEEPGRAM,
             SttProvider.PAID_FALLBACK
@@ -99,6 +100,7 @@ object RemoteRouterConfig {
 
     private fun parseProvider(raw: String): SttProvider? = when (raw.trim().lowercase()) {
         "groq", "groq_free", "groq-free" -> SttProvider.GROQ_FREE
+        "inworld", "inworld_free", "inworld-free" -> SttProvider.INWORLD
         "assembly", "assemblyai", "assembly_ai" -> SttProvider.ASSEMBLY_AI
         "deepgram" -> SttProvider.DEEPGRAM
         "paid", "paid_fallback", "fallback" -> SttProvider.PAID_FALLBACK
