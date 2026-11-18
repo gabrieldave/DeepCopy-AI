@@ -108,13 +108,21 @@ object GroqClient {
                 enforceFreeSizeLimit = true
             )
             val remaining = BillingManager.getGroqRemainingSeconds(context)
+            val limit = BillingManager.getGroqLimitSeconds(context)
+            val used = BillingManager.getGroqUsedTodaySeconds(context)
+            val live = BillingManager.hasGroqLiveQuota(context)
             // result confirma que el tier gratis aceptó el micro-WAV
             result.transcript
             ProviderStatus(
                 provider = SttProvider.GROQ_FREE,
                 health = ProviderHealth.ACTIVE_FREE,
                 label = "Groq Free",
-                detail = "ACTIVO (Gratis) · ${formatHours(remaining)} hoy",
+                detail = "ACTIVO · " + BillingManager.formatGroqQuotaDetail(
+                    remainingSeconds = remaining,
+                    limitSeconds = limit,
+                    usedTodaySeconds = used,
+                    hasLiveQuota = live
+                ),
                 remainingSeconds = remaining
             )
         } catch (e: SttProviderException) {
@@ -147,19 +155,26 @@ object GroqClient {
     }
 
     private fun applyQuota(context: Context, quota: GroqQuotaHeaders, raw: String) {
+        val duration = runCatching {
+            JSONObject(raw).optDouble("duration", Double.NaN)
+        }.getOrNull()?.takeIf { !it.isNaN() && it > 0.0 }
+
         if (quota.remainingAudioSeconds != null) {
+            // Cabeceras reales de ventana (~7200s): remaining + limit juntos.
             BillingManager.setGroqRemainingFromHeaders(
                 context = context,
                 remaining = quota.remainingAudioSeconds,
                 limit = quota.limitAudioSeconds,
                 resetSeconds = quota.resetAudioSeconds
             )
+            if (duration != null) {
+                BillingManager.addGroqUsedSeconds(context, duration)
+            }
             return
         }
-        val duration = runCatching {
-            JSONObject(raw).optDouble("duration", Double.NaN)
-        }.getOrNull()?.takeIf { !it.isNaN() } ?: return
-        BillingManager.consumeGroqSeconds(context, duration)
+        if (duration != null) {
+            BillingManager.consumeGroqSeconds(context, duration)
+        }
     }
 
     private fun parseQuotaHeaders(response: okhttp3.Response): GroqQuotaHeaders =
@@ -170,6 +185,7 @@ object GroqClient {
                 ?.toDoubleOrNull(),
             resetAudioSeconds = response.header("x-ratelimit-reset-audio-seconds")
                 ?.toDoubleOrNull()
+                ?: response.header("x-ratelimit-reset-requests")?.toDoubleOrNull()
         )
 
     private fun parseVerboseJson(raw: String, provider: SttProvider): TranscriptionResult {
@@ -201,6 +217,4 @@ object GroqClient {
         }
     }
 
-    private fun formatHours(seconds: Double): String =
-        String.format("%.1fh", seconds / 3600.0)
 }

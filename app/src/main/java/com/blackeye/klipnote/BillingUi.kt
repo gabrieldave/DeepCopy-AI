@@ -77,7 +77,10 @@ data class CreditUiState(
     val keyMasks: Map<SttProvider, String?> = emptyMap(),
     val allowPaidFallback: Boolean = false,
     val verifyingOffers: Boolean = false,
-    val groqRemainingSeconds: Double = BillingManager.GROQ_DAILY_SECONDS,
+    val groqRemainingSeconds: Double = BillingManager.GROQ_DEFAULT_LIMIT_SECONDS,
+    val groqLimitSeconds: Double = BillingManager.GROQ_DEFAULT_LIMIT_SECONDS,
+    val groqUsedTodaySeconds: Double = 0.0,
+    val groqHasLiveQuota: Boolean = false,
     val inworldRemainingSeconds: Double = BillingManager.INWORLD_MONTHLY_SECONDS,
     val inworldUsedMinutesEditable: String = "0",
     val assemblyRemainingSeconds: Double = BillingManager.ASSEMBLY_POOL_SECONDS,
@@ -238,10 +241,17 @@ fun CreditControlPanel(
                 MotorQuotaCard(
                     level = "1",
                     title = "Groq Free",
-                    detail = "${String.format("%.1f", state.groqRemainingSeconds / 3600.0)}h / 8h hoy",
-                    progress = (state.groqRemainingSeconds / BillingManager.GROQ_DAILY_SECONDS)
-                        .toFloat()
-                        .coerceIn(0f, 1f),
+                    detail = BillingManager.formatGroqQuotaDetail(
+                        remainingSeconds = state.groqRemainingSeconds,
+                        limitSeconds = state.groqLimitSeconds,
+                        usedTodaySeconds = state.groqUsedTodaySeconds,
+                        hasLiveQuota = state.groqHasLiveQuota
+                    ),
+                    progress = BillingManager.groqQuotaProgress(
+                        remainingSeconds = state.groqRemainingSeconds,
+                        limitSeconds = state.groqLimitSeconds,
+                        hasLiveQuota = state.groqHasLiveQuota
+                    ),
                     provider = SttProvider.GROQ_FREE,
                     status = state.providerStatuses.firstOrNull { it.provider == SttProvider.GROQ_FREE },
                     keyMask = state.keyMasks[SttProvider.GROQ_FREE],
