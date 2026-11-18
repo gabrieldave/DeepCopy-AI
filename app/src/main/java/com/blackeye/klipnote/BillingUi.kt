@@ -396,18 +396,17 @@ fun FreeServicesPanel(
             color = Muted,
             fontSize = 12.sp
         )
-        TextButton(onClick = onRefresh, enabled = hasAnyKey && !state.refreshing) {
-            Icon(
-                Icons.Default.Refresh,
-                contentDescription = null,
-                tint = if (hasAnyKey) Accent else Muted,
-                modifier = Modifier.size(16.dp)
-            )
-            Spacer(Modifier.size(6.dp))
-            Text(
-                if (hasAnyKey) "Actualizar medidores" else "Conecta una llave primero",
-                color = if (hasAnyKey) Accent else Muted
-            )
+        if (hasAnyKey) {
+            TextButton(onClick = onRefresh, enabled = !state.refreshing) {
+                Icon(
+                    Icons.Default.Refresh,
+                    contentDescription = null,
+                    tint = Accent,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.size(6.dp))
+                Text("Actualizar medidores", color = Accent)
+            }
         }
     }
 }
@@ -469,7 +468,7 @@ private fun ClearServiceRow(
         ProviderHealth.OFFER_ENDED -> "🔴" to Red
         ProviderHealth.NO_KEY, ProviderHealth.UNKNOWN -> "⚪" to Muted
     }
-    val headline = if (hasKey) "$name $dot · $primary" else "$name $dot · Sin llave"
+    val headline = if (hasKey) "$name $dot · $primary" else "$name · Sin llave"
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -510,15 +509,6 @@ private fun ClearServiceRow(
                 trackColor = Color(0xFF151C28)
             )
         } else {
-            LinearProgressIndicator(
-                progress = { 0f },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp)),
-                color = Muted.copy(alpha = 0.35f),
-                trackColor = Color(0xFF151C28)
-            )
             OutlinedButton(
                 onClick = onConnect,
                 modifier = Modifier.fillMaxWidth(),
