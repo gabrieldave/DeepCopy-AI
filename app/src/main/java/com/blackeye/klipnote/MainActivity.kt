@@ -174,6 +174,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         KlipNoteNotify.ensureChannels(this)
+        KlipNoteNotify.clearOrphanProgressIfNeeded(this)
         handleShareIntent(intent)
         setContent {
             val appContext = this@MainActivity
