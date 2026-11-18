@@ -16,8 +16,10 @@ android {
         targetSdk = 35
 
         // Fuente de verdad única (local). CI no sobrescribe con GITHUB_RUN_NUMBER.
-        versionCode = 125
-        versionName = "1.6.0"
+        val localVersionCode = 125
+        val localVersionName = "1.6.0"
+        versionCode = localVersionCode
+        versionName = localVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
