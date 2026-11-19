@@ -59,6 +59,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -839,7 +840,14 @@ private fun HistoryRow(
                     Text("Ver en Descargas", color = Accent, fontSize = 12.sp)
                 }
                 TextButton(onClick = { onShareSavedMedia?.invoke(saved) }) {
-                    Text("Compartir", color = Accent, fontSize = 12.sp)
+                    Text(
+                        "Compartir",
+                        color = Accent,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }

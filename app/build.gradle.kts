@@ -16,8 +16,8 @@ android {
         targetSdk = 35
 
         // Fuente de verdad única (local). CI no sobrescribe con GITHUB_RUN_NUMBER.
-        val localVersionCode = 128
-        val localVersionName = "1.6.2"
+        val localVersionCode = 129
+        val localVersionName = "1.6.3"
         versionCode = localVersionCode
         versionName = localVersionName
 
