@@ -2112,6 +2112,7 @@ private fun AiStudyActionsSection(
     var lastCopiedId by remember { mutableStateOf<String?>(null) }
     var lastCopiedLabel by remember { mutableStateOf<String?>(null) }
     var lastCopiedPrompt by remember { mutableStateOf<String?>(null) }
+    var showCreativeActions by remember { mutableStateOf(false) }
 
     LaunchedEffect(lastCopiedId) {
         val id = lastCopiedId ?: return@LaunchedEffect
@@ -2191,7 +2192,7 @@ private fun AiStudyActionsSection(
                 } else {
                     Accent
                 },
-                contentColor = Color(0xFF04110A)
+                contentColor = OnAccent
             )
         ) {
             Text(
@@ -2212,21 +2213,72 @@ private fun AiStudyActionsSection(
             fontSize = 12.sp
         )
 
-        listOf(false, true).forEach { creative ->
-            Text(
-                if (creative) stringResource(R.string.ai_group_create)
-                else stringResource(R.string.ai_group_analyze),
-                color = OnBg,
-                fontWeight = FontWeight.Medium,
-                fontSize = 12.sp
-            )
+        // Six text-first actions stay visible; creative actions are progressively disclosed.
+        Text(
+            stringResource(R.string.ai_group_analyze),
+            color = OnBg,
+            fontWeight = FontWeight.Medium,
+            fontSize = 12.sp
+        )
 
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            AiStudyMode.entries.filter { !it.isCreative() }.forEach { mode ->
+                val justCopied = lastCopiedId == mode.name
+                AssistChip(
+                    onClick = { copyMode(mode) },
+                    label = {
+                        Text(
+                            if (justCopied) stringResource(R.string.copied_to_clipboard)
+                            else mode.chipLabel(context),
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    },
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = if (justCopied) Accent.copy(alpha = 0.28f)
+                        else Color(0xFF1A2333),
+                        labelColor = if (justCopied) Accent else OnBg
+                    )
+                )
+            }
+        }
+
+        val creativeModes = AiStudyMode.entries.filter { it.isCreative() }
+        OutlinedButton(
+            onClick = { showCreativeActions = !showCreativeActions },
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = OnBg)
+        ) {
+            Text(
+                "${stringResource(R.string.ai_group_create)} (${creativeModes.size})",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+                maxLines = 2
+            )
+            Icon(
+                imageVector = if (showCreativeActions) Icons.Default.ExpandLess
+                else Icons.Default.ExpandMore,
+                contentDescription = if (showCreativeActions)
+                    stringResource(R.string.ai_hide_creative)
+                else stringResource(R.string.ai_show_creative),
+                tint = OnBg
+            )
+        }
+
+        if (showCreativeActions) {
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                AiStudyMode.entries.filter { it.isCreative() == creative }.forEach { mode ->
+                creativeModes.forEach { mode ->
                     val justCopied = lastCopiedId == mode.name
                     AssistChip(
                         onClick = { copyMode(mode) },
