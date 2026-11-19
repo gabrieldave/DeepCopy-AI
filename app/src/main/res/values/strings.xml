@@ -562,7 +562,7 @@
     <string name="site_fallback">The site</string>
     <string name="skip">Skip</string>
     <string name="start">Start</string>
-    <string name="study_with_ai">✨ Study with AI</string>
+    <string name="study_with_ai">✨ Study and create with AI</string>
     <string name="technical_detail">Technical detail: %1$s</string>
     <string name="test_service_manual">Try one service manually</string>
     <string name="testing_provider_short">Trying: %1$s</string>
