@@ -22,6 +22,8 @@ object ApiKeyBackup {
     const val KDF = "PBKDF2WithHmacSHA256"
     const val ITERATIONS = 200_000
     const val MIN_PASSWORD_LEN = 8
+    /** Límite de lectura en importación (deja llaves actuales intactas si se supera). */
+    const val MAX_FILE_BYTES = 512 * 1024
 
     private const val SALT_LEN = 16
     private const val IV_LEN = 12
@@ -35,6 +37,7 @@ object ApiKeyBackup {
         data object BadPasswordOrCorrupt : Outcome()
         data object Corrupt : Outcome()
         data object Empty : Outcome()
+        data object TooLarge : Outcome()
     }
 
     fun exportEncrypted(
@@ -53,6 +56,7 @@ object ApiKeyBackup {
     fun importEncrypted(context: Context, fileBytes: ByteArray, password: String): Outcome {
         if (password.length < MIN_PASSWORD_LEN) return Outcome.WeakPassword
         if (fileBytes.isEmpty()) return Outcome.Empty
+        if (fileBytes.size > MAX_FILE_BYTES) return Outcome.TooLarge
         val json = runCatching { String(fileBytes, StandardCharsets.UTF_8) }.getOrNull()
             ?: return Outcome.Corrupt
         val envelope = parseEnvelope(json) ?: return Outcome.Corrupt
@@ -137,12 +141,6 @@ object ApiKeyBackup {
     }
 
     internal fun buildPlainPayload(context: Context): String {
-        fun esc(s: String): String = s
-            .replace("\\", "\\\\")
-            .replace("\"", "\\\"")
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
-
         val groq = ApiKeyStore.getGroq(context)
         val inworld = ApiKeyStore.getInworld(context)
         val assembly = ApiKeyStore.getAssemblyAi(context)
@@ -209,14 +207,49 @@ object ApiKeyBackup {
         Base64.getDecoder().decode(s)
     }.getOrNull()
 
+    private fun esc(s: String): String {
+        val out = StringBuilder(s.length + 8)
+        for (c in s) {
+            when (c) {
+                '\\' -> out.append("\\\\")
+                '"' -> out.append("\\\"")
+                '\n' -> out.append("\\n")
+                '\r' -> out.append("\\r")
+                '\t' -> out.append("\\t")
+                else -> out.append(c)
+            }
+        }
+        return out.toString()
+    }
+
+    private fun unesc(s: String): String {
+        val out = StringBuilder(s.length)
+        var i = 0
+        while (i < s.length) {
+            val c = s[i]
+            if (c == '\\' && i + 1 < s.length) {
+                when (s[i + 1]) {
+                    '\\' -> out.append('\\')
+                    '"' -> out.append('"')
+                    'n' -> out.append('\n')
+                    'r' -> out.append('\r')
+                    't' -> out.append('\t')
+                    '/' -> out.append('/')
+                    else -> out.append(s[i + 1])
+                }
+                i += 2
+            } else {
+                out.append(c)
+                i++
+            }
+        }
+        return out.toString()
+    }
+
     private fun jsonStringField(json: String, key: String): String? {
         val re = Regex(""""$key"\s*:\s*"((?:\\.|[^"\\])*)"""")
         val raw = re.find(json)?.groupValues?.getOrNull(1) ?: return null
-        return raw
-            .replace("\\\"", "\"")
-            .replace("\\\\", "\\")
-            .replace("\\n", "\n")
-            .replace("\\r", "\r")
+        return unesc(raw)
     }
 
     private fun jsonIntField(json: String, key: String): Int? {

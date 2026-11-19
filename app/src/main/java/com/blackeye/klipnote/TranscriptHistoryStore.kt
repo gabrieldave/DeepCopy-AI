@@ -93,11 +93,14 @@ object TranscriptHistoryStore {
     fun delete(context: Context, id: String): List<Entry> = synchronized(lock) {
         val next = loadUnlocked(context).filterNot { it.id == id }
         saveUnlocked(context, next)
+        // Fuera del store de guiones: limpia texto en historial de facturación (métricas se quedan).
+        BillingManager.clearTranscriptText(context, id)
         next
     }
 
     fun clear(context: Context): List<Entry> = synchronized(lock) {
         saveUnlocked(context, emptyList())
+        BillingManager.clearAllTranscriptTexts(context)
         emptyList()
     }
 

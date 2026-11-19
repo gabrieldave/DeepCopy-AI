@@ -629,6 +629,20 @@ object BillingManager {
         saveHistory(context, list)
     }
 
+    /** Vacía el texto del guion en historial de uso; conserva métricas numéricas. */
+    fun clearTranscriptText(context: Context, id: String) {
+        val list = loadHistory(context).map { e ->
+            if (e.id == id) e.copy(transcript = "") else e
+        }
+        saveHistory(context, list)
+    }
+
+    /** Vacía el texto de todos los guiones en historial de uso; conserva métricas. */
+    fun clearAllTranscriptTexts(context: Context) {
+        val list = loadHistory(context).map { it.copy(transcript = "") }
+        saveHistory(context, list)
+    }
+
     fun loadHistory(context: Context): List<HistoryEntry> {
         val file = historyFile(context)
         if (!file.exists()) return emptyList()

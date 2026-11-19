@@ -142,9 +142,19 @@ object KlipNoteNotify {
     }
 
     fun updateProgress(context: Context, text: String, progressPercent: Int? = null) {
-        if (!canPostNotifications(context)) return
-        NotificationManagerCompat.from(context)
-            .notify(NOTIF_PROGRESS_ID, progressNotification(context, text, progressPercent))
+        if (Build.VERSION.SDK_INT >= 33) {
+            val granted = ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.POST_NOTIFICATIONS
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!granted) return
+        }
+        try {
+            NotificationManagerCompat.from(context)
+                .notify(NOTIF_PROGRESS_ID, progressNotification(context, text, progressPercent))
+        } catch (_: SecurityException) {
+            // Sin permiso en runtime: no notificar.
+        }
     }
 
     fun clearProgress(context: Context) {
@@ -186,7 +196,14 @@ object KlipNoteNotify {
     ) {
         // Siempre quita la de progreso; el aviso "Listo" solo si el usuario lo pidió.
         clearProgress(context)
-        if (!isNotifyEnabled(context) || !canPostNotifications(context)) return
+        if (!isNotifyEnabled(context)) return
+        if (Build.VERSION.SDK_INT >= 33) {
+            val granted = ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.POST_NOTIFICATIONS
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!granted) return
+        }
         ensureChannels(context)
         val notif = NotificationCompat.Builder(context, CHANNEL_DONE)
             .setSmallIcon(
@@ -204,7 +221,11 @@ object KlipNoteNotify {
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
-        NotificationManagerCompat.from(context).notify(NOTIF_DONE_ID, notif)
+        try {
+            NotificationManagerCompat.from(context).notify(NOTIF_DONE_ID, notif)
+        } catch (_: SecurityException) {
+            // Sin permiso en runtime: no notificar.
+        }
     }
 
     private fun pendingOpenApp(context: Context): PendingIntent {

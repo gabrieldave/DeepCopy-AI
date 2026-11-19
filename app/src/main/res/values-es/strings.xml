@@ -475,7 +475,7 @@
     <string name="free_services_title">Tus servicios gratis</string>
     <string name="get_my_key">Conseguir mi llave</string>
     <string name="go_to_capture">Ir a Capturar</string>
-    <string name="groq_min_available">%1$.0f min disponibles esta hora</string>
+    <string name="groq_min_available">Groq: %1$.0f min disponibles · %2$s</string>
     <string name="help">Ayuda</string>
     <string name="help_app_language">Idioma de menús y mensajes. Es distinto del idioma del habla para transcribir.</string>
     <string name="help_auto">Usa primero los servicios gratis; si uno se acaba, pasa al siguiente.</string>

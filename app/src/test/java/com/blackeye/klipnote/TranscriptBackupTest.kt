@@ -53,4 +53,29 @@ class TranscriptBackupTest {
         assertTrue(TranscriptBackup.parse("{\"format\":\"other\",\"entries\":[]}") is TranscriptBackup.ParseResult.Corrupt)
         assertTrue(TranscriptBackup.parse("{\"format\":\"klipnote-transcripts-v1\"}") is TranscriptBackup.ParseResult.Corrupt)
     }
+
+    @Test
+    fun exportImport_preservesWindowsPathQuotesAndNewlines() {
+        val path = """C:\notas\tarea"""
+        val quoted = """Dijo: "hola" y 'adiós'"""
+        val multiline = "linea1\nlinea2\r\nlinea3"
+        val withBackslashes = """a\\b\\c"""
+        val entries = listOf(
+            TranscriptHistoryStore.Entry(
+                id = "win-1",
+                timestampMs = 42L,
+                sourceTitleOrUrl = path,
+                providerUsed = "Groq",
+                durationSec = 1.0,
+                text = "$quoted\n$path\n$multiline\n$withBackslashes"
+            )
+        )
+        val json = TranscriptBackup.exportJson(entries, exportedAtMs = 7L)
+        val parsed = TranscriptBackup.parse(json)
+        assertTrue(parsed is TranscriptBackup.ParseResult.Ok)
+        val back = (parsed as TranscriptBackup.ParseResult.Ok).entries.single()
+        assertEquals(path, back.sourceTitleOrUrl)
+        assertEquals("$quoted\n$path\n$multiline\n$withBackslashes", back.text)
+        assertEquals("""C:\notas\tarea""", back.sourceTitleOrUrl)
+    }
 }

@@ -352,7 +352,11 @@ jobs:
             "KlipNote ${TAG} — Signed APK. Free & open-source (GPL-3.0). Add your own free API keys in the app (Settings → My keys). Guide: README." \
             "APK firmado. Gratis y de código abierto (GPL-3.0). Pon tus propias llaves gratis en la app (Ajustes → Mis llaves). Guía: README.es.md.")"
           # El tag ya existe y apunta a BUILD_SHA. No sobrescribir ni editar Releases previos.
-          gh release create "${TAG}" "${APK_PATH}" \
+          # Adjunta avisos de terceros y la licencia GPL junto al APK firmado.
+          gh release create "${TAG}" \
+            "${APK_PATH}" \
+            "THIRD_PARTY_NOTICES.md" \
+            "LICENSE" \
             --title "KlipNote ${TAG}" \
             --notes "${NOTES}" \
             --target "${BUILD_SHA}" \

@@ -27,6 +27,11 @@
   <img src="docs/assets/screenshots/04-ajustes-temas.png" alt="Settings with themes" width="200" />
 </p>
 
+<p align="center">
+  Maintained by <a href="https://github.com/gabrieldave"><strong>@gabrieldave</strong></a> —
+  use it, fork it, leave a ⭐, and see <a href="#-contributing">how to build</a>.
+</p>
+
 ---
 
 ## ✨ Why KlipNote?

@@ -5,6 +5,7 @@ import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaMuxer
 import android.net.Uri
+import android.os.Build
 import android.util.Log
 import android.webkit.MimeTypeMap
 import java.io.File
@@ -101,7 +102,7 @@ object AudioExtractor {
                 info.offset = 0
                 info.size = sampleSize
                 info.presentationTimeUs = extractor.sampleTime
-                info.flags = extractor.sampleFlags
+                info.flags = bufferInfoFlagsFromExtractor(extractor.sampleFlags)
                 muxer.writeSampleData(muxerTrack, buffer, info)
                 extractor.advance()
             }
@@ -113,6 +114,24 @@ object AudioExtractor {
             }
             extractor.release()
         }
+    }
+
+    /**
+     * MediaExtractor.sampleFlags y MediaCodec.BufferInfo.flags no son el mismo conjunto.
+     * Solo se traducen banderas compatibles conocidas.
+     */
+    private fun bufferInfoFlagsFromExtractor(sampleFlags: Int): Int {
+        var flags = 0
+        if (sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) {
+            flags = flags or MediaCodec.BUFFER_FLAG_KEY_FRAME
+        }
+        // SAMPLE_FLAG_PARTIAL_FRAME is API 28+; value is 2 when present.
+        if (Build.VERSION.SDK_INT >= 28 &&
+            sampleFlags and MediaExtractor.SAMPLE_FLAG_PARTIAL_FRAME != 0
+        ) {
+            flags = flags or MediaCodec.BUFFER_FLAG_PARTIAL_FRAME
+        }
+        return flags
     }
 
     private fun copyToCache(

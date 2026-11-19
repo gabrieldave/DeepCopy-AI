@@ -27,6 +27,11 @@
   <img src="docs/assets/screenshots/es/04-ajustes-temas.png" alt="Ajustes con temas" width="200" />
 </p>
 
+<p align="center">
+  Lo mantiene <a href="https://github.com/gabrieldave"><strong>@gabrieldave</strong></a> —
+  úsala, haz fork, deja una ⭐ y mira <a href="#-contribuir">cómo compilar</a>.
+</p>
+
 ---
 
 ## ✨ ¿Por qué KlipNote?

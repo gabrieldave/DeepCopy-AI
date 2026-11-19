@@ -744,14 +744,16 @@ private fun KlipNoteApp(
             val url = SealDownloader.extractFirstUrl(text)
             if (url != null) {
                 linkInput = url
-                var waits = 0
-                while (
-                    SealDownloader.ready.value == SealDownloader.ReadyState.IDLE && waits < 25
-                ) {
-                    kotlinx.coroutines.delay(200)
-                    waits++
+                if (autoTranscribeOnShare) {
+                    var waits = 0
+                    while (
+                        SealDownloader.ready.value == SealDownloader.ReadyState.IDLE && waits < 25
+                    ) {
+                        kotlinx.coroutines.delay(200)
+                        waits++
+                    }
+                    startFromLink(url, auto = true)
                 }
-                startFromLink(url, auto = true)
             } else {
                 linkInput = text
             }
@@ -1029,10 +1031,12 @@ private fun KlipNoteApp(
                         },
                         onDelete = { id ->
                             transcriptEntries = TranscriptHistoryStore.delete(context, id)
+                            historyEntries = BillingManager.loadHistory(context)
                             if (expandedGuionId == id) expandedGuionId = null
                         },
                         onClearAll = {
                             transcriptEntries = TranscriptHistoryStore.clear(context)
+                            historyEntries = BillingManager.loadHistory(context)
                             expandedGuionId = null
                         },
                         onEntriesChanged = { transcriptEntries = it },
@@ -2374,11 +2378,13 @@ private fun GuionesTab(
             val ok = withContext(Dispatchers.IO) {
                 runCatching {
                     val json = TranscriptBackup.exportJson(entries)
-                    context.contentResolver.openOutputStream(uri)?.use { out ->
-                        out.write(json.toByteArray(Charsets.UTF_8))
+                    val out = context.contentResolver.openOutputStream(uri)
+                        ?: throw java.io.IOException("No se pudo abrir destino")
+                    out.use {
+                        it.write(json.toByteArray(Charsets.UTF_8))
+                        it.flush()
                     }
-                    true
-                }.getOrDefault(false)
+                }.isSuccess
             }
             Toast.makeText(
                 context,
@@ -2397,8 +2403,9 @@ private fun GuionesTab(
         scope.launch {
             val added = withContext(Dispatchers.IO) {
                 runCatching {
-                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                        ?: return@runCatching -1
+                    val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
+                        TranscriptBackup.readLimited(input)
+                    } ?: return@runCatching -1
                     TranscriptBackup.importInto(context, bytes)
                 }.getOrDefault(-1)
             }

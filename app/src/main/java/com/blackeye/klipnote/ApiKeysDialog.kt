@@ -149,9 +149,13 @@ fun MultiProviderKeysDialog(
         scope.launch {
             val ok = withContext(Dispatchers.IO) {
                 runCatching {
-                    context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-                    true
-                }.getOrDefault(false)
+                    val out = context.contentResolver.openOutputStream(uri)
+                        ?: throw java.io.IOException("No se pudo abrir destino")
+                    out.use {
+                        it.write(bytes)
+                        it.flush()
+                    }
+                }.isSuccess
             }
             Toast.makeText(
                 context,
@@ -170,7 +174,9 @@ fun MultiProviderKeysDialog(
         scope.launch {
             val bytes = withContext(Dispatchers.IO) {
                 runCatching {
-                    context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        TranscriptBackup.readBytesLimited(input, ApiKeyBackup.MAX_FILE_BYTES)
+                    }
                 }.getOrNull()
             }
             if (bytes == null || bytes.isEmpty()) {
@@ -528,6 +534,8 @@ fun MultiProviderKeysDialog(
                             passwordError = context.getString(R.string.keys_backup_weak_password)
                         ApiKeyBackup.Outcome.BadPasswordOrCorrupt ->
                             passwordError = context.getString(R.string.keys_backup_bad_password)
+                        ApiKeyBackup.Outcome.TooLarge ->
+                            passwordError = context.getString(R.string.keys_backup_failed)
                         else ->
                             passwordError = context.getString(R.string.keys_backup_failed)
                     }

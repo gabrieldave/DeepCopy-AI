@@ -1,6 +1,8 @@
 package com.blackeye.klipnote
 
 import android.content.Context
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.nio.charset.StandardCharsets
 
 /**
@@ -11,6 +13,8 @@ object TranscriptBackup {
 
     const val FORMAT = "klipnote-transcripts-v1"
     const val FILE_NAME = "klipnote-transcripts.json"
+    /** Límite de lectura en importación (deja datos actuales intactos si se supera). */
+    const val MAX_FILE_BYTES = 10 * 1024 * 1024
 
     sealed class ParseResult {
         data class Ok(val entries: List<TranscriptHistoryStore.Entry>) : ParseResult()
@@ -74,9 +78,11 @@ object TranscriptBackup {
     }
 
     /**
-     * @return number of newly inserted guiones (IDs that were not already present).
+     * @return number of newly inserted guiones (IDs that were not already present),
+     * or -1 if the file is corrupt / too large (current data left untouched).
      */
     fun importInto(context: Context, jsonUtf8: ByteArray): Int {
+        if (jsonUtf8.size > MAX_FILE_BYTES) return -1
         val json = runCatching { String(jsonUtf8, StandardCharsets.UTF_8) }.getOrNull()
             ?: return -1
         val parsed = parse(json)
@@ -94,7 +100,6 @@ object TranscriptBackup {
                 timestampMs = e.timestampMs
             )
             if (e.id !in beforeIds) {
-                // upsert may still skip by identical text; re-check.
                 val now = TranscriptHistoryStore.load(context)
                 if (now.any { it.id == e.id } && e.id !in beforeIds) {
                     added++
@@ -105,19 +110,49 @@ object TranscriptBackup {
         return added
     }
 
-    private fun esc(s: String): String = s
-        .replace("\\", "\\\\")
-        .replace("\"", "\\\"")
-        .replace("\n", "\\n")
-        .replace("\r", "\\r")
-        .replace("\t", "\\t")
+    /** Lee como máximo [MAX_FILE_BYTES]; null si el archivo es demasiado grande. */
+    fun readLimited(input: InputStream): ByteArray? =
+        readBytesLimited(input, MAX_FILE_BYTES)
 
-    private fun unesc(s: String): String = s
-        .replace("\\n", "\n")
-        .replace("\\r", "\r")
-        .replace("\\t", "\t")
-        .replace("\\\"", "\"")
-        .replace("\\\\", "\\")
+    internal fun esc(s: String): String {
+        val out = StringBuilder(s.length + 8)
+        for (c in s) {
+            when (c) {
+                '\\' -> out.append("\\\\")
+                '"' -> out.append("\\\"")
+                '\n' -> out.append("\\n")
+                '\r' -> out.append("\\r")
+                '\t' -> out.append("\\t")
+                else -> out.append(c)
+            }
+        }
+        return out.toString()
+    }
+
+    /** Unescape JSON string contents left-to-right (preserves paths like C:\\notas\\tarea). */
+    internal fun unesc(s: String): String {
+        val out = StringBuilder(s.length)
+        var i = 0
+        while (i < s.length) {
+            val c = s[i]
+            if (c == '\\' && i + 1 < s.length) {
+                when (s[i + 1]) {
+                    '\\' -> out.append('\\')
+                    '"' -> out.append('"')
+                    'n' -> out.append('\n')
+                    'r' -> out.append('\r')
+                    't' -> out.append('\t')
+                    '/' -> out.append('/')
+                    else -> out.append(s[i + 1])
+                }
+                i += 2
+            } else {
+                out.append(c)
+                i++
+            }
+        }
+        return out.toString()
+    }
 
     private fun jsonStringField(json: String, key: String): String? {
         val re = Regex(""""$key"\s*:\s*"((?:\\.|[^"\\])*)"""")
@@ -197,5 +232,19 @@ object TranscriptBackup {
             i++
         }
         return out
+    }
+
+    internal fun readBytesLimited(input: InputStream, maxBytes: Int): ByteArray? {
+        val out = ByteArrayOutputStream(minOf(maxBytes, 64 * 1024))
+        val buf = ByteArray(8 * 1024)
+        var total = 0
+        while (true) {
+            val n = input.read(buf)
+            if (n < 0) break
+            total += n
+            if (total > maxBytes) return null
+            out.write(buf, 0, n)
+        }
+        return out.toByteArray()
     }
 }

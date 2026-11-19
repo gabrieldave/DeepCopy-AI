@@ -1,5 +1,14 @@
 # Changelog — KlipNote
 
+## 1.8.1
+
+- **Backups:** JSON escape/unescape preserves Windows paths, quotes and newlines; export writes flush and report success only on full write; import size limits (512 KB keys / 10 MB scripts).
+- **Privacy on delete:** clearing one or all scripts also blanks `transcript` text in billing history (metrics kept). Shared-link flow honors Auto-transcribe preference.
+- **Lint / notices:** notification permission checks Lint-visible; MediaExtractor→BufferInfo flags mapped safely; Spanish `groq_min_available` format args fixed; QuickJS/OpenSSL/PyCryptodomex/Mutagen/yt-dlp+EJS notices updated; Release attaches `THIRD_PARTY_NOTICES.md` + `LICENSE`.
+- **ES — Respaldos:** escape JSON conserva rutas Windows, comillas y saltos; export con `flush` y éxito solo si terminó bien; límites de tamaño al importar.
+- **ES — Borrado y compartir:** al borrar guiones se limpia el texto en el historial de uso; «Auto-transcribir al compartir» se respeta en enlaces compartidos.
+- **ES — Lint y avisos:** permisos de notificación reconocibles por Lint; banderas de audio mapeadas; formato ES de Groq; avisos de terceros y adjuntos en el Release.
+
 ## 1.8.0
 
 - **Encrypted keys backup:** export/import from Settings → My keys with a password (PBKDF2 + AES-GCM). File `.knbackup`; never includes cookies or scripts.
