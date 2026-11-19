@@ -16,8 +16,8 @@ android {
         targetSdk = 35
 
         // Fuente de verdad única (local). CI no sobrescribe con GITHUB_RUN_NUMBER.
-        val localVersionCode = 131
-        val localVersionName = "1.7.1"
+        val localVersionCode = 132
+        val localVersionName = "1.7.2"
         versionCode = localVersionCode
         versionName = localVersionName
 
@@ -137,6 +137,7 @@ dependencies {
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
     implementation("io.github.junkfood02.youtubedl-android:aria2c:0.18.1")
 
+    testImplementation("junit:junit:4.13.2")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
