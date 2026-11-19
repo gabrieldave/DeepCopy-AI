@@ -631,4 +631,6 @@
     <string name="ai_group_create">Crear contenido visual e interactivo</string>
     <string name="ai_button_hint">Toca una acción para abrir tu IA. También se copia el prompt completo.</string>
     <string name="ai_share_unavailable">El prompt está copiado. Abre tu IA y pégalo.</string>
+    <string name="ai_show_creative">Mostrar herramientas visuales</string>
+    <string name="ai_hide_creative">Ocultar herramientas visuales</string>
 </resources>
