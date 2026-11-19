@@ -1,4 +1,4 @@
-<p align="center">🇺🇸 <strong>English</strong> · 🇪🇸 <a href="README.es.md">Español</a></p>
+<p align="center">🇺🇸 <strong>English</strong> · <a href="README.es.md">🇪🇸 Español</a></p>
 
 <p align="center">
   <img src="docs/assets/logo.png" alt="KlipNote logo" width="128" />

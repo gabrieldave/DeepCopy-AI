@@ -1,4 +1,4 @@
-<p align="center">🇺🇸 <a href="README.md">English</a> · 🇪🇸 <strong>Español</strong></p>
+<p align="center"><a href="README.md">🇺🇸 English</a> · 🇪🇸 <strong>Español</strong></p>
 
 <p align="center">
   <img src="docs/assets/logo.png" alt="Logo de KlipNote" width="128" />
@@ -21,10 +21,10 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/screenshots/01-asistente.png" alt="Asistente de inicio" width="200" />
-  <img src="docs/assets/screenshots/02-capturar.png" alt="Pestaña Capturar" width="200" />
-  <img src="docs/assets/screenshots/03-guiones.png" alt="Pestaña Guiones" width="200" />
-  <img src="docs/assets/screenshots/04-ajustes-temas.png" alt="Ajustes con temas" width="200" />
+  <img src="docs/assets/screenshots/es/01-asistente.png" alt="Asistente de inicio" width="200" />
+  <img src="docs/assets/screenshots/es/02-capturar.png" alt="Pestaña Capturar" width="200" />
+  <img src="docs/assets/screenshots/es/03-guiones.png" alt="Pestaña Guiones" width="200" />
+  <img src="docs/assets/screenshots/es/04-ajustes-temas.png" alt="Ajustes con temas" width="200" />
 </p>
 
 ---
