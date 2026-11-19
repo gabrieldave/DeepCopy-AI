@@ -220,7 +220,9 @@ object SealDownloader {
         } catch (t: Throwable) {
             val msg = t.message.orEmpty()
             if (!needsYtDlpHeal(msg)) throw t
-            Log.w(TAG, "Auto-heal yt-dlp NIGHTLY tras: $msg")
+            if (BuildConfig.DEBUG) {
+                Log.w(TAG, "Auto-heal yt-dlp NIGHTLY tras: $msg")
+            }
             onProgress(context.getString(R.string.ytdlp_auto_heal))
             runCatching { updateYtDlpNightly(context) }
             onProgress(context.getString(R.string.download_retry))

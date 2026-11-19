@@ -1,5 +1,12 @@
 # Changelog — KlipNote
 
+## 1.7.5
+
+- **UX / a11y (P3):** minimum secondary text at 12 sp; more UI neutrals centralized in `KlipNeutrals`; expand/collapse icons get content descriptions.
+- **Logs & tests:** debug-only auto-heal yt-dlp log; JVM unit tests for `UpdateChecker`, `CookieStore.siteForUrl`, and `RemoteRouterConfig.defaultSnapshot` (paid fallback last).
+- **ES — UX / accesibilidad (P3):** textos secundarios mínimo 12 sp; neutros de UI en `KlipNeutrals`; descripciones en iconos expandir/contraer.
+- **ES — Logs y pruebas:** log de auto-heal yt-dlp solo en debug; tests JVM de actualización, cookies por URL y orden del snapshot remoto.
+
 ## 1.7.4
 
 - **Security hardening (P2):** tighter WebView login settings (no file/content access, HTTPS-only navigation, dispose on leave); HTTPS required for Microsoft/MAI endpoint; update downloads limited to this GitHub repo; unit tests run in the release workflow before signing.

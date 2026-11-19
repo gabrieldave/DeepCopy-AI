@@ -1,10 +1,10 @@
 package com.blackeye.klipnote
 
 import android.content.Context
-import android.net.Uri
 import android.webkit.CookieManager
 import androidx.annotation.Keep
 import java.io.File
+import java.net.URI
 
 /**
  * Sitios donde el usuario puede conectar SU PROPIA sesión para descargas que piden login.
@@ -120,7 +120,11 @@ object CookieStore {
 
     fun siteForUrl(url: String?): CookieSite? {
         if (url.isNullOrBlank()) return null
-        val host = runCatching { Uri.parse(url.trim()).host?.lowercase() }.getOrNull() ?: return null
+        val host = runCatching {
+            val raw = url.trim()
+            val withScheme = if (':' in raw) raw else "https://$raw"
+            URI(withScheme).host?.lowercase()
+        }.getOrNull() ?: return null
         return CookieSite.entries.firstOrNull { site ->
             site.hosts.any { h -> host == h || host.endsWith(".$h") }
         }

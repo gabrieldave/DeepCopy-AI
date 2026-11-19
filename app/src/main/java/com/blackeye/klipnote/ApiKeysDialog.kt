@@ -76,15 +76,15 @@ private val OnAccent get() = KlipPalette.onAccent
 private val OnBg get() = KlipNeutrals.OnBg
 private val Muted get() = KlipNeutrals.Muted
 private val Red get() = KlipNeutrals.Red
-private val ChipGreen = Color(0xFF0D3B2E)
-private val BorderSubtle = Color(0xFF2A3548)
+private val ChipGreen get() = KlipNeutrals.ChipGreen
+private val BorderSubtle get() = KlipNeutrals.BorderSubtle
 
-private val LevelBgs = listOf(
-    Color(0xFF171F2C),
-    Color(0xFF161D2A),
-    Color(0xFF151C28),
-    Color(0xFF141B27),
-    Color(0xFF131A26)
+private val LevelBgs get() = listOf(
+    KlipNeutrals.LevelBg0,
+    KlipNeutrals.LevelBg1,
+    KlipNeutrals.LevelBg2,
+    KlipNeutrals.LevelBg3,
+    KlipNeutrals.LevelBg4
 )
 
 @Composable
@@ -698,7 +698,7 @@ private fun PaidAutosaveCard(
                 Text(
                     endpointText.ifBlank { endpoint.ifBlank { "(sin endpoint)" } },
                     color = Muted,
-                    fontSize = 11.sp
+                    fontSize = 12.sp
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -773,7 +773,7 @@ private fun EngineChip(
             if (selected) Accent.copy(alpha = 0.7f) else BorderSubtle
         ),
         colors = FilterChipDefaults.filterChipColors(
-            containerColor = Color(0xFF0F1623),
+            containerColor = KlipNeutrals.ChipBg,
             labelColor = Muted,
             selectedContainerColor = Accent.copy(alpha = 0.22f),
             selectedLabelColor = Accent
@@ -825,7 +825,7 @@ private fun ProviderGuide(provider: SttProvider) {
     var showSteps by remember { mutableStateOf(false) }
     Text(
         ProviderCatalog.offerText(context, provider),
-        color = if (info.isFree) OnBg else Color(0xFFFBBF24),
+        color = if (info.isFree) OnBg else KlipNeutrals.Amber,
         fontSize = 12.sp
     )
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -847,7 +847,7 @@ private fun ProviderGuide(provider: SttProvider) {
     AnimatedVisibility(visible = showSteps) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             info.steps.forEachIndexed { i, step ->
-                Text("${i + 1}. $step", color = Muted, fontSize = 11.sp)
+                Text("${i + 1}. $step", color = Muted, fontSize = 12.sp)
             }
         }
     }
@@ -908,7 +908,7 @@ private fun KeyInputRow(
 @Composable
 private fun keysFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedBorderColor = Accent,
-    unfocusedBorderColor = Color(0xFF243044),
+    unfocusedBorderColor = KlipNeutrals.FieldBorder,
     focusedTextColor = OnBg,
     unfocusedTextColor = OnBg,
     cursorColor = Accent,

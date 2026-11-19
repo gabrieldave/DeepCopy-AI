@@ -24,6 +24,8 @@
     <string name="cd_clear">Clear</string>
     <string name="cd_paste">Paste</string>
     <string name="cd_more">More</string>
+    <string name="cd_expand">Expand</string>
+    <string name="cd_collapse">Collapse</string>
     <string name="clipboard_label">KlipNote</string>
 
     <!-- Legacy / shared (keep names) -->

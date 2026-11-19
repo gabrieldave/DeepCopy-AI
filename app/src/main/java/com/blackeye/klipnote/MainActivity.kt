@@ -1761,7 +1761,7 @@ private fun LinkHeroCard(
             },
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = Accent,
-                unfocusedBorderColor = Color(0xFF243044),
+                unfocusedBorderColor = KlipNeutrals.FieldBorder,
                 focusedTextColor = OnBg,
                 unfocusedTextColor = OnBg,
                 cursorColor = Accent
@@ -1927,7 +1927,7 @@ private fun ProgressCard(phase: UiPhase, onCancel: () -> Unit) {
                     .height(6.dp)
                     .clip(RoundedCornerShape(3.dp)),
                 color = Accent,
-                trackColor = Color(0xFF0F1623)
+                trackColor = KlipNeutrals.ChipBg
             )
         } else {
             LinearProgressIndicator(
@@ -1936,7 +1936,7 @@ private fun ProgressCard(phase: UiPhase, onCancel: () -> Unit) {
                     .height(6.dp)
                     .clip(RoundedCornerShape(3.dp)),
                 color = Accent,
-                trackColor = Color(0xFF0F1623)
+                trackColor = KlipNeutrals.ChipBg
             )
         }
         OutlinedButton(
@@ -1944,7 +1944,7 @@ private fun ProgressCard(phase: UiPhase, onCancel: () -> Unit) {
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Text(stringResource(R.string.cancel), color = Color(0xFFF87171))
+            Text(stringResource(R.string.cancel), color = KlipNeutrals.Red)
         }
     }
 }
@@ -1965,7 +1965,7 @@ private fun ErrorCard(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(message, color = Color(0xFFF87171))
+        Text(message, color = KlipNeutrals.Red)
         if (showConnectCookies) {
             Text(
                 stringResource(R.string.cookie_connect_privacy),
@@ -2089,9 +2089,9 @@ private fun ResultWorkspaceCard(
                 ),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Accent,
-                    unfocusedBorderColor = Color(0xFF243044),
-                    focusedContainerColor = Color(0xFF0F1623),
-                    unfocusedContainerColor = Color(0xFF0F1623),
+                    unfocusedBorderColor = KlipNeutrals.FieldBorder,
+                    focusedContainerColor = KlipNeutrals.ChipBg,
+                    unfocusedContainerColor = KlipNeutrals.ChipBg,
                     cursorColor = Accent
                 ),
                 shape = RoundedCornerShape(12.dp)
@@ -2414,7 +2414,7 @@ private fun GuionesTab(
             placeholder = { Text(stringResource(R.string.scripts_search_hint), color = Muted) },
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = Accent,
-                unfocusedBorderColor = Color(0xFF243044),
+                unfocusedBorderColor = KlipNeutrals.FieldBorder,
                 focusedTextColor = OnBg,
                 unfocusedTextColor = OnBg,
                 cursorColor = Accent
@@ -2440,7 +2440,7 @@ private fun GuionesTab(
                     onDismissRequest = { menuOpen = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text(stringResource(R.string.clear_history), color = Color(0xFFF87171)) },
+                        text = { Text(stringResource(R.string.clear_history), color = KlipNeutrals.Red) },
                         onClick = {
                             menuOpen = false
                             confirmClear = true
@@ -2461,7 +2461,7 @@ private fun GuionesTab(
                     TextButton(onClick = {
                         confirmClear = false
                         onClearAll()
-                    }) { Text(stringResource(R.string.delete), color = Color(0xFFF87171)) }
+                    }) { Text(stringResource(R.string.delete), color = KlipNeutrals.Red) }
                 },
                 dismissButton = {
                     TextButton(onClick = { confirmClear = false }) {
@@ -2537,7 +2537,7 @@ private fun GuionesTab(
                                     Text(stringResource(R.string.open_link), color = Accent)
                                 }
                                 TextButton(onClick = { onDelete(entry.id) }) {
-                                    Text(stringResource(R.string.delete), color = Color(0xFFF87171))
+                                    Text(stringResource(R.string.delete), color = KlipNeutrals.Red)
                                 }
                             }
                         }
@@ -2693,7 +2693,9 @@ private fun MotoresTab(
                 }
                 Icon(
                     if (cookiesOpen) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                    contentDescription = null,
+                    contentDescription = stringResource(
+                        if (cookiesOpen) R.string.cd_collapse else R.string.cd_expand
+                    ),
                     tint = Muted
                 )
             }
@@ -2719,7 +2721,7 @@ private fun MotoresTab(
                         )
                         if (isConnected) {
                             TextButton(onClick = { onClearCookies(site) }) {
-                                Text(stringResource(R.string.disconnect), color = Color(0xFFF87171), fontSize = 12.sp)
+                                Text(stringResource(R.string.disconnect), color = KlipNeutrals.Red, fontSize = 12.sp)
                             }
                         } else {
                             TextButton(onClick = { onConnectCookies(site) }) {
@@ -2773,7 +2775,9 @@ private fun MotoresTab(
                 Text(stringResource(R.string.advanced_section), color = OnBg, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                 Icon(
                     if (advancedOpen) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                    contentDescription = null,
+                    contentDescription = stringResource(
+                        if (advancedOpen) R.string.cd_collapse else R.string.cd_expand
+                    ),
                     tint = Muted
                 )
             }
@@ -3155,7 +3159,7 @@ private fun AppearanceSection(
                     Text(
                         shortLabel(id),
                         color = if (selected) Accent else Muted,
-                        fontSize = 10.sp,
+                        fontSize = 12.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -3196,7 +3200,7 @@ private fun ModeChip(
 
 @Composable
 private fun chipColors() = FilterChipDefaults.filterChipColors(
-    containerColor = Color(0xFF0F1623),
+    containerColor = KlipNeutrals.ChipBg,
     labelColor = Muted,
     selectedContainerColor = Accent.copy(alpha = 0.2f),
     selectedLabelColor = Accent
@@ -3455,7 +3459,7 @@ private fun SiteCookiesSheet(
                 fontSize = 12.sp
             )
             CookieStore.noteFor(context, site)?.let {
-                Text(it, color = Color(0xFFFBBF24), fontSize = 11.sp)
+                Text(it, color = Amber, fontSize = 12.sp)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ModeChip(
@@ -3487,7 +3491,7 @@ private fun SiteCookiesSheet(
                         .fillMaxWidth()
                         .height(360.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF0F1623))
+                        .background(KlipNeutrals.ChipBg)
                 ) {
                     AndroidView(
                         factory = { ctx ->

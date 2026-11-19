@@ -23,6 +23,8 @@
     <string name="cd_clear">Limpiar</string>
     <string name="cd_paste">Pegar</string>
     <string name="cd_more">Más</string>
+    <string name="cd_expand">Expandir</string>
+    <string name="cd_collapse">Contraer</string>
     <string name="clipboard_label">KlipNote</string>
 
     <string name="select_media">Seleccionar audio o video</string>

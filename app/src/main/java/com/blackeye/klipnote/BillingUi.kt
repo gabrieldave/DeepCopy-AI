@@ -116,7 +116,7 @@ fun RoutingModeChips(
                     onClick = onSelectAuto,
                     label = { Text(stringResource(R.string.automatic)) },
                     colors = FilterChipDefaults.filterChipColors(
-                        containerColor = Color(0xFF0F1623),
+                        containerColor = KlipNeutrals.ChipBg,
                         labelColor = Muted,
                         selectedContainerColor = Accent.copy(alpha = 0.22f),
                         selectedLabelColor = Accent
@@ -137,7 +137,7 @@ fun RoutingModeChips(
                     },
                     label = { Text(provider.chipLabel(context)) },
                     colors = FilterChipDefaults.filterChipColors(
-                        containerColor = Color(0xFF0F1623),
+                        containerColor = KlipNeutrals.ChipBg,
                         labelColor = Muted,
                         selectedContainerColor = Accent.copy(alpha = 0.22f),
                         selectedLabelColor = Accent
@@ -385,9 +385,9 @@ fun FreeServicesPanel(
             enabled = hasAnyKey && !state.verifyingOffers,
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF1A2436),
+                containerColor = KlipNeutrals.Panel,
                 contentColor = OnBg,
-                disabledContainerColor = Color(0xFF121820),
+                disabledContainerColor = KlipNeutrals.PanelDisabled,
                 disabledContentColor = Muted
             ),
             shape = RoundedCornerShape(12.dp)
@@ -503,7 +503,7 @@ private fun ClearServiceRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF0F1623))
+            .background(KlipNeutrals.ChipBg)
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -538,7 +538,7 @@ private fun ClearServiceRow(
                     .height(6.dp)
                     .clip(RoundedCornerShape(3.dp)),
                 color = barColor,
-                trackColor = Color(0xFF151C28)
+                trackColor = KlipNeutrals.Card
             )
         } else {
             OutlinedButton(
@@ -622,7 +622,7 @@ private fun MeterBadge(kind: MeterKind) {
     Text(
         kind.badge(context),
         color = color,
-        fontSize = 10.sp,
+        fontSize = 12.sp,
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
@@ -744,7 +744,7 @@ fun PreFlightCard(
                     checkedThumbColor = Color.White,
                     checkedTrackColor = Accent,
                     uncheckedThumbColor = Muted,
-                    uncheckedTrackColor = Color(0xFF1F2937)
+                    uncheckedTrackColor = KlipNeutrals.SwitchTrack
                 )
             )
         }
@@ -849,11 +849,11 @@ private fun HistoryRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF0F1623))
+            .background(KlipNeutrals.ChipBg)
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Text(entry.formattedWhen, color = Muted, fontSize = 11.sp)
+        Text(entry.formattedWhen, color = Muted, fontSize = 12.sp)
         Text(entry.fileName, color = OnBg, fontWeight = FontWeight.Medium, fontSize = 14.sp)
         Text(
             buildString {
@@ -1001,7 +1001,7 @@ private fun MoneyField(label: String, value: String, onChange: (String) -> Unit)
 @Composable
 private fun fieldColors() = OutlinedTextFieldDefaults.colors(
     focusedBorderColor = Accent,
-    unfocusedBorderColor = Color(0xFF243044),
+    unfocusedBorderColor = KlipNeutrals.FieldBorder,
     focusedTextColor = OnBg,
     unfocusedTextColor = OnBg,
     cursorColor = Accent,

@@ -30,6 +30,18 @@ object KlipNeutrals {
     val Red = Color(0xFFF87171)
     val FieldBorder = Color(0xFF243044)
     val ChipBg = Color(0xFF0F1623)
+    /** Botón / panel secundario. */
+    val Panel = Color(0xFF1A2436)
+    val PanelDisabled = Color(0xFF121820)
+    /** Track de switch desmarcado. */
+    val SwitchTrack = Color(0xFF1F2937)
+    val BorderSubtle = Color(0xFF2A3548)
+    val ChipGreen = Color(0xFF0D3B2E)
+    val LevelBg0 = Color(0xFF171F2C)
+    val LevelBg1 = Color(0xFF161D2A)
+    val LevelBg2 = Color(0xFF151C28)
+    val LevelBg3 = Color(0xFF141B27)
+    val LevelBg4 = Color(0xFF131A26)
 }
 
 enum class KlipThemeId(val prefKey: String) {
