@@ -1,0 +1,70 @@
+name: Debug APK
+
+# Compila APK debug como artefacto. Sin secretos de firma ni Releases.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "config/**"
+      - "**.md"
+      - ".github/workflows/release-apk.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: debug-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          packages: platform-tools
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@06832c7b30a0129d7fb559bcc6e43d26f6374244 # v4.3.1
+        with:
+          gradle-version: "8.9"
+
+      - name: Assemble debug APK
+        run: gradle assembleDebug --console=plain
+
+      - name: Resolve APK and version
+        id: ver
+        run: |
+          SRC=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          test -n "$SRC"
+          AAPT2=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort | tail -n 1)
+          BADGING=$("$AAPT2" dump badging "$SRC" | head -n 1)
+          VNAME=$(echo "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
+          echo "versionName=$VNAME" >> "$GITHUB_OUTPUT"
+          DEST="KlipNote-v${VNAME}.apk"
+          cp "$SRC" "$DEST"
+          echo "APK_PATH=$DEST" >> "$GITHUB_ENV"
+          ls -lh "$DEST"
+
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: KlipNote-debug-apk
+          path: ${{ env.APK_PATH }}
+          if-no-files-found: error

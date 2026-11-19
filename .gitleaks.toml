@@ -1,0 +1,17 @@
+title = "KlipNote gitleaks"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Build outputs and known false positives"
+paths = [
+  '''(^|/)build/''',
+  '''(^|/)\.gradle/''',
+  '''(^|/)captures/''',
+  '''(^|/)screenshots(-.*/)?''',
+]
+regexes = [
+  # SharedPreferences migration key name, not a credential
+  '''migrated_billing_to_guiones_v163''',
+]
