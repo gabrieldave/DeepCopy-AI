@@ -395,7 +395,7 @@
     <string name="ai_mode_flashcards">Flashcards</string>
     <string name="ai_mode_outline">Esquema</string>
     <string name="ai_mode_clean_script">Guion limpio</string>
-    <string name="ai_master_all_label">Todo en 1 · Lanza los 8 super-prompts</string>
+    <string name="ai_master_all_label">8 en 1 · Crea los 8 resultados</string>
     <string name="ai_master_all_mode_name">Todo en 1</string>
     <string name="ai_prompt_source_header">--- FUENTE ---</string>
     <string name="ai_prompt_transcript_header">--- TRANSCRIPCIÓN COMPLETA ---</string>
@@ -611,4 +611,24 @@
     <string name="download_apk">Descargar APK</string>
     <string name="update_up_to_date">Ya tienes la última versión</string>
     <string name="update_check_failed">No se pudo buscar actualizaciones. Revisa tu conexión e inténtalo de nuevo.</string>
+
+    <!-- 2026 AI actions: output artifacts, not plans -->
+    <string name="ai_chip_website">🌐 Sitio web HTML</string>
+    <string name="ai_mode_website">Sitio web HTML</string>
+    <string name="ai_chip_interactive">🎮 App interactiva</string>
+    <string name="ai_mode_interactive">App interactiva</string>
+    <string name="ai_chip_dashboard">📊 Panel interactivo</string>
+    <string name="ai_mode_dashboard">Panel interactivo</string>
+    <string name="ai_chip_slides">🖥️ Presentación visual</string>
+    <string name="ai_mode_slides">Presentación visual</string>
+    <string name="ai_chip_timeline">🕒 Línea de tiempo</string>
+    <string name="ai_mode_timeline">Línea de tiempo</string>
+    <string name="ai_chip_podcast">🎧 Audio / pódcast</string>
+    <string name="ai_mode_podcast">Audio / pódcast</string>
+    <string name="ai_chip_checklist">✅ Lista interactiva</string>
+    <string name="ai_mode_checklist">Lista interactiva</string>
+    <string name="ai_group_analyze">Comprender y estudiar</string>
+    <string name="ai_group_create">Crear contenido visual e interactivo</string>
+    <string name="ai_button_hint">Toca una acción para abrir tu IA. También se copia el prompt completo.</string>
+    <string name="ai_share_unavailable">El prompt está copiado. Abre tu IA y pégalo.</string>
 </resources>
