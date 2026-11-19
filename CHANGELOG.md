@@ -1,5 +1,12 @@
 # Changelog — KlipNote
 
+## 1.7.3
+
+- **Security / CI & open-source licenses:** closes the pre-release audit for Actions hardening and third-party attribution (`THIRD_PARTY_NOTICES.md` + full texts under `LICENSES/`).
+- **Organizational signing (BLACK EYE Software):** release builds move to the corporate PKCS12 identity. **If you already installed v1.7.2 (or any earlier signed build), uninstall once and install v1.7.3** — Android will not update over an APK signed with a different certificate; local data is wiped on uninstall unless you backed it up.
+- **ES — Seguridad / CI y licencias:** cierre de la auditoría previa a release (Actions + avisos de terceros en `THIRD_PARTY_NOTICES.md` y `LICENSES/`).
+- **ES — Firma organizacional (BLACK EYE Software):** si ya tenías **v1.7.2**, **desinstala e instala v1.7.3 una sola vez** por el cambio de certificado de firma.
+
 ## 1.7.2
 
 - **IA con entregables directos:** 16 acciones en inglés y español. Infografía visual, diagramas, web HTML, miniapp, panel interactivo, presentación, línea de tiempo, tarjetas, pódcast y checklist.

@@ -1,0 +1,360 @@
+name: Release APK
+
+# Publicación firmada (repo principal únicamente):
+# - Automática: push de tags v*
+# - Manual: workflow_dispatch solo desde main
+# - Tag = v<versionName> exacto; el tag git apunta al commit compilado
+# - El commit debe ser ancestro de main (antes de secretos de firma / Gradle)
+# - Sin sobrescritura de Releases/APK; errores de API no se tratan como "ausente"
+# - Secretos de firma vía environment "release"
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release-apk-${{ github.event_name == 'push' && github.ref_name || format('dispatch-{0}', github.sha) }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >
+      github.repository == 'gabrieldave/KlipNote' &&
+      (
+        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+      )
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          # Historial completo del commit a publicar (necesario para merge-base).
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      # Gate de seguridad: no referenciar secretos de firma antes de superar este paso.
+      - name: Verify release commit is ancestor of main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BUILD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test -n "${BUILD_SHA}"
+          git rev-parse --verify "${BUILD_SHA}" >/dev/null
+
+          # Credencial solo para fetch de lectura de main (no es secreto de firma).
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          git fetch --no-tags --prune origin "refs/heads/main:refs/remotes/origin/main"
+
+          if ! git rev-parse --verify --quiet refs/remotes/origin/main >/dev/null; then
+            echo "::error::No se pudo obtener origin/main para la comprobación de ancestro."
+            exit 1
+          fi
+
+          MAIN_SHA="$(git rev-parse refs/remotes/origin/main)"
+          echo "BUILD_SHA=${BUILD_SHA}"
+          echo "MAIN_SHA=${MAIN_SHA}"
+
+          if git merge-base --is-ancestor "${BUILD_SHA}" refs/remotes/origin/main; then
+            echo "OK: ${BUILD_SHA} es ancestro de main (${MAIN_SHA})."
+          else
+            echo "::error::El commit ${BUILD_SHA} NO es ancestro de main (${MAIN_SHA}). Publicación detenida."
+            exit 1
+          fi
+
+          # Quitar token del remote tras la comprobación.
+          git remote set-url origin "https://github.com/${REPO}.git"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          packages: platform-tools
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@06832c7b30a0129d7fb559bcc6e43d26f6374244 # v4.3.1
+        with:
+          gradle-version: "8.9"
+
+      - name: Require signing secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          test -n "${ANDROID_KEYSTORE_BASE64}"
+          test -n "${ANDROID_KEYSTORE_PASSWORD}"
+          test -n "${ANDROID_KEY_ALIAS}"
+
+      - name: Decode release keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          # Nombre neutro: el secreto puede ser JKS o PKCS12; la extensión no define el formato.
+          printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${RUNNER_TEMP}/release.keystore"
+          test -s "${RUNNER_TEMP}/release.keystore"
+          chmod 600 "${RUNNER_TEMP}/release.keystore"
+
+      - name: Assemble release APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: gradle assembleRelease --console=plain
+
+      - name: Resolve APK version and expected tag
+        id: ver
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          BUILD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          SRC="$(find app/build/outputs/apk/release -name '*.apk' | head -n 1)"
+          test -n "${SRC}"
+          AAPT2="$(find "${ANDROID_HOME}/build-tools" -type f -name aapt2 | sort | tail -n 1)"
+          test -n "${AAPT2}"
+          BADGING="$("${AAPT2}" dump badging "${SRC}" | head -n 1)"
+          VNAME="$(echo "${BADGING}" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")"
+          VCODE="$(echo "${BADGING}" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")"
+          test -n "${VNAME}"
+          test -n "${VCODE}"
+          EXPECTED_TAG="v${VNAME}"
+
+          case "${EVENT_NAME}" in
+            push)
+              TAG="${REF_NAME}"
+              if [ "${TAG}" != "${EXPECTED_TAG}" ]; then
+                echo "::error::El tag '${TAG}' no coincide exactamente con versionName ('${EXPECTED_TAG}')."
+                exit 1
+              fi
+              ;;
+            workflow_dispatch)
+              TAG="${EXPECTED_TAG}"
+              ;;
+            *)
+              echo "::error::Evento no soportado: ${EVENT_NAME}"
+              exit 1
+              ;;
+          esac
+
+          DEST="KlipNote-${TAG}.apk"
+          cp "${SRC}" "${DEST}"
+          {
+            echo "versionName=${VNAME}"
+            echo "versionCode=${VCODE}"
+            echo "tag=${TAG}"
+            echo "buildSha=${BUILD_SHA}"
+          } >> "${GITHUB_OUTPUT}"
+          echo "APK_PATH=${DEST}" >> "${GITHUB_ENV}"
+          ls -lh "${DEST}"
+          echo "BUILD_SHA=${BUILD_SHA}"
+          echo "TAG=${TAG}"
+
+      - name: Ensure git tag matches compiled commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          BUILD_SHA: ${{ steps.ver.outputs.buildSha }}
+        run: |
+          set -euo pipefail
+
+          # HTTP status explícito vía curl. Nunca interpretar error/red/permiso como 404.
+          api_json() {
+            local method="$1" path="$2" body_file="$3"
+            shift 3
+            local url="https://api.github.com/${path}"
+            local http
+            set +e
+            http="$(curl -sS -X "${method}" \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              -o "${body_file}" -w "%{http_code}" \
+              "$@" \
+              "${url}")"
+            local rc=$?
+            set -e
+            if [ "${rc}" -ne 0 ]; then
+              echo "::error::Fallo de conectividad curl rc=${rc} en ${method} ${path}"
+              exit 1
+            fi
+            if ! [[ "${http}" =~ ^[0-9][0-9][0-9]$ ]]; then
+              echo "::error::Código HTTP inválido ('${http}') en ${method} ${path}"
+              exit 1
+            fi
+            printf '%s' "${http}"
+          }
+
+          peel_ref_to_commit() {
+            local ref_json="$1"
+            local obj_type obj_sha tag_json http
+            obj_type="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["object"]["type"])' "${ref_json}")"
+            obj_sha="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["object"]["sha"])' "${ref_json}")"
+            case "${obj_type}" in
+              commit)
+                printf '%s' "${obj_sha}"
+                ;;
+              tag)
+                tag_json="$(mktemp)"
+                http="$(api_json GET "repos/${REPO}/git/tags/${obj_sha}" "${tag_json}")"
+                if [ "${http}" != "200" ]; then
+                  echo "::error::No se pudo resolver tag anotado ${obj_sha} (HTTP ${http})." >&2
+                  cat "${tag_json}" >&2 || true
+                  rm -f "${tag_json}"
+                  exit 1
+                fi
+                python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["object"]["sha"], end="")' "${tag_json}"
+                rm -f "${tag_json}"
+                ;;
+              *)
+                echo "::error::Tipo de objeto de tag no soportado: ${obj_type}" >&2
+                exit 1
+                ;;
+            esac
+          }
+
+          REF_BODY="$(mktemp)"
+          HTTP="$(api_json GET "repos/${REPO}/git/ref/tags/${TAG}" "${REF_BODY}")"
+
+          case "${HTTP}" in
+            200)
+              TAG_COMMIT="$(peel_ref_to_commit "${REF_BODY}")"
+              if [ "${TAG_COMMIT}" != "${BUILD_SHA}" ]; then
+                echo "::error::El tag '${TAG}' apunta a ${TAG_COMMIT}, pero el commit compilado es ${BUILD_SHA}."
+                exit 1
+              fi
+              echo "OK: tag '${TAG}' ya apunta al commit compilado ${BUILD_SHA}."
+              ;;
+            404)
+              echo "Tag '${TAG}' ausente. Creándolo en ${BUILD_SHA}…"
+              CREATE_BODY="$(mktemp)"
+              HTTP_CREATE="$(api_json POST "repos/${REPO}/git/refs" "${CREATE_BODY}" \
+                -H "Content-Type: application/json" \
+                -d "{\"ref\":\"refs/tags/${TAG}\",\"sha\":\"${BUILD_SHA}\"}")"
+              if [ "${HTTP_CREATE}" != "201" ] && [ "${HTTP_CREATE}" != "200" ]; then
+                echo "::error::Fallo al crear refs/tags/${TAG} → ${BUILD_SHA} (HTTP ${HTTP_CREATE})."
+                cat "${CREATE_BODY}" >&2 || true
+                exit 1
+              fi
+              HTTP2="$(api_json GET "repos/${REPO}/git/ref/tags/${TAG}" "${REF_BODY}")"
+              if [ "${HTTP2}" != "200" ]; then
+                echo "::error::Tag creado pero no legible (HTTP ${HTTP2})."
+                cat "${REF_BODY}" >&2 || true
+                exit 1
+              fi
+              TAG_COMMIT="$(peel_ref_to_commit "${REF_BODY}")"
+              if [ "${TAG_COMMIT}" != "${BUILD_SHA}" ]; then
+                echo "::error::Tag creado pero apunta a ${TAG_COMMIT}, esperado ${BUILD_SHA}."
+                exit 1
+              fi
+              echo "OK: tag '${TAG}' creado en ${BUILD_SHA}."
+              rm -f "${CREATE_BODY}"
+              ;;
+            *)
+              echo "::error::Error de API/permisos al consultar el tag '${TAG}' (HTTP ${HTTP}). Publicación detenida."
+              cat "${REF_BODY}" >&2 || true
+              exit 1
+              ;;
+          esac
+          rm -f "${REF_BODY}"
+
+      - name: Refuse overwrite of existing Release or APK asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          APK_PATH: ${{ env.APK_PATH }}
+        run: |
+          set -euo pipefail
+          ASSET_NAME="$(basename "${APK_PATH}")"
+          BODY="$(mktemp)"
+
+          set +e
+          HTTP="$(curl -sS -X GET \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -o "${BODY}" -w "%{http_code}" \
+            "https://api.github.com/repos/${REPO}/releases/tags/${TAG}")"
+          curl_rc=$?
+          set -e
+
+          if [ "${curl_rc}" -ne 0 ]; then
+            echo "::error::Fallo de conectividad al consultar Release '${TAG}' (curl rc=${curl_rc}). No se asume ausencia."
+            exit 1
+          fi
+          if ! [[ "${HTTP}" =~ ^[0-9][0-9][0-9]$ ]]; then
+            echo "::error::Código HTTP inválido ('${HTTP}') al consultar Release '${TAG}'."
+            exit 1
+          fi
+
+          case "${HTTP}" in
+            200)
+              echo "::error::Ya existe el Release '${TAG}'. Sobrescritura prohibida."
+              if python3 -c 'import json,sys; assets=json.load(open(sys.argv[1])).get("assets",[]); sys.exit(0 if any(a.get("name")==sys.argv[2] for a in assets) else 1)' \
+                "${BODY}" "${ASSET_NAME}"; then
+                echo "::error::También existe el asset '${ASSET_NAME}' en ese Release."
+              fi
+              exit 1
+              ;;
+            404)
+              echo "OK: no existe Release para '${TAG}' (HTTP 404)."
+              ;;
+            *)
+              echo "::error::Error de API/permisos/conectividad al consultar Release '${TAG}' (HTTP ${HTTP}). Publicación detenida."
+              cat "${BODY}" >&2 || true
+              exit 1
+              ;;
+          esac
+          rm -f "${BODY}"
+
+      - name: Upload release APK artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: KlipNote-release-apk
+          path: ${{ env.APK_PATH }}
+          if-no-files-found: error
+
+      - name: Create GitHub Release (no overwrite)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          BUILD_SHA: ${{ steps.ver.outputs.buildSha }}
+          APK_PATH: ${{ env.APK_PATH }}
+        run: |
+          set -euo pipefail
+          NOTES="$(printf '%s\n\n%s' \
+            "KlipNote ${TAG} — Signed APK. Free & open-source (GPL-3.0). Add your own free API keys in the app (Settings → My keys). Guide: README." \
+            "APK firmado. Gratis y de código abierto (GPL-3.0). Pon tus propias llaves gratis en la app (Ajustes → Mis llaves). Guía: README.es.md.")"
+          # El tag ya existe y apunta a BUILD_SHA. No sobrescribir ni editar Releases previos.
+          gh release create "${TAG}" "${APK_PATH}" \
+            --title "KlipNote ${TAG}" \
+            --notes "${NOTES}" \
+            --target "${BUILD_SHA}" \
+            --latest
+
+      - name: Cleanup keystore
+        if: always()
+        run: rm -f "${RUNNER_TEMP}/release.keystore"
