@@ -2126,6 +2126,20 @@ private fun AiStudyActionsSection(
         lastCopiedId = id
     }
 
+    fun openAiChooser(prompt: String) {
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, prompt)
+        }
+        runCatching {
+            context.startActivity(
+                Intent.createChooser(send, context.getString(R.string.send_to_ai))
+            )
+        }.onFailure {
+            Toast.makeText(context, context.getString(R.string.ai_share_unavailable), Toast.LENGTH_LONG).show()
+        }
+    }
+
     fun copyMode(mode: AiStudyMode) {
         val prompt = AiStudyPrompts.build(
             context = context,
@@ -2134,6 +2148,7 @@ private fun AiStudyActionsSection(
             sourceTitleOrUrl = sourceTitleOrUrl
         )
         markCopied(mode.name, mode.modeName(context), prompt)
+        openAiChooser(prompt)
     }
 
     fun copyMasterAll8() {
@@ -2147,6 +2162,7 @@ private fun AiStudyActionsSection(
             AiStudyPrompts.masterAll8ModeName(context),
             prompt
         )
+        openAiChooser(prompt)
     }
 
     Column(
@@ -2190,36 +2206,46 @@ private fun AiStudyActionsSection(
             )
         }
 
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            AiStudyMode.entries.forEach { mode ->
-                val justCopied = lastCopiedId == mode.name
-                AssistChip(
-                    onClick = { copyMode(mode) },
-                    label = {
-                        Text(
-                            if (justCopied) {
-                                stringResource(R.string.copied_to_clipboard)
-                            } else {
-                                mode.chipLabel(context)
-                            },
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = if (justCopied) {
-                            Accent.copy(alpha = 0.28f)
-                        } else {
-                            Color(0xFF1A2333)
+        Text(
+            stringResource(R.string.ai_button_hint),
+            color = Muted,
+            fontSize = 12.sp
+        )
+
+        listOf(false, true).forEach { creative ->
+            Text(
+                if (creative) stringResource(R.string.ai_group_create)
+                else stringResource(R.string.ai_group_analyze),
+                color = OnBg,
+                fontWeight = FontWeight.Medium,
+                fontSize = 12.sp
+            )
+
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                AiStudyMode.entries.filter { it.isCreative() == creative }.forEach { mode ->
+                    val justCopied = lastCopiedId == mode.name
+                    AssistChip(
+                        onClick = { copyMode(mode) },
+                        label = {
+                            Text(
+                                if (justCopied) stringResource(R.string.copied_to_clipboard)
+                                else mode.chipLabel(context),
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         },
-                        labelColor = if (justCopied) Accent else OnBg
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = if (justCopied) Accent.copy(alpha = 0.28f)
+                            else Color(0xFF1A2333),
+                            labelColor = if (justCopied) Accent else OnBg
+                        )
                     )
-                )
+                }
             }
         }
 
@@ -2244,13 +2270,7 @@ private fun AiStudyActionsSection(
                 TextButton(
                     onClick = {
                         val sendText = prompt ?: return@TextButton
-                        val send = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, sendText)
-                        }
-                        context.startActivity(
-                            Intent.createChooser(send, context.getString(R.string.send_to_ai))
-                        )
+                        openAiChooser(sendText)
                     }
                 ) {
                     Text(stringResource(R.string.send_to_ai), color = Accent, fontSize = 12.sp)
