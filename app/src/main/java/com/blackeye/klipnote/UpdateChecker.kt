@@ -58,6 +58,9 @@ object UpdateChecker {
         val apkUrl = findApkAssetUrl(root)
             ?: root.optString("html_url").takeIf { it.isNotBlank() }
             ?: return Result.Failed
+        if (!apkUrl.startsWith("https://github.com/gabrieldave/KlipNote/")) {
+            return Result.Failed
+        }
         return Result.UpdateAvailable(versionName = remoteVersion, downloadUrl = apkUrl)
     }
 

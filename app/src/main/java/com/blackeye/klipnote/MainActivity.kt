@@ -8,6 +8,8 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.ViewGroup
 import android.webkit.CookieManager
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
@@ -3471,6 +3473,15 @@ private fun SiteCookiesSheet(
             }
 
             if (mode == "webview") {
+                DisposableEffect(site) {
+                    onDispose {
+                        webViewRef?.apply {
+                            stopLoading()
+                            destroy()
+                        }
+                        webViewRef = null
+                    }
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -3488,9 +3499,28 @@ private fun SiteCookiesSheet(
                                 settings.javaScriptEnabled = true
                                 settings.domStorageEnabled = true
                                 settings.javaScriptCanOpenWindowsAutomatically = true
+                                settings.allowFileAccess = false
+                                settings.allowContentAccess = false
+                                settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                                 CookieManager.getInstance().setAcceptCookie(true)
                                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                                webViewClient = WebViewClient()
+                                webViewClient = object : WebViewClient() {
+                                    override fun shouldOverrideUrlLoading(
+                                        view: WebView?,
+                                        request: WebResourceRequest?
+                                    ): Boolean {
+                                        val url = request?.url?.toString().orEmpty()
+                                        return !url.startsWith("https://", ignoreCase = true)
+                                    }
+
+                                    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+                                    override fun shouldOverrideUrlLoading(
+                                        view: WebView?,
+                                        url: String?
+                                    ): Boolean {
+                                        return !url.orEmpty().startsWith("https://", ignoreCase = true)
+                                    }
+                                }
                                 loadUrl(site.loginUrl)
                                 webViewRef = this
                             }

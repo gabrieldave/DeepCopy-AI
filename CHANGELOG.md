@@ -1,5 +1,12 @@
 # Changelog — KlipNote
 
+## 1.7.4
+
+- **Security hardening (P2):** tighter WebView login settings (no file/content access, HTTPS-only navigation, dispose on leave); HTTPS required for Microsoft/MAI endpoint; update downloads limited to this GitHub repo; unit tests run in the release workflow before signing.
+- **Docs:** publish flow matches real gates (tags `v*` on an ancestor of `main`, or `workflow_dispatch` on `main`; no Release overwrite); privacy notes cover Releases check and yt-dlp/ejs updates via youtubedl-android.
+- **ES — Seguridad (P2):** WebView de login más estricto; endpoint Microsoft/MAI solo HTTPS; URLs de actualización solo desde este repo; tests unitarios en el workflow de release antes de firmar.
+- **ES — Docs:** flujo de publicación alineado con el workflow real; privacidad actualizada (Releases + yt-dlp/ejs).
+
 ## 1.7.3
 
 - **Security / CI & open-source licenses:** closes the pre-release audit for Actions hardening and third-party attribution (`THIRD_PARTY_NOTICES.md` + full texts under `LICENSES/`).

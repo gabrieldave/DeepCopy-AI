@@ -48,6 +48,7 @@ We don’t promise “free forever”: each company sets its own offers and **th
 1. On Releases, download the **`.apk`** file (not “Source code”).
 2. Open it on your phone. Allow installs from unknown sources if Android asks.
 3. To **update**, install the new APK over the old one — keys and transcripts should stay.
+4. **One-time exception:** if you still have **v1.7.2** (or an earlier build), **uninstall once** before installing **v1.7.3+**. The signing certificate changed; Android will not update over the old signature. Local data is wiped unless you backed it up.
 
 ---
 
@@ -119,7 +120,8 @@ Index: **[docs/README.md](docs/README.md)** · Spanish guides: [docs/README.es.m
 
 - Keys are encrypted with the Android Keystore and stay on your phone except when calling the provider you chose.
 - Transcripts, cookies, and settings are **local**.
-- The only file the app may fetch from this repo is [`config/stt-router.json`](config/stt-router.json). It does not send your data to KlipNote.
+- From this repo the app may fetch [`config/stt-router.json`](config/stt-router.json) (offer texts/order). **Check for updates** also queries GitHub **Releases** for a newer APK. It does not send your data to KlipNote.
+- [youtubedl-android](https://github.com/yausername/youtubedl-android) may update **yt-dlp** / **ejs** binaries from GitHub so downloads keep working.
 
 ---
 

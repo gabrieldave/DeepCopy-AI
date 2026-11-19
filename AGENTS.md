@@ -33,7 +33,13 @@ adb exec-out screencap -p > captura.png      # captura de pantalla para verifica
 Si `adb devices` muestra el mismo teléfono dos veces (cable + Wi-Fi), usa `-d`.
 
 ## Publicar
-Push o merge a `main` → GitHub Actions compila el APK firmado y crea o actualiza el Release `v<versionName>`. Revisa con `gh run watch` y `gh release view`.
+Flujo real del workflow `release-apk.yml` (repo `gabrieldave/KlipNote`):
+
+1. Sube `localVersionCode` / `localVersionName` en `app/build.gradle.kts` y deja el cambio en un commit que sea **ancestro de `main`**.
+2. Disparo: **tag `v*`** (`v` + `versionName` exacto) en ese commit, **o** `workflow_dispatch` **solo desde `main`**.
+3. Antes de firmar: el job corre tests unitarios (`testDebugUnitTest`) y exige que el commit sea ancestro de `main`.
+4. Compila el APK firmado y crea el Release `v<versionName>` **sin sobrescribir** un Release/APK ya existente.
+5. Revisa con `gh run watch` y `gh release view`. No publiques un Release sin el «ok» del mantenedor.
 
 ## Estilo de la app
 - Fondo oscuro. Textos en español, sin jerga técnica: decir «Mis llaves», no «BYOK»; «Automático», no «Cascada»; «Videos que piden iniciar sesión», no «cookies».

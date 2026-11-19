@@ -71,6 +71,9 @@ object PaidFallbackClient {
     ): TranscriptionResult {
         val base = endpoint.trim().trimEnd('/')
         require(base.isNotBlank()) { context.getString(R.string.error_mai_endpoint_empty) }
+        require(base.startsWith("https://", ignoreCase = true)) {
+            context.getString(R.string.error_mai_endpoint_empty)
+        }
 
         // Fast Transcription API o endpoint OpenAI-compatible configurable.
         return if (base.contains("openai", ignoreCase = true) ||

@@ -48,6 +48,7 @@ No prometemos «gratis para siempre»: las ofertas las pone cada empresa y **pue
 1. En Releases, baja el archivo que termina en **`.apk`** (no los «Source code»).
 2. Ábrelo en el teléfono. Si Android pide permiso, permite instalar apps de orígenes desconocidos.
 3. Para **actualizar**, instala el APK nuevo encima: no deberías perder llaves ni guiones.
+4. **Excepción única:** si aún tienes **v1.7.2** (o una build anterior), **desinstala una vez** antes de instalar **v1.7.3+**. Cambió el certificado de firma; Android no actualiza encima de la firma antigua. Los datos locales se borran al desinstalar si no hiciste copia.
 
 ---
 
@@ -119,7 +120,8 @@ Con una sola llave gratis ya puedes empezar. En **Ajustes → Mis llaves** puede
 
 - Tus llaves se cifran con el Keystore de Android y no salen del teléfono, salvo para llamar al proveedor que elegiste.
 - Guiones, cookies y ajustes son **locales**.
-- Lo único que la app puede descargar de este repo es [`config/stt-router.json`](config/stt-router.json) (textos de ofertas y orden). No envía tus datos a KlipNote.
+- De este repo la app puede descargar [`config/stt-router.json`](config/stt-router.json) (textos de ofertas y orden). **Buscar actualizaciones** también consulta los **Releases** de GitHub por un APK más nuevo. No envía tus datos a KlipNote.
+- [youtubedl-android](https://github.com/yausername/youtubedl-android) puede actualizar binarios **yt-dlp** / **ejs** desde GitHub para que las descargas sigan funcionando.
 
 ---
 
