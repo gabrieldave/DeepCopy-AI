@@ -11,11 +11,13 @@ import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -165,7 +167,7 @@ data class PreFlightState(
     val routeHint: String
 )
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
 
     private var pendingShareUri by mutableStateOf<Uri?>(null)
     private var pendingShareText by mutableStateOf<String?>(null)
@@ -352,7 +354,7 @@ private fun KlipNoteApp(
     var pendingLinkAfterNotif by remember { mutableStateOf<String?>(null) }
 
     fun launchLinkJob(url: String) {
-        phase = UiPhase.Downloading("Descargando: 0%…")
+        phase = UiPhase.Downloading(context.getString(R.string.status_downloading_percent, 0))
         lastSavedMedia = null
         KlipNoteWorkService.startLinkJob(
             context = context,
@@ -373,7 +375,7 @@ private fun KlipNoteApp(
         if (!granted) {
             Toast.makeText(
                 context,
-                "Sin notificaciones: la app sigue funcionando igual",
+                context.getString(R.string.toast_notifications_denied),
                 Toast.LENGTH_SHORT
             ).show()
         }
@@ -450,7 +452,7 @@ private fun KlipNoteApp(
             syncKeysUi()
             verifyingOffers = false
             if (showSnackbar) {
-                snackbar.showSnackbar("Ofertas verificadas")
+                snackbar.showSnackbar(context.getString(R.string.snackbar_offers_verified))
             }
         }
     }
@@ -492,13 +494,9 @@ private fun KlipNoteApp(
         )
         val hardMsg = when (stop) {
             is BillingManager.HardStop.ReserveBreach ->
-                "Bloqueado: saldo oficial tras el gasto " +
-                    "(${BillingManager.formatUsd(stop.remainingAfter, 2)}) " +
-                    "quedaría bajo la reserva de ${BillingManager.formatUsd(stop.reserve, 2)}."
+                context.getString(R.string.hard_stop_reserve, BillingManager.formatUsd(stop.reserve, 2))
             is BillingManager.HardStop.AppCapBreach ->
-                "Bloqueado: gasto app proyectado " +
-                    "(${BillingManager.formatUsd(stop.projectedSpent, 4)}) " +
-                    "supera el tope de ${BillingManager.formatUsd(stop.cap, 2)}."
+                context.getString(R.string.hard_stop_cap)
             is BillingManager.HardStop.StrictZeroMode -> stop.message
             BillingManager.HardStop.Ok -> null
         }
@@ -584,12 +582,12 @@ private fun KlipNoteApp(
         val url = SealDownloader.extractFirstUrl(raw)
         if (url.isNullOrBlank()) {
             if (!auto) {
-                Toast.makeText(context, "No hay URL válida en el texto", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.toast_invalid_url), Toast.LENGTH_SHORT).show()
             }
             return
         }
         if (KlipNoteJobHub.isBusy()) {
-            Toast.makeText(context, "Ya hay una descarga/transcripción en curso", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.toast_job_already_running), Toast.LENGTH_SHORT).show()
             return
         }
         linkInput = url
@@ -605,9 +603,12 @@ private fun KlipNoteApp(
             Toast.makeText(
                 context,
                 if (sealReady == SealDownloader.ReadyState.ERROR) {
-                    "yt-dlp no disponible: ${SealDownloader.readyError.value ?: "error"}"
+                    context.getString(
+                        R.string.toast_ytdlp_error,
+                        SealDownloader.readyError.value ?: context.getString(R.string.error_generic)
+                    )
                 } else {
-                    "Inicializando yt-dlp / FFmpeg…"
+                    context.getString(R.string.toast_ytdlp_init)
                 },
                 Toast.LENGTH_SHORT
             ).show()
@@ -671,7 +672,8 @@ private fun KlipNoteApp(
                 phase = when {
                     label.contains("Descarg", ignoreCase = true) -> UiPhase.Downloading(label)
                     label.contains("Extra", ignoreCase = true) ||
-                        label.contains("Preparando audio", ignoreCase = true) -> UiPhase.Extracting
+                        label.contains("Preparando", ignoreCase = true) ||
+                        label.contains("Preparing", ignoreCase = true) -> UiPhase.Extracting
                     else -> UiPhase.Transcribing(label)
                 }
             }
@@ -708,7 +710,7 @@ private fun KlipNoteApp(
             }
             KlipNoteJobHub.JobState.Cancelled -> {
                 phase = UiPhase.Idle
-                snackbar.showSnackbar("Cancelado")
+                snackbar.showSnackbar(context.getString(R.string.cancel))
                 KlipNoteJobHub.consumeTerminal()
             }
             KlipNoteJobHub.JobState.Idle -> Unit
@@ -805,7 +807,7 @@ private fun KlipNoteApp(
 
     val hasAnyKey = ApiKeyStore.hasAnyKey(context)
     val pillManual = routingSelection is RoutingSelection.Manual
-    val pillText = activeMotorPillText(routingSelection, autoPrimary, hasKeys = hasAnyKey)
+    val pillText = activeMotorPillText(context, routingSelection, autoPrimary, hasKeys = hasAnyKey)
 
     Scaffold(
         containerColor = Bg,
@@ -839,7 +841,7 @@ private fun KlipNoteApp(
                 MainTab.Guiones -> {
                     TopAppBar(
                         title = {
-                            Text("Guiones", fontWeight = FontWeight.Bold, color = OnBg)
+                            Text(stringResource(R.string.tab_scripts), fontWeight = FontWeight.Bold, color = OnBg)
                         },
                         colors = TopAppBarDefaults.topAppBarColors(
                             containerColor = Bg,
@@ -850,7 +852,7 @@ private fun KlipNoteApp(
                 MainTab.Motores -> {
                     TopAppBar(
                         title = {
-                            Text("Ajustes", fontWeight = FontWeight.Bold, color = OnBg)
+                            Text(stringResource(R.string.tab_settings), fontWeight = FontWeight.Bold, color = OnBg)
                         },
                         colors = TopAppBarDefaults.topAppBarColors(
                             containerColor = Bg,
@@ -866,7 +868,7 @@ private fun KlipNoteApp(
                     selected = selectedTab == MainTab.Capturar,
                     onClick = { selectedTab = MainTab.Capturar },
                     icon = { Icon(Icons.Default.Link, contentDescription = null) },
-                    label = { Text("Capturar") },
+                    label = { Text(stringResource(R.string.tab_capture)) },
                     colors = navColors()
                 )
                 NavigationBarItem(
@@ -876,14 +878,14 @@ private fun KlipNoteApp(
                         selectedTab = MainTab.Guiones
                     },
                     icon = { Icon(Icons.Default.Description, contentDescription = null) },
-                    label = { Text("Guiones") },
+                    label = { Text(stringResource(R.string.tab_scripts)) },
                     colors = navColors()
                 )
                 NavigationBarItem(
                     selected = selectedTab == MainTab.Motores,
                     onClick = { selectedTab = MainTab.Motores },
                     icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                    label = { Text("Ajustes") },
+                    label = { Text(stringResource(R.string.tab_settings)) },
                     colors = navColors()
                 )
             }
@@ -978,6 +980,7 @@ private fun KlipNoteApp(
                         onTextChange = { transcriptText = it },
                         hasKeys = ApiKeyStore.hasAnyKey(context),
                         servicesSummary = buildServicesSummary(
+                            context = context,
                             keyMasks = keyMasks,
                             groqRemainingSeconds = groqRemaining,
                             autoPrimary = autoPrimary
@@ -1017,7 +1020,7 @@ private fun KlipNoteApp(
                             } else {
                                 Toast.makeText(
                                     context,
-                                    "Sin enlace abríble",
+                                    context.getString(R.string.capture_no_openable_link),
                                     Toast.LENGTH_SHORT
                                 ).show()
                             }
@@ -1135,9 +1138,11 @@ private fun KlipNoteApp(
                             scope.launch {
                                 val msg = runCatching {
                                     SealDownloader.updateYtDlpNightly(context)
-                                }.getOrElse { e -> e.message ?: "Error al actualizar" }
+                                }.getOrElse { e ->
+                                    e.message ?: context.getString(R.string.toast_update_failed)
+                                }
                                 updatingYtDlp = false
-                                snackbar.showSnackbar("yt-dlp: $msg")
+                                snackbar.showSnackbar(context.getString(R.string.toast_ytdlp_status, msg))
                             }
                         },
                         cookiesEnabled = CookieStore.isEnabled(context),
@@ -1151,7 +1156,9 @@ private fun KlipNoteApp(
                             CookieStore.clear(context, site)
                             cookiesRevision += 1
                             scope.launch {
-                                snackbar.showSnackbar("Cuenta de ${site.label} desconectada")
+                                snackbar.showSnackbar(
+                                    context.getString(R.string.toast_account_disconnected, site.label)
+                                )
                             }
                         },
                         onShowTutorial = onShowOnboarding,
@@ -1177,7 +1184,7 @@ private fun KlipNoteApp(
                 cookiesRevision += 1
                 cookieSheetSite = null
                 scope.launch {
-                    snackbar.showSnackbar("Cookies guardadas ($count) — solo en este dispositivo")
+                    snackbar.showSnackbar(context.getString(R.string.toast_cookies_saved, count))
                 }
             }
         )
@@ -1283,13 +1290,9 @@ private fun KlipNoteApp(
             containerColor = Card,
             titleContentColor = OnBg,
             textContentColor = OnBg,
-            title = { Text("Avisos al terminar") },
+            title = { Text(stringResource(R.string.finish_notifications_title)) },
             text = {
-                Text(
-                    "KlipNote puede avisarte con una notificación cuando termine la descarga " +
-                        "o el guion (útil si sales de la app). Puedes denegarlo y seguir usando " +
-                        "la app igual, solo sin avisos."
-                )
+                Text(stringResource(R.string.notif_permission_body))
             },
             confirmButton = {
                 TextButton(
@@ -1305,7 +1308,7 @@ private fun KlipNoteApp(
                             if (pending != null) launchLinkJob(pending)
                         }
                     }
-                ) { Text("Permitir", color = Accent) }
+                ) { Text(stringResource(R.string.allow), color = Accent) }
             },
             dismissButton = {
                 TextButton(
@@ -1316,7 +1319,7 @@ private fun KlipNoteApp(
                         pendingLinkAfterNotif = null
                         if (pending != null) launchLinkJob(pending)
                     }
-                ) { Text("Ahora no", color = Muted) }
+                ) { Text(stringResource(R.string.not_now), color = Muted) }
             }
         )
     }
@@ -1327,12 +1330,14 @@ private fun KlipNoteApp(
             containerColor = Card,
             titleContentColor = OnBg,
             textContentColor = OnBg,
-            title = { Text("Archivo de alto costo") },
+            title = { Text(stringResource(R.string.high_cost_file)) },
             text = {
                 Text(
-                    "Este archivo cuesta ~${BillingManager.formatUsd(pf.estimatedUsdDisplay, 4)} " +
-                        "(umbral ${BillingManager.formatUsd(BillingManager.GIANT_FILE_THRESHOLD_USD, 2)}). " +
-                        "¿Confirmas la transcripción?"
+                    stringResource(
+                        R.string.confirm_expensive_body,
+                        BillingManager.formatUsd(pf.estimatedUsdDisplay, 4),
+                        BillingManager.formatUsd(BillingManager.GIANT_FILE_THRESHOLD_USD, 2)
+                    )
                 )
             },
             confirmButton = {
@@ -1343,12 +1348,12 @@ private fun KlipNoteApp(
                         startTranscription(pf.uri, pf.fileName)
                     }
                 ) {
-                    Text("Sí, transcribir", color = Accent)
+                    Text(stringResource(R.string.yes_transcribe), color = Accent)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { giantConfirm = null }) {
-                    Text("Cancelar", color = Muted)
+                    Text(stringResource(R.string.cancel), color = Muted)
                 }
             }
         )
@@ -1397,6 +1402,7 @@ private fun MotorPickerSheet(
     onSelectAuto: () -> Unit,
     onSelectManual: (SttProvider) -> Unit
 ) {
+    val context = LocalContext.current
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -1410,20 +1416,20 @@ private fun MotorPickerSheet(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(
-                "Motor activo",
+                stringResource(R.string.motor_picker_title),
                 color = OnBg,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 16.sp
             )
             Text(
-                "Cambia Auto o fija un motor sin salir de Capturar.",
+                stringResource(R.string.capture_engine_sheet_hint),
                 color = Muted,
                 fontSize = 13.sp
             )
             FilterChip(
                 selected = selection is RoutingSelection.Auto,
                 onClick = onSelectAuto,
-                label = { Text("Automático") },
+                label = { Text(stringResource(R.string.automatic)) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = chipColors()
             )
@@ -1436,8 +1442,11 @@ private fun MotorPickerSheet(
                     label = {
                         Text(
                             buildString {
-                                append(provider.chipLabel())
-                                if (keyMasks[provider].isNullOrBlank()) append(" · sin key")
+                                append(provider.chipLabel(context))
+                                if (keyMasks[provider].isNullOrBlank()) {
+                                    append(" · ")
+                                    append(context.getString(R.string.block_no_key))
+                                }
                             }
                         )
                     },
@@ -1490,6 +1499,7 @@ private fun CapturarTab(
     onShareSavedMedia: (SavedMediaInfo) -> Unit,
     onOpenDownloads: () -> Unit
 ) {
+    val context = LocalContext.current
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1535,7 +1545,7 @@ private fun CapturarTab(
             PreFlightCard(
                 fileName = pf.fileName,
                 durationLabel = BillingManager.formatDuration(pf.durationSeconds),
-                modeLabel = pf.estimate.mode.shortUiLabel(forcedLanguage) +
+                modeLabel = pf.estimate.mode.shortUiLabel(context, forcedLanguage) +
                     if (pf.estimate.includeDiarize) " + separar voces" else "",
                 estimatedUsd = pf.estimatedUsdDisplay,
                 hardStopMessage = pf.hardStopMessage,
@@ -1590,13 +1600,13 @@ private fun CapturarTab(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "Paso 1: consigue tu llave gratis",
+                                stringResource(R.string.capture_step1_title),
                                 color = OnBg,
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 15.sp
                             )
                             Text(
-                                "Toca aquí para el tutorial. Tarda unos 2 minutos con Groq.",
+                                stringResource(R.string.capture_step1_body),
                                 color = Muted,
                                 fontSize = 12.sp
                             )
@@ -1617,16 +1627,16 @@ private fun CapturarTab(
                         ),
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text("Empezar", fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.start), fontWeight = FontWeight.SemiBold)
                     }
                 } else {
                     Text(
-                        servicesSummary.ifBlank { "Servicios listos" },
+                        servicesSummary.ifBlank { stringResource(R.string.services_ready_fallback) },
                         color = OnBg,
                         fontWeight = FontWeight.Medium,
                         fontSize = 14.sp
                     )
-                    Text("Listo para pegar un enlace o elegir un archivo.", color = Muted, fontSize = 12.sp)
+                    Text(stringResource(R.string.capture_ready_paste), color = Muted, fontSize = 12.sp)
                 }
             }
         }
@@ -1640,6 +1650,7 @@ private fun SavedMediaBanner(
     onOpenDownloads: () -> Unit,
     onShareFile: () -> Unit
 ) {
+    val context = LocalContext.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1649,7 +1660,7 @@ private fun SavedMediaBanner(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Text(
-            "✅ Guardado en Descargas/KlipNote: ${media.displayName}",
+            stringResource(R.string.notify_download_saved, media.displayName),
             color = Accent,
             fontWeight = FontWeight.SemiBold,
             fontSize = 14.sp
@@ -1663,14 +1674,14 @@ private fun SavedMediaBanner(
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(10.dp)
             ) {
-                Text(media.openLabel, color = Accent, fontSize = 12.sp, maxLines = 1)
+                Text(media.openLabel(context), color = Accent, fontSize = 12.sp, maxLines = 1)
             }
             OutlinedButton(
                 onClick = onOpenDownloads,
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(10.dp)
             ) {
-                Text("Ver en Descargas", color = Accent, fontSize = 12.sp, maxLines = 1)
+                Text(stringResource(R.string.view_in_downloads), color = Accent, fontSize = 12.sp, maxLines = 1)
             }
             OutlinedButton(
                 onClick = onShareFile,
@@ -1679,7 +1690,7 @@ private fun SavedMediaBanner(
                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
             ) {
                 Text(
-                    "Compartir",
+                    stringResource(R.string.action_share),
                     color = Accent,
                     fontSize = 12.sp,
                     maxLines = 1,
@@ -1706,11 +1717,12 @@ private fun LinkHeroCard(
     onRun: () -> Unit,
     onPickFile: () -> Unit
 ) {
+    val context = LocalContext.current
     val primaryLabel = when (linkMode) {
-        SealDownloader.LinkMode.TEXT_ONLY -> "Extraer Guion"
-        SealDownloader.LinkMode.AUDIO_AND_TEXT -> "Descargar Audio y Guion"
-        SealDownloader.LinkMode.VIDEO_AND_TEXT -> "Descargar Video y Guion"
-        SealDownloader.LinkMode.DOWNLOAD_ONLY -> "Descargar Archivo"
+        SealDownloader.LinkMode.TEXT_ONLY -> stringResource(R.string.extract_transcript)
+        SealDownloader.LinkMode.AUDIO_AND_TEXT -> stringResource(R.string.capture_mode_audio_script)
+        SealDownloader.LinkMode.VIDEO_AND_TEXT -> stringResource(R.string.capture_mode_video_script)
+        SealDownloader.LinkMode.DOWNLOAD_ONLY -> stringResource(R.string.capture_download_file)
     }
     Column(
         modifier = Modifier
@@ -1728,7 +1740,7 @@ private fun LinkHeroCard(
             maxLines = 1,
             placeholder = {
                 Text(
-                    "Pega aquí el enlace del video",
+                    stringResource(R.string.capture_paste_link_hint),
                     color = Muted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -1737,11 +1749,11 @@ private fun LinkHeroCard(
             trailingIcon = {
                 if (linkInput.isNotBlank()) {
                     IconButton(onClick = onClearLink, enabled = !busy) {
-                        Icon(Icons.Default.Close, contentDescription = "Limpiar", tint = Muted)
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.cd_clear), tint = Muted)
                     }
                 } else {
                     IconButton(onClick = onPasteLink, enabled = !busy) {
-                        Icon(Icons.Default.ContentPaste, contentDescription = "Pegar", tint = Accent)
+                        Icon(Icons.Default.ContentPaste, contentDescription = stringResource(R.string.cd_paste), tint = Accent)
                     }
                 }
             },
@@ -1762,14 +1774,14 @@ private fun LinkHeroCard(
             ) {
                 ModeChip(
                     selected = linkMode == SealDownloader.LinkMode.TEXT_ONLY,
-                    label = "Solo Texto",
+                    label = stringResource(R.string.capture_chip_text_only),
                     enabled = !busy,
                     modifier = Modifier.weight(1f),
                     onClick = { onModeChange(SealDownloader.LinkMode.TEXT_ONLY) }
                 )
                 ModeChip(
                     selected = linkMode == SealDownloader.LinkMode.AUDIO_AND_TEXT,
-                    label = "Audio+Texto",
+                    label = stringResource(R.string.capture_chip_audio_text),
                     enabled = !busy,
                     modifier = Modifier.weight(1f),
                     onClick = { onModeChange(SealDownloader.LinkMode.AUDIO_AND_TEXT) }
@@ -1781,14 +1793,14 @@ private fun LinkHeroCard(
             ) {
                 ModeChip(
                     selected = linkMode == SealDownloader.LinkMode.VIDEO_AND_TEXT,
-                    label = "Video+Texto",
+                    label = stringResource(R.string.capture_chip_video_text),
                     enabled = !busy,
                     modifier = Modifier.weight(1f),
                     onClick = { onModeChange(SealDownloader.LinkMode.VIDEO_AND_TEXT) }
                 )
                 ModeChip(
                     selected = linkMode == SealDownloader.LinkMode.DOWNLOAD_ONLY,
-                    label = "Solo descargar",
+                    label = stringResource(R.string.capture_chip_download_only),
                     enabled = !busy,
                     modifier = Modifier.weight(1f),
                     onClick = { onModeChange(SealDownloader.LinkMode.DOWNLOAD_ONLY) }
@@ -1799,13 +1811,13 @@ private fun LinkHeroCard(
         Text(
             when (linkMode) {
                 SealDownloader.LinkMode.TEXT_ONLY ->
-                    "Te damos el texto. No se guarda el video."
+                    stringResource(R.string.capture_hint_text_only)
                 SealDownloader.LinkMode.AUDIO_AND_TEXT ->
-                    "Guardamos el audio en Descargas/KlipNote y te damos el texto."
+                    stringResource(R.string.capture_hint_audio_text)
                 SealDownloader.LinkMode.VIDEO_AND_TEXT ->
-                    "Guardamos el video en Descargas/KlipNote y te damos el texto."
+                    stringResource(R.string.capture_hint_video_text)
                 SealDownloader.LinkMode.DOWNLOAD_ONLY ->
-                    "Solo guarda el archivo, sin texto."
+                    stringResource(R.string.capture_hint_download_only)
             },
             color = Muted,
             fontSize = 12.sp
@@ -1815,13 +1827,13 @@ private fun LinkHeroCard(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ModeChip(
                     selected = downloadKind == SealDownloader.DownloadKind.AUDIO_M4A,
-                    label = "Audio M4A",
+                    label = stringResource(R.string.capture_audio_m4a),
                     enabled = !busy,
                     onClick = { onDownloadKindChange(SealDownloader.DownloadKind.AUDIO_M4A) }
                 )
                 ModeChip(
                     selected = downloadKind == SealDownloader.DownloadKind.VIDEO_MP4,
-                    label = "Video MP4",
+                    label = stringResource(R.string.capture_video_mp4),
                     enabled = !busy,
                     onClick = { onDownloadKindChange(SealDownloader.DownloadKind.VIDEO_MP4) }
                 )
@@ -1830,8 +1842,8 @@ private fun LinkHeroCard(
 
         val readyHint = when (sealReady) {
             SealDownloader.ReadyState.READY -> null
-            SealDownloader.ReadyState.IDLE -> "Preparando motor de descargas…"
-            SealDownloader.ReadyState.ERROR -> "Motor de descargas no listo"
+            SealDownloader.ReadyState.IDLE -> stringResource(R.string.preparing_download_engine)
+            SealDownloader.ReadyState.ERROR -> stringResource(R.string.download_engine_not_ready)
         }
         if (readyHint != null) {
             Text(readyHint, color = Muted, fontSize = 12.sp)
@@ -1865,7 +1877,7 @@ private fun LinkHeroCard(
             Icon(Icons.Default.UploadFile, contentDescription = null, tint = Accent)
             Spacer(Modifier.size(8.dp))
             Text(
-                "Elegir video o audio del teléfono",
+                stringResource(R.string.capture_pick_file),
                 color = Accent,
                 fontWeight = FontWeight.SemiBold
             )
@@ -1881,9 +1893,9 @@ private fun ProgressCard(phase: UiPhase, onCancel: () -> Unit) {
                 ?.toFloatOrNull()?.div(100f)
             phase.label to pct
         }
-        UiPhase.Extracting -> "Extrayendo audio…" to null
+        UiPhase.Extracting -> stringResource(R.string.status_extracting_audio) to null
         is UiPhase.Transcribing ->
-            (phase.motorHint.ifBlank { "Transcribiendo…" }) to null
+            (phase.motorHint.ifBlank { stringResource(R.string.transcribing) }) to null
         else -> return
     }
     Column(
@@ -1930,7 +1942,7 @@ private fun ProgressCard(phase: UiPhase, onCancel: () -> Unit) {
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Text("Cancelar", color = Color(0xFFF87171))
+            Text(stringResource(R.string.cancel), color = Color(0xFFF87171))
         }
     }
 }
@@ -1954,7 +1966,7 @@ private fun ErrorCard(
         Text(message, color = Color(0xFFF87171))
         if (showConnectCookies) {
             Text(
-                "Conecta tu propia cuenta de ese sitio. Las cookies se guardan solo en este teléfono.",
+                stringResource(R.string.cookie_connect_privacy),
                 color = Muted,
                 fontSize = 12.sp
             )
@@ -1967,12 +1979,12 @@ private fun ErrorCard(
                 ),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text("Conectar mi cuenta", fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.connect_my_account), fontWeight = FontWeight.SemiBold)
             }
         }
         if (isManual) {
             TextButton(onClick = onBackToAuto) {
-                Text("Volver a Automático", color = Accent)
+                Text(stringResource(R.string.back_to_auto), color = Accent)
             }
         }
     }
@@ -2016,7 +2028,7 @@ private fun ResultWorkspaceCard(
                 Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Accent, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.size(4.dp))
                 Text(
-                    "Copiar",
+                    stringResource(R.string.action_copy),
                     color = Accent,
                     maxLines = 1,
                     softWrap = false,
@@ -2031,7 +2043,7 @@ private fun ResultWorkspaceCard(
                 Icon(Icons.Default.Share, contentDescription = null, tint = Accent, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.size(4.dp))
                 Text(
-                    "Compartir",
+                    stringResource(R.string.action_share),
                     color = Accent,
                     maxLines = 1,
                     softWrap = false,
@@ -2046,7 +2058,7 @@ private fun ResultWorkspaceCard(
                 Icon(Icons.Default.Clear, contentDescription = null, tint = Muted, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.size(4.dp))
                 Text(
-                    "Limpiar",
+                    stringResource(R.string.action_clear),
                     color = Muted,
                     maxLines = 1,
                     softWrap = false,
@@ -2096,9 +2108,6 @@ private fun AiStudyActionsSection(
     if (transcript.isBlank()) return
 
     val context = LocalContext.current
-    var replyInSpanish by remember {
-        mutableStateOf(AiStudyPrompts.isReplyInSpanish(context))
-    }
     /** null = nada; MASTER_ALL_8 o AiStudyMode.name */
     var lastCopiedId by remember { mutableStateOf<String?>(null) }
     var lastCopiedLabel by remember { mutableStateOf<String?>(null) }
@@ -2119,23 +2128,23 @@ private fun AiStudyActionsSection(
 
     fun copyMode(mode: AiStudyMode) {
         val prompt = AiStudyPrompts.build(
+            context = context,
             mode = mode,
             transcript = transcript,
-            sourceTitleOrUrl = sourceTitleOrUrl,
-            replyInSpanish = replyInSpanish
+            sourceTitleOrUrl = sourceTitleOrUrl
         )
-        markCopied(mode.name, mode.modeName, prompt)
+        markCopied(mode.name, mode.modeName(context), prompt)
     }
 
     fun copyMasterAll8() {
         val prompt = AiStudyPrompts.buildMasterAll8(
+            context = context,
             transcript = transcript,
-            sourceTitleOrUrl = sourceTitleOrUrl,
-            replyInSpanish = replyInSpanish
+            sourceTitleOrUrl = sourceTitleOrUrl
         )
         markCopied(
             AiStudyPrompts.MASTER_ALL_8,
-            AiStudyPrompts.MASTER_ALL_8_MODE_NAME,
+            AiStudyPrompts.masterAll8ModeName(context),
             prompt
         )
     }
@@ -2148,42 +2157,12 @@ private fun AiStudyActionsSection(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "✨ Estudiar con IA",
-                color = OnBg,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp
-            )
-            FilterChip(
-                selected = replyInSpanish,
-                onClick = {
-                    replyInSpanish = !replyInSpanish
-                    AiStudyPrompts.setReplyInSpanish(context, replyInSpanish)
-                },
-                label = {
-                    Text(
-                        if (replyInSpanish) {
-                            "🌐 Salida: Español"
-                        } else {
-                            "🎞️ Idioma del video"
-                        },
-                        fontSize = 11.sp,
-                        maxLines = 1
-                    )
-                },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = Accent.copy(alpha = 0.22f),
-                    selectedLabelColor = Accent,
-                    containerColor = Color(0xFF1A2333),
-                    labelColor = Muted
-                )
-            )
-        }
+        Text(
+            stringResource(R.string.study_with_ai),
+            color = OnBg,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 14.sp
+        )
 
         val masterJustCopied = lastCopiedId == AiStudyPrompts.MASTER_ALL_8
         Button(
@@ -2201,9 +2180,9 @@ private fun AiStudyActionsSection(
         ) {
             Text(
                 if (masterJustCopied) {
-                    "✓ Copiado al portapapeles"
+                    stringResource(R.string.copied_to_clipboard)
                 } else {
-                    AiStudyPrompts.MASTER_ALL_8_LABEL
+                    AiStudyPrompts.masterAll8Label(context)
                 },
                 fontWeight = FontWeight.Bold,
                 fontSize = 13.sp,
@@ -2222,7 +2201,11 @@ private fun AiStudyActionsSection(
                     onClick = { copyMode(mode) },
                     label = {
                         Text(
-                            if (justCopied) "✓ Copiado al portapapeles" else mode.chipLabel,
+                            if (justCopied) {
+                                stringResource(R.string.copied_to_clipboard)
+                            } else {
+                                mode.chipLabel(context)
+                            },
                             fontSize = 12.sp,
                             maxLines = 1,
                             softWrap = false
@@ -2242,7 +2225,7 @@ private fun AiStudyActionsSection(
 
         lastCopiedId?.let {
             val prompt = lastCopiedPrompt
-            val label = lastCopiedLabel ?: "Prompt"
+            val label = lastCopiedLabel ?: stringResource(R.string.prompt_label)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2253,7 +2236,7 @@ private fun AiStudyActionsSection(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "✓ Copiado al portapapeles · $label",
+                    stringResource(R.string.copied_to_clipboard_named, label),
                     color = Accent,
                     fontSize = 12.sp,
                     modifier = Modifier.weight(1f)
@@ -2266,11 +2249,11 @@ private fun AiStudyActionsSection(
                             putExtra(Intent.EXTRA_TEXT, sendText)
                         }
                         context.startActivity(
-                            Intent.createChooser(send, "Enviar a IA")
+                            Intent.createChooser(send, context.getString(R.string.send_to_ai))
                         )
                     }
                 ) {
-                    Text("🚀 Enviar a IA", color = Accent, fontSize = 12.sp)
+                    Text(stringResource(R.string.send_to_ai), color = Accent, fontSize = 12.sp)
                 }
             }
         }
@@ -2290,6 +2273,7 @@ private fun GuionesTab(
     onClearAll: () -> Unit,
     onGoToCapturar: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     val filtered = remember(entries, search) {
         val q = search.trim().lowercase()
         if (q.isBlank()) entries
@@ -2300,7 +2284,7 @@ private fun GuionesTab(
         }
     }
     val fmt = remember {
-        SimpleDateFormat("dd MMM · HH:mm", Locale("es", "MX"))
+        SimpleDateFormat("dd MMM · HH:mm", Locale.getDefault())
     }
     var menuOpen by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
@@ -2321,7 +2305,7 @@ private fun GuionesTab(
             )
             Spacer(Modifier.height(16.dp))
             Text(
-                "Aquí aparecerán tus transcripciones",
+                stringResource(R.string.scripts_empty),
                 color = OnBg,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 16.sp,
@@ -2336,7 +2320,7 @@ private fun GuionesTab(
                 ),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text("Ir a Capturar", fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.go_to_capture), fontWeight = FontWeight.SemiBold)
             }
         }
         return
@@ -2353,7 +2337,7 @@ private fun GuionesTab(
             onValueChange = onSearchChange,
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            placeholder = { Text("Buscar en mis guiones...", color = Muted) },
+            placeholder = { Text(stringResource(R.string.scripts_search_hint), color = Muted) },
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = Accent,
                 unfocusedBorderColor = Color(0xFF243044),
@@ -2369,20 +2353,20 @@ private fun GuionesTab(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "${filtered.size} guion${if (filtered.size == 1) "" else "es"}",
+                stringResource(R.string.scripts_count, filtered.size),
                 color = Muted,
                 fontSize = 12.sp
             )
             Box {
                 IconButton(onClick = { menuOpen = true }) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "Más", tint = Muted)
+                    Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.cd_more), tint = Muted)
                 }
                 DropdownMenu(
                     expanded = menuOpen,
                     onDismissRequest = { menuOpen = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text("Borrar historial", color = Color(0xFFF87171)) },
+                        text = { Text(stringResource(R.string.clear_history), color = Color(0xFFF87171)) },
                         onClick = {
                             menuOpen = false
                             confirmClear = true
@@ -2397,17 +2381,17 @@ private fun GuionesTab(
                 containerColor = Card,
                 titleContentColor = OnBg,
                 textContentColor = OnBg,
-                title = { Text("¿Borrar todo el historial?") },
-                text = { Text("Se eliminarán todos los guiones guardados en este teléfono.", color = Muted) },
+                title = { Text(stringResource(R.string.clear_all_history_title)) },
+                text = { Text(stringResource(R.string.scripts_clear_confirm_body), color = Muted) },
                 confirmButton = {
                     TextButton(onClick = {
                         confirmClear = false
                         onClearAll()
-                    }) { Text("Borrar", color = Color(0xFFF87171)) }
+                    }) { Text(stringResource(R.string.delete), color = Color(0xFFF87171)) }
                 },
                 dismissButton = {
                     TextButton(onClick = { confirmClear = false }) {
-                        Text("Cancelar", color = Muted)
+                        Text(stringResource(R.string.cancel), color = Muted)
                     }
                 }
             )
@@ -2419,7 +2403,7 @@ private fun GuionesTab(
                     .padding(top = 48.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text("Ningún guion coincide con la búsqueda.", color = Muted, fontSize = 12.sp)
+                Text(stringResource(R.string.scripts_search_empty), color = Muted, fontSize = 12.sp)
             }
         } else {
             LazyColumn(
@@ -2428,7 +2412,7 @@ private fun GuionesTab(
             ) {
                 items(filtered, key = { it.id }) { entry ->
                     val expanded = expandedId == entry.id
-                    val origin = sourceKindLabel(entry.sourceTitleOrUrl)
+                    val origin = sourceKindLabel(context, entry.sourceTitleOrUrl)
                     val dur = if (entry.durationSec > 0) {
                         BillingManager.formatDuration(entry.durationSec)
                     } else "—"
@@ -2472,14 +2456,14 @@ private fun GuionesTab(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(Modifier.size(4.dp))
-                                Text("Copiar", color = Accent)
+                                Text(stringResource(R.string.copy_plain), color = Accent)
                             }
                             if (expanded) {
                                 TextButton(onClick = { onOpenLink(entry.sourceTitleOrUrl) }) {
-                                    Text("Abrir link", color = Accent)
+                                    Text(stringResource(R.string.open_link), color = Accent)
                                 }
                                 TextButton(onClick = { onDelete(entry.id) }) {
-                                    Text("Borrar", color = Color(0xFFF87171))
+                                    Text(stringResource(R.string.delete), color = Color(0xFFF87171))
                                 }
                             }
                         }
@@ -2563,6 +2547,8 @@ private fun MotoresTab(
             onEngineEnabledChange = onEngineEnabledChange
         )
 
+        AppLanguageSection()
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -2571,22 +2557,22 @@ private fun MotoresTab(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            SectionHeader("¿En qué idioma hablan?", HelpCopy.LANGUAGE)
+            SectionHeader(stringResource(R.string.lang_detection_label), helpRes = HelpCopy.LANGUAGE)
             ModeChip(
                 selected = languageMode == LanguageMode.AUTO,
-                label = "Detectar solo (recomendado)",
+                label = stringResource(R.string.mode_auto),
                 enabled = true,
                 modifier = Modifier.fillMaxWidth(),
                 onClick = { onLanguageModeChange(LanguageMode.AUTO) }
             )
             ModeChip(
                 selected = languageMode == LanguageMode.MULTI,
-                label = "Mezclan español e inglés",
+                label = stringResource(R.string.mode_multi),
                 enabled = true,
                 modifier = Modifier.fillMaxWidth(),
                 onClick = { onLanguageModeChange(LanguageMode.MULTI) }
             )
-            Text("Siempre en:", color = Muted, fontSize = 12.sp)
+            Text(stringResource(R.string.always_on_label), color = Muted, fontSize = 12.sp)
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -2619,9 +2605,12 @@ private fun MotoresTab(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    SectionHeader("Videos que piden iniciar sesión", HelpCopy.COOKIES)
+                    SectionHeader(
+                        stringResource(R.string.videos_need_sign_in),
+                        helpRes = HelpCopy.COOKIES
+                    )
                     Text(
-                        HelpCopy.COOKIES,
+                        stringResource(HelpCopy.COOKIES),
                         color = Muted,
                         fontSize = 12.sp,
                         maxLines = if (cookiesOpen) Int.MAX_VALUE else 3,
@@ -2643,18 +2632,24 @@ private fun MotoresTab(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            "${site.label} · ${if (isConnected) "conectado" else "sin conectar"}",
+                            "${site.label} · ${
+                                if (isConnected) {
+                                    stringResource(R.string.connected_status)
+                                } else {
+                                    stringResource(R.string.not_connected_status)
+                                }
+                            }",
                             color = if (isConnected) Accent else OnBg,
                             fontSize = 13.sp,
                             modifier = Modifier.weight(1f)
                         )
                         if (isConnected) {
                             TextButton(onClick = { onClearCookies(site) }) {
-                                Text("Desconectar", color = Color(0xFFF87171), fontSize = 12.sp)
+                                Text(stringResource(R.string.disconnect), color = Color(0xFFF87171), fontSize = 12.sp)
                             }
                         } else {
                             TextButton(onClick = { onConnectCookies(site) }) {
-                                Text("Conectar", color = Accent, fontSize = 12.sp)
+                                Text(stringResource(R.string.connect), color = Accent, fontSize = 12.sp)
                             }
                         }
                     }
@@ -2665,7 +2660,7 @@ private fun MotoresTab(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Usar mis cuentas en descargas", color = OnBg, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Text(stringResource(R.string.use_accounts_downloads), color = OnBg, fontSize = 13.sp, modifier = Modifier.weight(1f))
                         Switch(
                             checked = cookiesEnabled,
                             onCheckedChange = onToggleCookies,
@@ -2699,7 +2694,7 @@ private fun MotoresTab(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("Avanzado", color = OnBg, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                Text(stringResource(R.string.advanced_section), color = OnBg, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                 Icon(
                     if (advancedOpen) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                     contentDescription = null,
@@ -2707,16 +2702,16 @@ private fun MotoresTab(
                 )
             }
             if (advancedOpen) {
-                SectionHeader("Automático", HelpCopy.AUTO)
+                SectionHeader(stringResource(R.string.automatic), helpRes = HelpCopy.AUTO)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("Avisarme al terminar", color = OnBg, fontSize = 13.sp)
+                        Text(stringResource(R.string.notify_when_done), color = OnBg, fontSize = 13.sp)
                         Text(
-                            "Notificación cuando termine la descarga o el guion",
+                            stringResource(R.string.notify_when_done_hint),
                             color = Muted,
                             fontSize = 12.sp
                         )
@@ -2736,7 +2731,7 @@ private fun MotoresTab(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        "Modo \$0 (nunca usar el servicio de pago)",
+                        stringResource(R.string.zero_mode_label),
                         color = OnBg,
                         fontSize = 13.sp,
                         modifier = Modifier.weight(1f)
@@ -2756,7 +2751,7 @@ private fun MotoresTab(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Usar servicio de pago", color = OnBg, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Text(stringResource(R.string.use_paid_service), color = OnBg, fontSize = 13.sp, modifier = Modifier.weight(1f))
                         Switch(
                             checked = creditState.engineEnabled[SttProvider.PAID_FALLBACK] ?: true,
                             onCheckedChange = { onEngineEnabledChange(SttProvider.PAID_FALLBACK, it) },
@@ -2768,7 +2763,7 @@ private fun MotoresTab(
                     }
                 }
 
-                Text("Probar un servicio a mano", color = OnBg, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                Text(stringResource(R.string.test_service_manual), color = OnBg, fontWeight = FontWeight.Medium, fontSize = 13.sp)
                 RoutingModeChips(
                     selection = routingSelection,
                     keyMasks = keyMasks,
@@ -2783,8 +2778,8 @@ private fun MotoresTab(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                        Text("Separar quién habla", color = OnBg, fontSize = 13.sp)
-                        Text(HelpCopy.DIARIZE, color = Muted, fontSize = 12.sp)
+                        Text(stringResource(R.string.diarize), color = OnBg, fontSize = 13.sp)
+                        Text(stringResource(HelpCopy.DIARIZE), color = Muted, fontSize = 12.sp)
                     }
                     Switch(
                         checked = diarize,
@@ -2797,16 +2792,16 @@ private fun MotoresTab(
                 }
 
                 TextButton(onClick = onOpenCostSettings) {
-                    Text("Ajustes de costos de Deepgram", color = Accent)
+                    Text(stringResource(R.string.deepgram_cost_settings), color = Accent)
                 }
 
-                SectionHeader("Motor de descargas", HelpCopy.YTDLP)
-                Text("Se actualiza solo", color = Muted, fontSize = 12.sp)
+                SectionHeader(stringResource(R.string.download_engine), helpRes = HelpCopy.YTDLP)
+                Text(stringResource(R.string.updates_itself), color = Muted, fontSize = 12.sp)
                 Text(
                     when (sealReady) {
-                        SealDownloader.ReadyState.READY -> "Listo"
-                        SealDownloader.ReadyState.IDLE -> "Inicializando…"
-                        SealDownloader.ReadyState.ERROR -> "Error — reintenta"
+                        SealDownloader.ReadyState.READY -> stringResource(R.string.ready)
+                        SealDownloader.ReadyState.IDLE -> stringResource(R.string.initializing)
+                        SealDownloader.ReadyState.ERROR -> stringResource(R.string.ytdlp_error_retry)
                     },
                     color = Muted,
                     fontSize = 12.sp
@@ -2818,24 +2813,81 @@ private fun MotoresTab(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text(
-                        if (updatingYtDlp) "Actualizando…" else "Actualizar ahora",
+                        if (updatingYtDlp) {
+                            stringResource(R.string.updating)
+                        } else {
+                            stringResource(R.string.update_now)
+                        },
                         color = Accent
                     )
                 }
 
                 TextButton(onClick = onOpenHistory) {
-                    Text("Historial de grabaciones", color = Accent)
+                    Text(stringResource(R.string.recording_history), color = Accent)
                 }
                 TextButton(onClick = onShowTutorial) {
-                    Text("Ver tutorial", color = Accent)
+                    Text(stringResource(R.string.view_tutorial), color = Accent)
                 }
                 Text(
-                    "Versión ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                    stringResource(
+                        R.string.version_format,
+                        BuildConfig.VERSION_NAME,
+                        BuildConfig.VERSION_CODE
+                    ),
                     color = Muted,
                     fontSize = 12.sp
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun AppLanguageSection() {
+    val context = LocalContext.current
+  val saved = remember { mutableStateOf(AppLocales.getSavedTag(context)) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Card)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        SectionHeader(
+            stringResource(R.string.app_language_section),
+            helpRes = R.string.help_app_language
+        )
+        ModeChip(
+            selected = saved.value.isEmpty(),
+            label = stringResource(R.string.app_language_system),
+            enabled = true,
+            modifier = Modifier.fillMaxWidth(),
+            onClick = {
+                saved.value = ""
+                AppLocales.setAndApply(context, "")
+            }
+        )
+        ModeChip(
+            selected = saved.value == "en",
+            label = stringResource(R.string.app_language_en),
+            enabled = true,
+            modifier = Modifier.fillMaxWidth(),
+            onClick = {
+                saved.value = "en"
+                AppLocales.setAndApply(context, "en")
+            }
+        )
+        ModeChip(
+            selected = saved.value == "es",
+            label = stringResource(R.string.app_language_es),
+            enabled = true,
+            modifier = Modifier.fillMaxWidth(),
+            onClick = {
+                saved.value = "es"
+                AppLocales.setAndApply(context, "es")
+            }
+        )
     }
 }
 
@@ -2846,16 +2898,7 @@ private fun AppearanceSection(
 ) {
     val context = LocalContext.current
     val options = remember { KlipThemeId.selectable(context) }
-    val shortLabel: (KlipThemeId) -> String = { id ->
-        when (id) {
-            KlipThemeId.GREEN -> "Verde"
-            KlipThemeId.BLUE -> "Azul"
-            KlipThemeId.PURPLE -> "Morado"
-            KlipThemeId.ORANGE -> "Naranja"
-            KlipThemeId.PINK -> "Rosa"
-            KlipThemeId.DYNAMIC -> "Dinámico"
-        }
-    }
+    val shortLabel: (KlipThemeId) -> String = { id -> id.shortLabel(context) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -2865,9 +2908,8 @@ private fun AppearanceSection(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         SectionHeader(
-            title = "Apariencia",
-            help = "Cambia el color de botones y acentos. El fondo se queda oscuro. " +
-                "El ícono de la app no cambia con el tema."
+            title = stringResource(R.string.appearance),
+            help = stringResource(R.string.appearance_help)
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -2914,7 +2956,9 @@ private fun AppearanceSection(
                                 if (selected) Modifier.border(2.dp, OnBg, CircleShape)
                                 else Modifier
                             )
-                            .semantics { contentDescription = "Tema ${id.label}" }
+                            .semantics {
+                                contentDescription = context.getString(R.string.theme_label, id.shortLabel(context))
+                            }
                             .clickable { onThemeIdChange(id) },
                         contentAlignment = Alignment.Center
                     ) {}
@@ -2970,6 +3014,7 @@ private fun chipColors() = FilterChipDefaults.filterChipColors(
 
 
 private fun buildServicesSummary(
+    context: android.content.Context,
     keyMasks: Map<SttProvider, String?>,
     groqRemainingSeconds: Double,
     autoPrimary: SttProvider?
@@ -2981,12 +3026,17 @@ private fun buildServicesSummary(
         SttProvider.DEEPGRAM
     ).count { !keyMasks[it].isNullOrBlank() }
     val mins = (groqRemainingSeconds / 60.0).coerceAtLeast(0.0)
-    val primary = autoPrimary?.shortName() ?: "Groq"
-    val readyLabel = if (ready == 1) "1 servicio listo" else "$ready servicios listos"
-    return if (primary == "Groq" || !keyMasks[SttProvider.GROQ_FREE].isNullOrBlank()) {
-        "Groq: ${String.format("%.0f", mins)} min disponibles · $readyLabel"
+    val groqName = context.getString(R.string.provider_groq_short)
+    val primary = autoPrimary?.shortName(context) ?: groqName
+    val readyLabel = if (ready == 1) {
+        context.getString(R.string.services_ready_one)
     } else {
-        "$primary listo · $readyLabel"
+        context.getString(R.string.services_ready_many, ready)
+    }
+    return if (primary == groqName || !keyMasks[SttProvider.GROQ_FREE].isNullOrBlank()) {
+        context.getString(R.string.groq_min_available, mins, readyLabel)
+    } else {
+        context.getString(R.string.provider_ready_summary, primary, readyLabel)
     }
 }
 
@@ -3025,7 +3075,11 @@ private suspend fun runTranscription(
     ) {
         onPhase(
             UiPhase.Error(
-                message = "🧪 Prueba Manual · ${routingSelection.provider.displayName()}: sin key",
+                message = context.getString(
+                    R.string.manual_test_error,
+                    routingSelection.provider.displayName(context),
+                    context.getString(R.string.block_no_key)
+                ),
                 isManualTest = true
             )
         )
@@ -3051,7 +3105,9 @@ private suspend fun runTranscription(
         }
 
         val audioForStt = if (compressForStt) {
-            onPhase(UiPhase.Transcribing("Preparando audio liviano para transcribir…"))
+            onPhase(
+                UiPhase.Transcribing(context.getString(R.string.status_preparing_light_audio))
+            )
             withContext(Dispatchers.IO) {
                 SealDownloader.compressAudioForStt(context, extracted!!.file).also { sttCompact = it }
             }
@@ -3061,9 +3117,11 @@ private suspend fun runTranscription(
         val mimeForStt = if (sttCompact != null) "audio/mp4" else extracted.mimeType
 
         val motorHint = when (routingSelection) {
-            is RoutingSelection.Auto -> "Transcribiendo con cascada Auto…"
-            is RoutingSelection.Manual ->
-                "Transcribiendo con ${routingSelection.provider.displayName()}…"
+            is RoutingSelection.Auto -> context.getString(R.string.status_transcribing_automatic)
+            is RoutingSelection.Manual -> context.getString(
+                R.string.status_transcribing_with,
+                routingSelection.provider.displayName(context)
+            )
         }
         onPhase(UiPhase.Transcribing(motorHint))
         val result = withContext(Dispatchers.IO) {
@@ -3176,7 +3234,9 @@ private fun SiteCookiesSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var mode by remember { mutableStateOf("webview") } // webview | paste
     var pasteText by remember { mutableStateOf("") }
-    var status by remember(site) { mutableStateOf("Inicia sesión en ${site.label} y pulsa Guardar") }
+    var status by remember(site) {
+        mutableStateOf(context.getString(R.string.cookie_webview_title, site.label))
+    }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var busy by remember { mutableStateOf(false) }
 
@@ -3194,27 +3254,29 @@ private fun SiteCookiesSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                "Conectar mi cuenta de ${site.label}",
+                stringResource(R.string.cookie_webview_heading, site.label),
                 fontWeight = FontWeight.Bold,
                 color = OnBg,
                 fontSize = 18.sp
             )
             Text(
-                "Se guardan en privado en este teléfono. No se suben a ningún lado.",
+                stringResource(R.string.cookie_webview_privacy),
                 color = Muted,
                 fontSize = 12.sp
             )
-            site.note?.let { Text(it, color = Color(0xFFFBBF24), fontSize = 11.sp) }
+            CookieStore.noteFor(context, site)?.let {
+                Text(it, color = Color(0xFFFBBF24), fontSize = 11.sp)
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ModeChip(
                     selected = mode == "webview",
-                    label = "Login WebView",
+                    label = stringResource(R.string.cookie_mode_webview),
                     enabled = !busy,
                     onClick = { mode = "webview" }
                 )
                 ModeChip(
                     selected = mode == "paste",
-                    label = "Pegar cookies.txt",
+                    label = stringResource(R.string.cookie_paste_txt),
                     enabled = !busy,
                     onClick = { mode = "paste" }
                 )
@@ -3257,10 +3319,10 @@ private fun SiteCookiesSheet(
                             CookieManager.getInstance().flush()
                             val ua = webViewRef?.settings?.userAgentString
                             val count = CookieStore.saveFromCookieManager(context, site, ua)
-                            status = "Guardadas $count cookies"
+                            status = context.getString(R.string.cookie_saved_count, count)
                             onSaved(count)
                         } catch (t: Throwable) {
-                            status = t.message ?: "No se pudieron guardar"
+                            status = t.message ?: context.getString(R.string.cookie_save_failed)
                             busy = false
                         }
                     },
@@ -3272,7 +3334,7 @@ private fun SiteCookiesSheet(
                     ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Guardar cookies del WebView", fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.save_webview_cookies), fontWeight = FontWeight.SemiBold)
                 }
             } else {
                 OutlinedTextField(
@@ -3282,7 +3344,7 @@ private fun SiteCookiesSheet(
                         .fillMaxWidth()
                         .heightIn(min = 160.dp),
                     placeholder = {
-                        Text("Pega un cookies.txt (formato Netscape) o name=value; …", color = Muted)
+                        Text(stringResource(R.string.cookie_paste_placeholder), color = Muted)
                     },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Accent,
@@ -3298,10 +3360,10 @@ private fun SiteCookiesSheet(
                         busy = true
                         try {
                             val count = CookieStore.saveFromPaste(context, site, pasteText)
-                            status = "Guardadas $count cookies"
+                            status = context.getString(R.string.cookie_saved_count, count)
                             onSaved(count)
                         } catch (t: Throwable) {
-                            status = t.message ?: "Pegado inválido"
+                            status = t.message ?: context.getString(R.string.cookie_paste_invalid)
                             busy = false
                         }
                     },
@@ -3313,13 +3375,13 @@ private fun SiteCookiesSheet(
                     ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Guardar cookies pegadas", fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.save_pasted_cookies), fontWeight = FontWeight.SemiBold)
                 }
             }
 
             Text(status, color = Muted, fontSize = 12.sp)
             TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
-                Text("Cerrar", color = Muted)
+                Text(stringResource(R.string.close), color = Muted)
             }
         }
     }

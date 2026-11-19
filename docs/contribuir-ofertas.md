@@ -1,5 +1,7 @@
 # Contribuir ofertas (sin programar)
 
+<p>🇺🇸 <a href="contributing-offers.md">English</a> · 🇪🇸 <strong>Español</strong></p>
+
 Cuando cambia una promoción o un servicio deja de dar gratis, puedes actualizar el archivo de configuración del repo. Las apps instaladas pueden tomar el cambio **sin un APK nuevo**.
 
 Archivo: [`config/stt-router.json`](../config/stt-router.json)
@@ -28,4 +30,4 @@ Si el archivo falta o está mal escrito, la app usa sus valores por defecto del 
 
 También se aceptan Issues y Pull Requests de código. Lee [`AGENTS.md`](../AGENTS.md) (también si usas una IA para ayudar) y abre un Issue antes de cambios grandes. Los cambios a `.github/workflows` se revisan a mano.
 
-Volver a las [guías](README.md).
+Volver a las [guías](README.es.md).

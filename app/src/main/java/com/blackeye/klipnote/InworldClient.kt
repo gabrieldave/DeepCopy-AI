@@ -47,13 +47,13 @@ object InworldClient {
         mimeType: String,
         languageHint: String? = null
     ): TranscriptionResult {
-        require(apiKey.isNotBlank()) { "API Key Inworld vacía" }
+        require(apiKey.isNotBlank()) { context.getString(R.string.error_inworld_key_empty) }
         if (file.length() > MAX_SYNC_BYTES) {
             throw SttProviderException(
                 provider = SttProvider.INWORLD,
                 httpCode = 413,
                 kind = SttFailureKind.SIZE_SKIP,
-                message = "Archivo >15MB (límite sync Inworld ~16MiB) → Saltando a Nivel 3"
+                message = context.getString(R.string.error_inworld_size_skip)
             )
         }
 
@@ -96,10 +96,11 @@ object InworldClient {
                         provider = SttProvider.INWORLD,
                         httpCode = 413,
                         kind = SttFailureKind.SIZE_SKIP,
-                        message = "HTTP 413 Payload Too Large → Saltando a Nivel 3"
+                        message = context.getString(R.string.error_inworld_size_skip)
                     )
                 }
                 throw SttProviderException.fromHttp(
+                    context = context,
                     provider = SttProvider.INWORLD,
                     code = response.code,
                     body = raw,
@@ -120,8 +121,8 @@ object InworldClient {
             return ProviderStatus(
                 provider = SttProvider.INWORLD,
                 health = ProviderHealth.NO_KEY,
-                label = "Inworld Free",
-                detail = "SIN KEY"
+                label = SttProvider.INWORLD.displayName(context),
+                detail = HealthUi.noKey(context)
             )
         }
         val remaining = BillingManager.getInworldRemainingSeconds(context)
@@ -136,11 +137,14 @@ object InworldClient {
             ProviderStatus(
                 provider = SttProvider.INWORLD,
                 health = if (remaining > 0) ProviderHealth.ACTIVE_FREE else ProviderHealth.PAUSED_LIMIT,
-                label = "Inworld Free",
+                label = SttProvider.INWORLD.displayName(context),
                 detail = if (remaining > 0) {
-                    "ACTIVO · ${String.format("%.0fm", remaining / 60.0)} bolsa"
+                    HealthUi.active(
+                        context,
+                        String.format("%.0fm", remaining / 60.0)
+                    )
                 } else {
-                    "BOLSA AGOTADA"
+                    HealthUi.bagEmpty(context)
                 },
                 remainingSeconds = remaining
             )
@@ -155,7 +159,7 @@ object InworldClient {
             ProviderStatus(
                 provider = SttProvider.INWORLD,
                 health = health,
-                label = "Inworld Free",
+                label = SttProvider.INWORLD.displayName(context),
                 detail = e.message?.take(160) ?: e.kind.name,
                 remainingSeconds = remaining
             )
@@ -163,8 +167,8 @@ object InworldClient {
             ProviderStatus(
                 provider = SttProvider.INWORLD,
                 health = ProviderHealth.UNKNOWN,
-                label = "Inworld Free",
-                detail = e.message?.take(120) ?: "Error",
+                label = SttProvider.INWORLD.displayName(context),
+                detail = e.message?.take(120) ?: HealthUi.genericError(context),
                 remainingSeconds = remaining
             )
         }

@@ -1,5 +1,6 @@
 package com.blackeye.klipnote
 
+import android.content.Context
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
@@ -25,6 +26,7 @@ object DeepgramClient {
     }
 
     fun transcribe(
+        context: Context,
         apiKey: String,
         file: File,
         mimeType: String,
@@ -32,7 +34,7 @@ object DeepgramClient {
         diarize: Boolean,
         model: String = "nova-3"
     ): TranscriptionResult {
-        require(apiKey.isNotBlank()) { "API Key vacía" }
+        require(apiKey.isNotBlank()) { context.getString(R.string.error_deepgram_key_empty) }
 
         val urlBuilder = BASE.toHttpUrl().newBuilder()
             .addQueryParameter("model", model)
@@ -64,6 +66,7 @@ object DeepgramClient {
             val raw = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 throw SttProviderException.fromHttp(
+                    context = context,
                     provider = SttProvider.DEEPGRAM,
                     code = response.code,
                     body = runCatching {

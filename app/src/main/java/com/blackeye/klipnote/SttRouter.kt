@@ -31,7 +31,7 @@ object SttRouter {
         when (selection) {
             is RoutingSelection.Manual -> {
                 val p = selection.provider
-                val label = "📌 Modo Prueba: ${p.displayName()}"
+                val label = context.getString(R.string.route_test_mode_pin, p.displayName(context))
                 return ActiveRouteSummary(
                     primaryLabel = label,
                     chainLabel = label,
@@ -51,27 +51,37 @@ object SttRouter {
         val primaryLabel = when (primary) {
             SttProvider.GROQ_FREE -> {
                 val h = BillingManager.getGroqRemainingSeconds(context) / 3600.0
-                "Groq Free (${String.format("%.1fh", h)} hoy)"
+                context.getString(
+                    R.string.route_primary_groq,
+                    primary.displayName(context),
+                    h
+                )
             }
             SttProvider.INWORLD -> {
                 val m = BillingManager.getInworldRemainingSeconds(context) / 60.0
-                "Inworld Free (${String.format("%.0fm", m)} bolsa)"
+                context.getString(
+                    R.string.route_primary_inworld,
+                    primary.displayName(context),
+                    m
+                )
             }
             SttProvider.ASSEMBLY_AI -> {
                 val h = BillingManager.getAssemblyRemainingSeconds(context) / 3600.0
-                "AssemblyAI (${String.format("%.1fh", h)} bolsa)"
+                context.getString(
+                    R.string.route_primary_assembly,
+                    primary.displayName(context),
+                    h
+                )
             }
-            SttProvider.DEEPGRAM -> "Deepgram"
-            SttProvider.PAID_FALLBACK -> "Respaldo Pagado"
-            null -> "Sin motores"
+            SttProvider.DEEPGRAM -> primary.displayName(context)
+            SttProvider.PAID_FALLBACK -> primary.displayName(context)
+            null -> context.getString(R.string.route_no_engines)
         }
-        val backups = available.drop(1).take(2).joinToString(" → ") { it.displayName() }
+        val backups = available.drop(1).take(2).joinToString(" → ") { it.displayName(context) }
         val chain = buildString {
-            append("⚡ Motor activo: ")
-            append(primaryLabel)
+            append(context.getString(R.string.route_active_engine, primaryLabel))
             if (backups.isNotBlank()) {
-                append(" → Respaldo: ")
-                append(backups)
+                append(context.getString(R.string.route_backup_chain, backups))
             }
         }
         val hasFree = available.any {
@@ -145,9 +155,18 @@ object SttRouter {
             context, provider, deepgramBalanceUsd, respectUserToggle = false
         )
         if (block != null) {
-            throw ManualRouteException(provider, "🧪 Prueba Manual · ${provider.displayName()}: $block")
+            throw ManualRouteException(
+                provider,
+                context.getString(
+                    R.string.manual_test_error,
+                    provider.displayName(context),
+                    block
+                )
+            )
         }
-        onStatus?.invoke("Transcribiendo con ${provider.displayName()}…")
+        onStatus?.invoke(
+            context.getString(R.string.status_transcribing_with, provider.displayName(context))
+        )
         return try {
             runProviderWithNetworkRetry(
                 context = context,
@@ -158,7 +177,9 @@ object SttRouter {
                 languageCode = languageCode,
                 diarize = diarize
             ).copy(
-                hopLog = listOf("MANUAL ${provider.displayName()}"),
+                hopLog = listOf(
+                    context.getString(R.string.hop_ok, provider.displayName(context))
+                ),
                 elapsedMs = System.currentTimeMillis() - started,
                 routingSelection = RoutingSelection.Manual(provider),
                 levelIndex = provider.levelIndex()
@@ -167,13 +188,17 @@ object SttRouter {
             if (isNetworkFailure(e)) {
                 throw ManualRouteException(
                     provider = provider,
-                    message = networkUserMessage(savedInDownloads),
+                    message = networkUserMessage(context, savedInDownloads),
                     cause = e
                 )
             }
             throw ManualRouteException(
                 provider = provider,
-                message = "🧪 Prueba Manual · ${provider.displayName()}: ${e.message}",
+                message = context.getString(
+                    R.string.manual_test_error,
+                    provider.displayName(context),
+                    e.message.orEmpty()
+                ),
                 cause = e
             )
         } catch (e: ManualRouteException) {
@@ -182,13 +207,17 @@ object SttRouter {
             if (isNetworkFailure(e)) {
                 throw ManualRouteException(
                     provider = provider,
-                    message = networkUserMessage(savedInDownloads),
+                    message = networkUserMessage(context, savedInDownloads),
                     cause = e
                 )
             }
             throw ManualRouteException(
                 provider = provider,
-                message = "🧪 Prueba Manual · ${provider.displayName()}: ${e.message ?: "Error"}",
+                message = context.getString(
+                    R.string.manual_test_error,
+                    provider.displayName(context),
+                    e.message ?: context.getString(R.string.health_error)
+                ),
                 cause = e
             )
         }
@@ -216,11 +245,17 @@ object SttRouter {
         for (provider in cfg.priority) {
             val block = preflightBlockReason(context, provider, deepgramBalanceUsd, cfg)
             if (block != null) {
-                hopLog += "${provider.displayName()}: $block → salto"
+                hopLog += context.getString(
+                    R.string.hop_fail_skip,
+                    provider.displayName(context),
+                    block
+                )
                 continue
             }
 
-            onStatus?.invoke("Transcribiendo con ${provider.displayName()}…")
+            onStatus?.invoke(
+                context.getString(R.string.status_transcribing_with, provider.displayName(context))
+            )
             try {
                 val result = runProviderWithNetworkRetry(
                     context = context,
@@ -231,7 +266,7 @@ object SttRouter {
                     languageCode = languageCode,
                     diarize = diarize
                 )
-                hopLog += "OK ${provider.displayName()}"
+                hopLog += context.getString(R.string.hop_ok, provider.displayName(context))
                 return result.copy(
                     hopLog = hopLog.toList(),
                     elapsedMs = System.currentTimeMillis() - started,
@@ -243,39 +278,72 @@ object SttRouter {
                 when {
                     e.kind == SttFailureKind.SIZE_SKIP -> {
                         sizeSkipCount++
-                        hopLog += "${provider.displayName()}: ${e.message ?: "archivo demasiado grande"} → salto"
+                        hopLog += context.getString(
+                            R.string.hop_fail_skip,
+                            provider.displayName(context),
+                            e.message.orEmpty()
+                        )
                     }
                     e.kind == SttFailureKind.NETWORK || isNetworkFailure(e) -> {
                         networkFailCount++
-                        hopLog += "${provider.displayName()}: red/timeout → salto"
+                        hopLog += context.getString(
+                            R.string.hop_network_skip,
+                            provider.displayName(context)
+                        )
                     }
                     e.kind == SttFailureKind.PROMO_ENDED -> {
                         otherAttemptFailures++
                         BillingManager.markPromoEnded(provider)
-                        hopLog += "${provider.displayName()}: ${e.message} → salto"
+                        hopLog += context.getString(
+                            R.string.hop_fail_skip,
+                            provider.displayName(context),
+                            e.message.orEmpty()
+                        )
                     }
                     e.kind == SttFailureKind.COOLDOWN -> {
                         otherAttemptFailures++
                         BillingManager.markCooldown(provider, e.retryAfterSeconds)
-                        hopLog += "${provider.displayName()}: COOLDOWN → salto"
+                        hopLog += context.getString(
+                            R.string.hop_fail_skip,
+                            provider.displayName(context),
+                            context.getString(
+                                R.string.block_cooldown_seconds,
+                                BillingManager.cooldownRemainingSeconds(provider)
+                            )
+                        )
                     }
                     e.kind == SttFailureKind.UNAUTHORIZED || e.kind == SttFailureKind.MODEL_GONE -> {
                         otherAttemptFailures++
-                        hopLog += "${provider.displayName()}: ${e.message} → salto"
+                        hopLog += context.getString(
+                            R.string.hop_fail_skip,
+                            provider.displayName(context),
+                            e.message.orEmpty()
+                        )
                     }
                     else -> {
                         otherAttemptFailures++
-                        hopLog += "${provider.displayName()}: ${e.message} → salto"
+                        hopLog += context.getString(
+                            R.string.hop_fail_skip,
+                            provider.displayName(context),
+                            e.message.orEmpty()
+                        )
                     }
                 }
             } catch (e: Exception) {
                 lastError = e
                 if (isNetworkFailure(e)) {
                     networkFailCount++
-                    hopLog += "${provider.displayName()}: red/timeout → salto"
+                    hopLog += context.getString(
+                        R.string.hop_network_skip,
+                        provider.displayName(context)
+                    )
                 } else {
                     otherAttemptFailures++
-                    hopLog += "${provider.displayName()}: ${e.message?.take(120)} → salto"
+                    hopLog += context.getString(
+                        R.string.hop_fail_skip,
+                        provider.displayName(context),
+                        e.message?.take(120).orEmpty()
+                    )
                 }
             }
         }
@@ -287,19 +355,18 @@ object SttRouter {
         val sizeWasTheBlocker = sizeSkipCount > 0 && networkFailCount == 0 && otherAttemptFailures == 0
         val msg = when {
             networkWasTheBlocker || (networkFailCount > 0 && otherAttemptFailures == 0 && sizeSkipCount == 0) ->
-                networkUserMessage(savedInDownloads) + " Detalle: $detail"
+                if (savedInDownloads) {
+                    context.getString(R.string.error_network_saved_in_downloads, detail)
+                } else {
+                    context.getString(R.string.error_network_lost) + " " +
+                        context.getString(R.string.technical_detail, detail)
+                }
             sizeWasTheBlocker -> {
                 val mb = String.format("%.1f", audioFile.length() / (1024.0 * 1024.0))
-                "Este audio (${mb} MB) supera el límite de tamaño del motor gratis que tienes " +
-                    "(p. ej. Groq: 25 MB). Agrega otra llave (AssemblyAI o Deepgram aceptan archivos grandes) " +
-                    "o usa un video más corto. Detalle: $detail"
+                context.getString(R.string.error_audio_too_large_free, mb, detail)
             }
-            strict -> {
-                "Ningún motor gratis pudo transcribir este audio (sin llave, apagado o sin cuota). " +
-                    "Revisa tus llaves en Ajustes → Mis llaves o espera a que se renueve la cuota. " +
-                    "Modo \$0 está activo, así que no se usó el de pago. Detalle: $detail"
-            }
-            else -> "Ningún motor pudo transcribir este audio. Detalle: $detail"
+            strict -> context.getString(R.string.error_no_free_engine_zero_mode, detail)
+            else -> context.getString(R.string.error_no_engine, detail)
         }
         // Siempre se muestra el recorrido completo; el último error solo va como causa.
         throw IllegalStateException(msg, lastError)
@@ -348,7 +415,7 @@ object SttRouter {
                         provider = provider,
                         httpCode = null,
                         kind = SttFailureKind.NETWORK,
-                        message = retry.message ?: "Error de red"
+                        message = retry.message ?: context.getString(R.string.error_network_generic)
                     )
                 }
                 throw retry
@@ -389,12 +456,10 @@ object SttRouter {
         return false
     }
 
-    private fun networkUserMessage(savedInDownloads: Boolean): String {
-        val base =
-            "Parece que se cortó el internet. Revisa tu conexión y vuelve a intentar."
+    private fun networkUserMessage(context: Context, savedInDownloads: Boolean): String {
+        val base = context.getString(R.string.error_network_lost)
         return if (savedInDownloads) {
-            "$base El archivo ya quedó en Descargas/KlipNote: puedes compartirlo a KlipNote " +
-                "para transcribir sin volver a bajarlo."
+            "$base ${context.getString(R.string.hint_find_in_downloads)}"
         } else {
             base
         }
@@ -407,42 +472,49 @@ object SttRouter {
         cfg: RemoteRouterConfig.Snapshot = RemoteRouterConfig.currentOrDefault(),
         respectUserToggle: Boolean = true
     ): String? {
-        if (!isConfigured(context, provider)) return "sin key"
+        if (!isConfigured(context, provider)) {
+            return context.getString(R.string.block_no_key)
+        }
         if (respectUserToggle && provider != SttProvider.PAID_FALLBACK &&
             !BillingManager.isEngineEnabled(context, provider)
         ) {
-            return "apagado por ti"
+            return context.getString(R.string.block_disabled_by_you)
         }
         if (respectUserToggle && cfg.disabled.contains(provider)) {
-            return "pausado por la comunidad (config del repo)"
+            return context.getString(R.string.block_community_paused)
         }
-        if (BillingManager.isPromoEnded(provider)) return "PROMO_TERMINADA"
+        if (BillingManager.isPromoEnded(provider)) {
+            return context.getString(R.string.block_promo_ended)
+        }
         if (BillingManager.isInCooldown(provider)) {
-            return "COOLDOWN ${BillingManager.cooldownRemainingSeconds(provider)}s"
+            return context.getString(
+                R.string.block_cooldown_seconds,
+                BillingManager.cooldownRemainingSeconds(provider)
+            )
         }
         if (provider == SttProvider.PAID_FALLBACK && !BillingManager.getAllowPaidFallback(context)) {
-            return "Modo \$0 Estricto activo → bloqueado"
+            return context.getString(R.string.block_strict_zero_mode)
         }
         if (provider == SttProvider.GROQ_FREE &&
             BillingManager.getGroqRemainingSeconds(context) <= 0.0
         ) {
-            return "cuota diaria agotada"
+            return context.getString(R.string.block_daily_quota)
         }
         if (provider == SttProvider.INWORLD &&
             BillingManager.getInworldRemainingSeconds(context) <= 0.0
         ) {
-            return "400m bolsa agotados"
+            return context.getString(R.string.block_inworld_bag)
         }
         if (provider == SttProvider.ASSEMBLY_AI &&
             BillingManager.getAssemblyRemainingSeconds(context) <= 0.0
         ) {
-            return "bolsa 185h agotada"
+            return context.getString(R.string.block_assembly_bag)
         }
         if (provider == SttProvider.DEEPGRAM &&
             deepgramBalanceUsd != null &&
             deepgramBalanceUsd < BillingManager.DEEPGRAM_SAFE_FLOOR_USD
         ) {
-            return "saldo < \$1.00"
+            return context.getString(R.string.block_balance_under_one)
         }
         return null
     }
@@ -484,6 +556,7 @@ object SttRouter {
                 languageCode = languageCode
             )
             SttProvider.DEEPGRAM -> DeepgramClient.transcribe(
+                context = context,
                 apiKey = ApiKeyStore.getDeepgram(context),
                 file = audioFile,
                 mimeType = mimeType,

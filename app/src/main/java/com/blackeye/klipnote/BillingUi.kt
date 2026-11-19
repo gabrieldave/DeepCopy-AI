@@ -55,6 +55,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -105,13 +107,14 @@ fun RoutingModeChips(
     onSelectManual: (SttProvider) -> Unit,
     onOpenKeys: () -> Unit
 ) {
+    val context = LocalContext.current
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 FilterChip(
                     selected = selection is RoutingSelection.Auto,
                     onClick = onSelectAuto,
-                    label = { Text("Automático") },
+                    label = { Text(stringResource(R.string.automatic)) },
                     colors = FilterChipDefaults.filterChipColors(
                         containerColor = Color(0xFF0F1623),
                         labelColor = Muted,
@@ -132,7 +135,7 @@ fun RoutingModeChips(
                             onSelectManual(provider)
                         }
                     },
-                    label = { Text(provider.chipLabel()) },
+                    label = { Text(provider.chipLabel(context)) },
                     colors = FilterChipDefaults.filterChipColors(
                         containerColor = Color(0xFF0F1623),
                         labelColor = Muted,
@@ -149,14 +152,14 @@ fun RoutingModeChips(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "📌 Probando: ${selection.provider.displayName()}",
+                    "📌 Probando: ${selection.provider.displayName(context)}",
                     color = Accent,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(onClick = onSelectAuto) {
-                    Text("Volver a Automático", color = Accent)
+                    Text(stringResource(R.string.back_to_auto), color = Accent)
                 }
             }
         }
@@ -203,6 +206,7 @@ fun FreeServicesPanel(
     onProbeProvider: (SttProvider) -> Unit = {},
     onEngineEnabledChange: (SttProvider, Boolean) -> Unit = { _, _ -> }
 ) {
+    val context = LocalContext.current
     val official = state.snapshot?.balanceUsd
     val remainingForBar = official ?: (state.initialCredit - state.appSpent)
     val progressDg = (remainingForBar / state.initialCredit).toFloat().coerceIn(0f, 1f)
@@ -235,16 +239,16 @@ fun FreeServicesPanel(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                SectionHeader("Tus servicios gratis", HelpCopy.SERVICES)
+                SectionHeader(stringResource(R.string.free_services_title), helpRes = HelpCopy.SERVICES)
                 Text(
-                    "Tienes $connected de 4 conectados",
+                    stringResource(R.string.connected_count, connected),
                     color = Muted,
                     fontSize = 13.sp
                 )
             }
             if (hasAnyKey) {
                 TextButton(onClick = onOpenKeys) {
-                    Text("Mis llaves", color = Accent, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.my_keys), color = Accent, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -258,13 +262,14 @@ fun FreeServicesPanel(
                 ),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text("Conectar mis llaves", fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.connect_my_keys), fontWeight = FontWeight.SemiBold)
             }
         }
 
         ClearServiceRow(
-            name = "Groq",
+            name = SttProvider.GROQ_FREE.displayName(context),
             primary = BillingManager.formatGroqQuotaDetail(
+                context = context,
                 remainingSeconds = state.groqRemainingSeconds,
                 limitSeconds = state.groqLimitSeconds,
                 usedTodaySeconds = state.groqUsedTodaySeconds,
@@ -272,7 +277,7 @@ fun FreeServicesPanel(
             ).let { raw ->
                 val mins = (state.groqRemainingSeconds / 60.0).coerceAtLeast(0.0)
                 if (state.groqHasLiveQuota || state.groqRemainingSeconds > 0) {
-                    "${String.format("%.0f", mins)} min disponibles esta hora"
+                    context.getString(R.string.billing_groq_min_this_hour, mins)
                 } else raw
             },
             progress = BillingManager.groqQuotaProgress(
@@ -295,8 +300,11 @@ fun FreeServicesPanel(
             onMeterAdjustSave = {}
         )
         ClearServiceRow(
-            name = "Inworld",
-            primary = "~${String.format("%.0f", state.inworldRemainingSeconds / 60.0)} min de 400",
+            name = SttProvider.INWORLD.displayName(context),
+            primary = context.getString(
+                R.string.billing_inworld_meter_primary,
+                state.inworldRemainingSeconds / 60.0
+            ),
             progress = (state.inworldRemainingSeconds / BillingManager.INWORLD_POOL_SECONDS)
                 .toFloat().coerceIn(0f, 1f),
             provider = SttProvider.INWORLD,
@@ -309,15 +317,19 @@ fun FreeServicesPanel(
             onProbe = { onProbeProvider(SttProvider.INWORLD) },
             onConnect = { onConnectProvider(SttProvider.INWORLD) },
             showMeterAdjust = true,
-            meterAdjustLabel = "Minutos usados este mes (según la página)",
+            meterAdjustLabel = stringResource(R.string.billing_inworld_used_hint),
             meterAdjustInitial = state.inworldUsedMinutesEditable,
             onMeterAdjustSave = onInworldUsedMinutesSave
         )
         ClearServiceRow(
-            name = "AssemblyAI",
+            name = SttProvider.ASSEMBLY_AI.displayName(context),
             primary = run {
                 val usd = state.assemblyRemainingSeconds / 3600.0 * BillingManager.ASSEMBLY_EST_USD_PER_HOUR
-                "~${BillingManager.formatUsd(usd, 2)} de $50"
+                context.getString(
+                    R.string.billing_assembly_meter_primary,
+                    BillingManager.formatUsd(usd, 2),
+                    BillingManager.formatUsd(50.0, 0)
+                )
             },
             progress = (state.assemblyRemainingSeconds / BillingManager.ASSEMBLY_POOL_SECONDS)
                 .toFloat().coerceIn(0f, 1f),
@@ -331,16 +343,23 @@ fun FreeServicesPanel(
             onProbe = { onProbeProvider(SttProvider.ASSEMBLY_AI) },
             onConnect = { onConnectProvider(SttProvider.ASSEMBLY_AI) },
             showMeterAdjust = true,
-            meterAdjustLabel = "Saldo que ves en la página (USD)",
+            meterAdjustLabel = stringResource(R.string.billing_assembly_balance_hint),
             meterAdjustInitial = state.assemblyRemainingUsdEditable,
             onMeterAdjustSave = onAssemblyRemainingUsdSave
         )
         ClearServiceRow(
-            name = "Deepgram",
+            name = SttProvider.DEEPGRAM.displayName(context),
             primary = if (official != null) {
-                "${BillingManager.formatUsd(official, 2)} de ${BillingManager.formatUsd(state.initialCredit, 0)}"
+                context.getString(
+                    R.string.billing_assembly_meter_primary,
+                    BillingManager.formatUsd(official, 2),
+                    BillingManager.formatUsd(state.initialCredit, 0)
+                )
             } else {
-                "Gastado en la app: ${BillingManager.formatUsd(state.appSpent, 2)}"
+                context.getString(
+                    R.string.billing_deepgram_spent_app,
+                    BillingManager.formatUsd(state.appSpent, 2)
+                )
             },
             progress = progressDg,
             provider = SttProvider.DEEPGRAM,
@@ -381,18 +400,18 @@ fun FreeServicesPanel(
             Spacer(Modifier.size(8.dp))
             Text(
                 when {
-                    !hasAnyKey -> "Conecta una llave primero"
-                    state.verifyingOffers -> "Verificando…"
-                    else -> "Verificar mis llaves y ofertas"
+                    !hasAnyKey -> stringResource(R.string.billing_connect_key_first)
+                    state.verifyingOffers -> stringResource(R.string.billing_verifying)
+                    else -> stringResource(R.string.billing_verify_keys_offers)
                 },
                 fontWeight = FontWeight.SemiBold
             )
         }
         Text(
             if (hasAnyKey) {
-                "Prueba cada llave con un audio corto y te dice si sigue gratis, en pausa o sin saldo."
+                stringResource(R.string.billing_verify_hint)
             } else {
-                "Conecta al menos una llave para verificar ofertas y actualizar medidores."
+                stringResource(R.string.billing_verify_need_key)
             },
             color = Muted,
             fontSize = 12.sp
@@ -406,7 +425,7 @@ fun FreeServicesPanel(
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(Modifier.size(6.dp))
-                Text("Actualizar medidores", color = Accent)
+                Text(stringResource(R.string.refresh_meters), color = Accent)
             }
         }
     }
@@ -414,6 +433,7 @@ fun FreeServicesPanel(
 
 @Composable
 private fun ZeroCostHelpRow() {
+    val context = LocalContext.current
     var open by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
@@ -429,10 +449,14 @@ private fun ZeroCostHelpRow() {
             tint = Accent,
             modifier = Modifier.size(18.dp)
         )
-        Text("Cómo gastar $0", color = Accent, fontSize = 13.sp)
+        Text(stringResource(R.string.how_spend_zero), color = Accent, fontSize = 13.sp)
     }
     if (open) {
-        HelpDialog(title = "Cómo gastar $0", body = HelpCopy.ZERO_COST, onDismiss = { open = false })
+        HelpDialog(
+            title = stringResource(R.string.how_spend_zero),
+            body = stringResource(HelpCopy.ZERO_COST),
+            onDismiss = { open = false }
+        )
     }
 }
 
@@ -455,8 +479,9 @@ private fun ClearServiceRow(
     meterAdjustInitial: String,
     onMeterAdjustSave: (Double) -> Unit
 ) {
+    val context = LocalContext.current
     var expanded by remember { mutableStateOf(false) }
-    val info = ProviderCatalog.info(provider)
+    val info = ProviderCatalog.info(context, provider)
     val hasKey = !keyMask.isNullOrBlank()
     val health = when {
         !hasKey -> ProviderHealth.NO_KEY
@@ -469,7 +494,11 @@ private fun ClearServiceRow(
         ProviderHealth.OFFER_ENDED -> "🔴" to Red
         ProviderHealth.NO_KEY, ProviderHealth.UNKNOWN -> "⚪" to Muted
     }
-    val headline = if (hasKey) "$name $dot · $primary" else "$name · Sin llave"
+    val headline = if (hasKey) {
+        "$name $dot · $primary"
+    } else {
+        context.getString(R.string.billing_no_key_row, name)
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -494,7 +523,9 @@ private fun ClearServiceRow(
             )
             Icon(
                 if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                contentDescription = if (expanded) "Cerrar" else "Abrir",
+                contentDescription = stringResource(
+                    if (expanded) R.string.action_close else R.string.cd_open
+                ),
                 tint = Muted,
                 modifier = Modifier.size(20.dp)
             )
@@ -516,12 +547,12 @@ private fun ClearServiceRow(
                 shape = RoundedCornerShape(10.dp),
                 border = BorderStroke(1.dp, Accent.copy(alpha = 0.55f))
             ) {
-                Text("Conectar", color = Accent, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.connect), color = Accent, fontWeight = FontWeight.SemiBold)
             }
         }
         AnimatedVisibility(visible = expanded) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(ProviderCatalog.offerText(provider), color = Muted, fontSize = 12.sp)
+                Text(ProviderCatalog.offerText(context, provider), color = Muted, fontSize = 12.sp)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -533,8 +564,8 @@ private fun ClearServiceRow(
                     status?.detail
                         ?.takeIf {
                             it.isNotBlank() &&
-                                !it.contains("SIN KEY", ignoreCase = true) &&
-                                !it.contains("KEY LISTA", ignoreCase = true)
+                                !it.equals(context.getString(R.string.health_no_key), ignoreCase = true) &&
+                                !it.contains(context.getString(R.string.health_key_ready), ignoreCase = true)
                         }
                         ?.let {
                             Text(it, color = Muted, fontSize = 12.sp)
@@ -544,7 +575,7 @@ private fun ClearServiceRow(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Usar este servicio", color = OnBg, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Text(stringResource(R.string.use_this_service), color = OnBg, fontSize = 13.sp, modifier = Modifier.weight(1f))
                         Switch(
                             checked = enabled,
                             onCheckedChange = onEnabledChange,
@@ -556,14 +587,18 @@ private fun ClearServiceRow(
                     }
                     TextButton(onClick = onProbe, modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            if (pinned) "📌 Probando ahora" else "Probar este servicio",
+                            if (pinned) {
+                                stringResource(R.string.pinned_testing_now)
+                            } else {
+                                stringResource(R.string.test_service_manual)
+                            },
                             color = Accent,
                             fontWeight = if (pinned) FontWeight.SemiBold else FontWeight.Normal
                         )
                     }
                     if (showMeterAdjust) {
-                        Text("Ajustar contador", color = OnBg, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                        Text(HelpCopy.METER_ADJUST, color = Muted, fontSize = 12.sp)
+                        Text(stringResource(R.string.adjust_counter), color = OnBg, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Text(stringResource(HelpCopy.METER_ADJUST), color = Muted, fontSize = 12.sp)
                         QuotaAdjustEditor(
                             label = meterAdjustLabel,
                             initialText = meterAdjustInitial,
@@ -578,13 +613,14 @@ private fun ClearServiceRow(
 
 @Composable
 private fun MeterBadge(kind: MeterKind) {
+    val context = LocalContext.current
     val color = when (kind) {
         MeterKind.REAL -> Accent
         MeterKind.ESTIMATED -> Amber
         MeterKind.NONE -> Muted
     }
     Text(
-        kind.badge(),
+        kind.badge(context),
         color = color,
         fontSize = 10.sp,
         fontWeight = FontWeight.SemiBold,
@@ -598,8 +634,9 @@ private fun MeterBadge(kind: MeterKind) {
 /** Aviso fijo: Modo $0 solo bloquea el motor de pago; las tarjetas en los proveedores sí cobran. */
 @Composable
 fun ZeroCostWarning(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
     Text(
-        "⚠️ ${ProviderCatalog.ZERO_COST_WARNING}",
+        "⚠️ ${context.getString(R.string.zero_cost_warning)}",
         color = Amber,
         fontSize = 12.sp,
         modifier = modifier
@@ -636,7 +673,7 @@ private fun QuotaAdjustEditor(
                 onSave(value)
             }
         ) {
-            Text("Ajustar", color = Accent)
+            Text(stringResource(R.string.adjust), color = Accent)
         }
     }
 }
@@ -664,10 +701,10 @@ fun PreFlightCard(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text("Cotizador Pre-Vuelo", color = OnBg, fontWeight = FontWeight.SemiBold)
+        Text(stringResource(R.string.preflight_title), color = OnBg, fontWeight = FontWeight.SemiBold)
         Text(fileName, color = OnBg, fontSize = 14.sp)
         Text(
-            "Duración $durationLabel · Modo $modeLabel",
+            stringResource(R.string.billing_duration_mode, durationLabel, modeLabel),
             color = Muted,
             fontSize = 13.sp
         )
@@ -675,7 +712,10 @@ fun PreFlightCard(
             Text(routeHint, color = Accent, fontSize = 12.sp)
         }
         Text(
-            "Costo Estimado ${BillingManager.formatUsd(estimatedUsd, 4)}",
+            stringResource(
+                R.string.billing_estimated_cost,
+                BillingManager.formatUsd(estimatedUsd, 4)
+            ),
             color = Accent,
             fontWeight = FontWeight.SemiBold,
             fontSize = 16.sp
@@ -691,7 +731,7 @@ fun PreFlightCard(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                "Auto-transcribir al compartir",
+                stringResource(R.string.billing_auto_transcribe_share),
                 color = if (autoTranscribeEnabled) OnBg else Muted,
                 modifier = Modifier.weight(1f),
                 fontSize = 13.sp
@@ -711,7 +751,7 @@ fun PreFlightCard(
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextButton(onClick = onDismiss, enabled = !busy) {
-                Text("Cancelar", color = Muted)
+                Text(stringResource(R.string.cancel), color = Muted)
             }
             Button(
                 onClick = onConfirm,
@@ -724,7 +764,7 @@ fun PreFlightCard(
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                Text("Transcribir Ahora", fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.transcribe_now), fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -757,14 +797,14 @@ fun CostHistorySheet(
                 .imePadding()
         ) {
             Text(
-                "Historial de grabaciones",
+                stringResource(R.string.billing_recording_history),
                 color = OnBg,
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp
             )
             Spacer(Modifier.height(12.dp))
             if (entries.isEmpty()) {
-                Text("Sin grabaciones aún. Las transcripciones se guardan solas.", color = Muted)
+                Text(stringResource(R.string.billing_no_recordings), color = Muted)
             } else {
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -799,6 +839,7 @@ private fun HistoryRow(
     onShareSavedMedia: ((SavedMediaInfo) -> Unit)? = null,
     onOpenDownloads: (() -> Unit)? = null
 ) {
+    val context = LocalContext.current
     val saved = SavedMediaActions.fromHistory(
         entry.downloadUri,
         entry.downloadDisplayName,
@@ -817,10 +858,16 @@ private fun HistoryRow(
         Text(
             buildString {
                 entry.provider?.let { append(it); append(" · ") }
-                append("Duración ${BillingManager.formatDuration(entry.durationSeconds)} · ")
-                append("App ${BillingManager.formatUsd(entry.appCostUsd, 4)}")
+                append(
+                    stringResource(
+                        R.string.billing_duration_mode,
+                        BillingManager.formatDuration(entry.durationSeconds),
+                        "—"
+                    )
+                )
+                append(" · App ${BillingManager.formatUsd(entry.appCostUsd, 4)}")
                 entry.officialDeltaUsd?.let {
-                    append(" · Δ real ${BillingManager.formatUsd(it, 4)}")
+                    append(stringResource(R.string.history_row_delta_real, BillingManager.formatUsd(it, 4)))
                 }
             },
             color = Muted,
@@ -828,20 +875,20 @@ private fun HistoryRow(
         )
         if (saved != null) {
             Text(
-                "✅ Guardado en Descargas/KlipNote: ${saved.displayName}",
+                stringResource(R.string.history_saved_in_downloads, saved.displayName),
                 color = Accent,
                 fontSize = 12.sp
             )
             Row(horizontalArrangement = Arrangement.spacedBy(0.dp)) {
                 TextButton(onClick = { onOpenSavedMedia?.invoke(saved) }) {
-                    Text(saved.openLabel, color = Accent, fontSize = 12.sp)
+                    Text(saved.openLabel(context), color = Accent, fontSize = 12.sp)
                 }
                 TextButton(onClick = { onOpenDownloads?.invoke() }) {
-                    Text("Ver en Descargas", color = Accent, fontSize = 12.sp)
+                    Text(stringResource(R.string.view_in_downloads), color = Accent, fontSize = 12.sp)
                 }
                 TextButton(onClick = { onShareSavedMedia?.invoke(saved) }) {
                     Text(
-                        "Compartir",
+                        stringResource(R.string.action_share),
                         color = Accent,
                         fontSize = 12.sp,
                         maxLines = 1,
@@ -853,12 +900,12 @@ private fun HistoryRow(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             TextButton(onClick = onOpen, enabled = entry.transcript.isNotBlank()) {
-                Text("Abrir", color = Accent)
+                Text(stringResource(R.string.open), color = Accent)
             }
             TextButton(onClick = onCopy, enabled = entry.transcript.isNotBlank()) {
-                Text("Copiar", color = Accent)
+                Text(stringResource(R.string.copy_plain), color = Accent)
             }
-            TextButton(onClick = onDelete) { Text("Borrar", color = Red) }
+            TextButton(onClick = onDelete) { Text(stringResource(R.string.delete), color = Red) }
         }
     }
 }
@@ -882,7 +929,7 @@ fun CostSettingsDialog(
         containerColor = CardBg,
         titleContentColor = OnBg,
         textContentColor = OnBg,
-        title = { Text("Ajustes de costos") },
+        title = { Text(stringResource(R.string.cost_settings)) },
         text = {
             Column(
                 modifier = Modifier
@@ -892,16 +939,16 @@ fun CostSettingsDialog(
                     .imePadding(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                MoneyField("Crédito inicial USD", creditText) { creditText = it }
-                MoneyField("Tope app USD", capText) { capText = it }
-                MoneyField("Reserva mínima USD", reserveText) { reserveText = it }
+                MoneyField(stringResource(R.string.money_field_initial_credit), creditText) { creditText = it }
+                MoneyField(stringResource(R.string.money_field_app_cap), capText) { capText = it }
+                MoneyField(stringResource(R.string.money_field_min_reserve), reserveText) { reserveText = it }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        "Incluir costo de «Separar quién habla» en el estimado",
+                        stringResource(R.string.billing_include_diarize_cost),
                         color = OnBg,
                         fontSize = 13.sp,
                         modifier = Modifier.weight(1f)
@@ -928,12 +975,12 @@ fun CostSettingsDialog(
                     )
                 }
             ) {
-                Text("Guardar", color = Accent)
+                Text(stringResource(R.string.save), color = Accent)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancelar", color = Muted)
+                Text(stringResource(R.string.cancel), color = Muted)
             }
         }
     )

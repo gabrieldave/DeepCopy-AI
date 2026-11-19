@@ -1,5 +1,6 @@
 package com.blackeye.klipnote
 
+import android.content.Context
 import androidx.annotation.Keep
 
 /**
@@ -28,99 +29,98 @@ data class ProviderInfo(
 )
 
 /**
- * Catálogo único de proveedores. Si una oferta cambia, se edita aquí
- * o (sin publicar APK) en config/stt-router.json → "offers".
+ * Catálogo único de proveedores. Textos vía recursos (EN default / values-es / …).
  */
 object ProviderCatalog {
 
-    val all: List<ProviderInfo> = listOf(
+    fun all(context: Context): List<ProviderInfo> = listOf(
         ProviderInfo(
             provider = SttProvider.GROQ_FREE,
-            name = "Groq (gratis)",
-            offer = "Gratis siempre, con límite: ~2 h de audio por hora y ~8 h por día. Archivos de hasta 25 MB.",
+            name = context.getString(R.string.provider_groq_free_name),
+            offer = context.getString(R.string.provider_groq_free_offer),
             keyUrl = "https://console.groq.com/keys",
             steps = listOf(
-                "Entra a console.groq.com y crea tu cuenta (correo o Google).",
-                "Ve a «API Keys» y pulsa «Create API Key».",
-                "Copia la llave (empieza con gsk_) y pégala aquí."
+                context.getString(R.string.provider_groq_free_step_1),
+                context.getString(R.string.provider_groq_free_step_2),
+                context.getString(R.string.provider_groq_free_step_3)
             ),
             meterKind = MeterKind.REAL,
-            meterNote = "Dato real: Groq lo informa en cada transcripción. Se renueva solo cada hora/día.",
+            meterNote = context.getString(R.string.provider_groq_free_meter),
             isFree = true
         ),
         ProviderInfo(
             provider = SttProvider.INWORLD,
-            name = "Inworld (gratis)",
-            offer = "Hasta 400 min de STT gratis una vez (plan On-Demand, $0). Archivos de hasta ~16 MB.",
+            name = context.getString(R.string.provider_inworld_name),
+            offer = context.getString(R.string.provider_inworld_offer),
             keyUrl = "https://platform.inworld.ai/",
             steps = listOf(
-                "Entra a platform.inworld.ai y crea tu cuenta.",
-                "Ve a Manage → API Keys → Create Inworld API key (tipo Standard).",
-                "Copia la llave con «Copy key» (ya viene en Basic/Base64) y pégala aquí."
+                context.getString(R.string.provider_inworld_step_1),
+                context.getString(R.string.provider_inworld_step_2),
+                context.getString(R.string.provider_inworld_step_3)
             ),
             meterKind = MeterKind.ESTIMATED,
-            meterNote = "Estimado: bolsa única de ~400 min; la app suma lo que transcribes. Corrígelo si tu panel de Inworld dice otra cosa.",
+            meterNote = context.getString(R.string.provider_inworld_meter),
             isFree = true
         ),
         ProviderInfo(
             provider = SttProvider.ASSEMBLY_AI,
-            name = "AssemblyAI (crédito de regalo)",
-            offer = "Crédito de regalo una sola vez ($50 USD al momento de publicar), sin tarjeta y sin vencimiento.",
+            name = context.getString(R.string.provider_assembly_name),
+            offer = context.getString(R.string.provider_assembly_offer),
             keyUrl = "https://www.assemblyai.com/app",
             steps = listOf(
-                "Entra a assemblyai.com y crea tu cuenta (no pongas tarjeta).",
-                "En el panel principal verás tu API Key.",
-                "Cópiala y pégala aquí."
+                context.getString(R.string.provider_assembly_step_1),
+                context.getString(R.string.provider_assembly_step_2),
+                context.getString(R.string.provider_assembly_step_3)
             ),
             meterKind = MeterKind.ESTIMATED,
-            meterNote = "Estimado: AssemblyAI no informa el saldo a la app. Escribe abajo el saldo que ves en tu panel para corregirlo.",
+            meterNote = context.getString(R.string.provider_assembly_meter),
             isFree = true
         ),
         ProviderInfo(
             provider = SttProvider.DEEPGRAM,
-            name = "Deepgram (crédito de regalo)",
-            offer = "Crédito de regalo una sola vez ($200 USD al momento de publicar), sin tarjeta.",
+            name = context.getString(R.string.provider_deepgram_name),
+            offer = context.getString(R.string.provider_deepgram_offer),
             keyUrl = "https://console.deepgram.com/",
             steps = listOf(
-                "Entra a console.deepgram.com y crea tu cuenta (no pongas tarjeta).",
-                "Ve a «API Keys» → «Create a New API Key».",
-                "Para ver el saldo real, dale rol «Admin» o «Owner» a la llave.",
-                "Cópiala y pégala aquí. El Project ID se vincula solo."
+                context.getString(R.string.provider_deepgram_step_1),
+                context.getString(R.string.provider_deepgram_step_2),
+                context.getString(R.string.provider_deepgram_step_3),
+                context.getString(R.string.provider_deepgram_step_4)
             ),
             meterKind = MeterKind.REAL,
-            meterNote = "Dato real si la llave tiene permiso de facturación; si no, la app estima con su propio contador.",
+            meterNote = context.getString(R.string.provider_deepgram_meter),
             isFree = true
         ),
         ProviderInfo(
             provider = SttProvider.PAID_FALLBACK,
-            name = "Respaldo de pago (opcional)",
-            offer = "Aquí SÍ pagas. Solo se usa si apagas «Modo \$0» y todos los gratuitos fallaron.",
+            name = context.getString(R.string.provider_paid_name),
+            offer = context.getString(R.string.provider_paid_offer),
             keyUrl = "https://console.groq.com/settings/billing",
             steps = listOf(
-                "Opción A · Groq de pago: activa facturación en console.groq.com y crea una llave.",
-                "Opción B · Microsoft (Azure): crea un recurso de voz en Azure y copia su llave y endpoint.",
-                "Pega la llave aquí y elige el motor."
+                context.getString(R.string.provider_paid_step_1),
+                context.getString(R.string.provider_paid_step_2),
+                context.getString(R.string.provider_paid_step_3)
             ),
             meterKind = MeterKind.NONE,
-            meterNote = "Sin medidor: revisa tu gasto en el panel del proveedor.",
+            meterNote = context.getString(R.string.provider_paid_meter),
             isFree = false
         )
     )
 
-    fun info(provider: SttProvider): ProviderInfo = all.first { it.provider == provider }
+    fun info(context: Context, provider: SttProvider): ProviderInfo =
+        all(context).first { it.provider == provider }
 
     /** Oferta efectiva: la de config remota (si existe) o la del catálogo. */
-    fun offerText(provider: SttProvider): String =
+    fun offerText(context: Context, provider: SttProvider): String =
         RemoteRouterConfig.currentOrDefault().offers[provider]?.takeIf { it.isNotBlank() }
-            ?: info(provider).offer
+            ?: info(context, provider).offer
 
-    const val ZERO_COST_WARNING =
-        "Para gastar \$0: NO registres tarjeta en Groq, Inworld, AssemblyAI ni Deepgram. " +
-            "Si pones tarjeta, cuando se acabe el regalo el proveedor te cobrará y la app no puede impedirlo."
+    fun zeroCostWarning(context: Context): String =
+        context.getString(R.string.zero_cost_warning_long)
 }
 
-fun MeterKind.badge(): String = when (this) {
-    MeterKind.REAL -> "Real"
-    MeterKind.ESTIMATED -> "Estimado"
-    MeterKind.NONE -> "Sin medidor"
+fun MeterKind.badge(context: Context): String = when (this) {
+    MeterKind.REAL -> context.getString(R.string.meter_badge_real)
+    MeterKind.ESTIMATED -> context.getString(R.string.meter_badge_estimated)
+    MeterKind.NONE -> context.getString(R.string.meter_badge_none)
 }

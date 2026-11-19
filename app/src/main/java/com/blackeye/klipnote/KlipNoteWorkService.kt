@@ -34,7 +34,10 @@ class KlipNoteWorkService : Service() {
             ACTION_DISMISS_PROGRESS -> {
                 // Arranca FGS un instante para poder REMOVE una notificación huérfana (DETACH viejo).
                 // No toca JobHub: solo limpia la notificación.
-                val notif = KlipNoteNotify.progressNotification(this, "Limpiando…")
+                val notif = KlipNoteNotify.progressNotification(
+                    this,
+                    getString(R.string.notif_cleaning)
+                )
                 if (Build.VERSION.SDK_INT >= 34) {
                     ServiceCompat.startForeground(
                         this,
@@ -82,7 +85,7 @@ class KlipNoteWorkService : Service() {
                 val routing = intent.getStringExtra(EXTRA_ROUTING) ?: "AUTO"
                 val manualProvider = intent.getStringExtra(EXTRA_MANUAL_PROVIDER)
 
-                startAsForeground("Descargando…")
+                startAsForeground(getString(R.string.status_downloading))
                 workJob = scope.launch {
                     runLinkJob(
                         rawUrl = rawUrl,
@@ -132,7 +135,7 @@ class KlipNoteWorkService : Service() {
         val app = applicationContext
         var artifact: SealDownloader.DownloadArtifact? = null
         try {
-            publish("Descargando 0%…", 0)
+            publish(app.getString(R.string.status_downloading_percent, 0), 0)
             SealDownloader.initAsync(app)
             // Espera breve a que yt-dlp esté listo
             var waits = 0
@@ -142,7 +145,8 @@ class KlipNoteWorkService : Service() {
             }
             if (SealDownloader.ready.value != SealDownloader.ReadyState.READY) {
                 throw IllegalStateException(
-                    SealDownloader.readyError.value ?: "yt-dlp no está listo"
+                    SealDownloader.readyError.value
+                        ?: app.getString(R.string.error_ytdlp_not_ready)
                 )
             }
 
@@ -154,9 +158,7 @@ class KlipNoteWorkService : Service() {
                 onProgress = { label ->
                     val pct = Regex("""(\d+)%""").find(label)?.groupValues?.getOrNull(1)?.toIntOrNull()
                     val pretty = when {
-                        pct != null -> "Descargando $pct%…"
-                        label.contains("Actualizando", ignoreCase = true) -> label
-                        label.contains("Reintentando", ignoreCase = true) -> label
+                        pct != null -> app.getString(R.string.status_downloading_percent, pct)
                         else -> label
                     }
                     publish(pretty, pct)
@@ -172,7 +174,12 @@ class KlipNoteWorkService : Service() {
             }
 
             if (mode == SealDownloader.LinkMode.DOWNLOAD_ONLY) {
-                val msg = "✅ Tu ${if (artifact.isVideo) "video" else "audio"} está en Descargas/KlipNote"
+                val kind = if (artifact.isVideo) {
+                    app.getString(R.string.media_kind_video)
+                } else {
+                    app.getString(R.string.media_kind_audio)
+                }
+                val msg = app.getString(R.string.notify_download_saved, kind)
                 val downloadEntry = BillingManager.newHistoryEntry(
                     fileName = artifact.savedDisplayName ?: artifact.title,
                     durationSeconds = 0.0,
@@ -183,7 +190,7 @@ class KlipNoteWorkService : Service() {
                     balanceAfter = null,
                     transcript = "",
                     audioPath = null,
-                    provider = "Descarga",
+                    provider = app.getString(R.string.history_provider_download),
                     downloadUri = savedMedia?.uri?.toString(),
                     downloadDisplayName = savedMedia?.displayName,
                     downloadIsVideo = savedMedia?.isVideo ?: false
@@ -194,15 +201,18 @@ class KlipNoteWorkService : Service() {
                     meta = null,
                     savedMedia = savedMedia,
                     sourceLabel = artifact.title,
-                    toastMessage = "Guardado en Descargas/KlipNote · ${artifact.savedDisplayName ?: artifact.title}",
-                    notifTitle = "✅ Listo",
+                    toastMessage = app.getString(
+                        R.string.toast_saved_downloads_name,
+                        artifact.savedDisplayName ?: artifact.title
+                    ),
+                    notifTitle = app.getString(R.string.work_ready_title),
                     notifBody = msg,
                     historyId = downloadEntry.id
                 )
                 return
             }
 
-            publish("Extrayendo audio…", null)
+            publish(app.getString(R.string.status_extracting_audio), null)
             val uri = artifact.uri ?: Uri.fromFile(artifact.file)
             var extracted: AudioExtractor.ExtractedAudio? = null
             var sttCompact: java.io.File? = null
@@ -221,7 +231,7 @@ class KlipNoteWorkService : Service() {
                 val savesPublic = mode == SealDownloader.LinkMode.AUDIO_AND_TEXT ||
                     mode == SealDownloader.LinkMode.VIDEO_AND_TEXT
                 val audioForStt = if (savesPublic) {
-                    publish("Preparando audio liviano para transcribir…", null)
+                    publish(app.getString(R.string.status_preparing_light_audio), null)
                     withContext(Dispatchers.IO) {
                         SealDownloader.compressAudioForStt(app, extracted!!.file)
                             .also { sttCompact = it }
@@ -230,7 +240,7 @@ class KlipNoteWorkService : Service() {
                     extracted!!.file
                 }
                 val mimeForStt = if (sttCompact != null) "audio/mp4" else extracted!!.mimeType
-                publish("Transcribiendo…", null)
+                publish(app.getString(R.string.transcribing), null)
 
                 var balanceBefore: Double? = null
                 val dgKey = ApiKeyStore.getDeepgram(app)
@@ -301,9 +311,9 @@ class KlipNoteWorkService : Service() {
                 }
 
                 val toast = if (savedMedia != null) {
-                    "Guion listo · archivo en Descargas/KlipNote"
+                    app.getString(R.string.work_script_ready_saved)
                 } else {
-                    "Guion listo y copiado"
+                    app.getString(R.string.work_script_ready_copied)
                 }
                 finishSuccess(
                     transcript = result.transcript,
@@ -311,11 +321,11 @@ class KlipNoteWorkService : Service() {
                     savedMedia = savedMedia,
                     sourceLabel = artifact.title,
                     toastMessage = toast,
-                    notifTitle = "✅ Listo: tu guion está copiado",
+                    notifTitle = app.getString(R.string.work_ready_copied),
                     notifBody = if (savedMedia != null) {
-                        "También guardamos el archivo en Descargas/KlipNote"
+                        app.getString(R.string.work_also_saved_downloads)
                     } else {
-                        "Ábrelo en KlipNote para ver el texto"
+                        app.getString(R.string.work_open_to_see_text)
                     },
                     historyId = historyEntry.id
                 )
@@ -333,15 +343,16 @@ class KlipNoteWorkService : Service() {
                 return
             }
             val finalMsg = when {
-                t is ManualRouteException -> t.message ?: "Error"
-                artifact == null -> SealDownloader.friendlyDownloadError(t.message, rawUrl)
-                else -> t.message?.takeIf { it.isNotBlank() } ?: "Error al transcribir"
+                t is ManualRouteException -> t.message ?: app.getString(R.string.error_generic)
+                artifact == null -> SealDownloader.friendlyDownloadError(this, t.message, rawUrl)
+                else -> t.message?.takeIf { it.isNotBlank() }
+                    ?: app.getString(R.string.work_error_transcribe)
             }
             KlipNoteJobHub.setFailed(finalMsg)
             dismissProgressForeground()
             KlipNoteNotify.showFinished(
                 context = app,
-                title = "KlipNote: error",
+                title = app.getString(R.string.work_error_title),
                 body = finalMsg.take(120),
                 success = false
             )

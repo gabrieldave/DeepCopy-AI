@@ -1,5 +1,7 @@
 # Llaves gratis
 
+<p>🇺🇸 <a href="free-keys.md">English</a> · 🇪🇸 <strong>Español</strong></p>
+
 KlipNote **no trae llaves**. Cada persona crea la suya en el servicio y la pega en la app (**Ajustes → Mis llaves**). Se guardan cifradas en tu teléfono.
 
 **No necesitas todas.** Con una sola (por ejemplo Groq) ya puedes transcribir. Cuantas más pongas, más rato puedes usar el «modo gratis».
@@ -77,4 +79,4 @@ Con **Automático** activado, KlipNote prueba en este orden:
 
 Si uno responde sin crédito o con límite, pasa al siguiente sin que hagas nada.
 
-Volver a las [guías](README.md).
+Volver a las [guías](README.es.md).

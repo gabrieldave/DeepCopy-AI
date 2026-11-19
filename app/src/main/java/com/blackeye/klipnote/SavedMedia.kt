@@ -14,7 +14,7 @@ import androidx.core.content.ContextCompat
 
 fun copyToClipboard(context: Context, text: String) {
     val cm = context.getSystemService(ClipboardManager::class.java) ?: return
-    cm.setPrimaryClip(ClipData.newPlainText("KlipNote", text))
+    cm.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.app_name), text))
 }
 
 /**
@@ -26,7 +26,8 @@ data class SavedMediaInfo(
     val isVideo: Boolean
 ) {
     val mimeType: String get() = if (isVideo) "video/mp4" else "audio/mp4"
-    val openLabel: String get() = if (isVideo) "Abrir video" else "Abrir audio"
+    fun openLabel(context: Context): String =
+        context.getString(if (isVideo) R.string.media_open_video else R.string.media_open_audio)
 }
 
 object SavedMediaActions {
@@ -38,9 +39,9 @@ object SavedMediaActions {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         try {
-            context.startActivity(Intent.createChooser(view, media.openLabel))
+            context.startActivity(Intent.createChooser(view, media.openLabel(context)))
         } catch (_: ActivityNotFoundException) {
-            Toast.makeText(context, "No hay app para abrir este archivo", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.error_no_app_open), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -53,9 +54,11 @@ object SavedMediaActions {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         try {
-            context.startActivity(Intent.createChooser(send, "Compartir ${media.displayName}"))
+            context.startActivity(
+                Intent.createChooser(send, context.getString(R.string.share_file_title, media.displayName))
+            )
         } catch (_: ActivityNotFoundException) {
-            Toast.makeText(context, "No hay app para compartir", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.error_no_app_share), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -103,7 +106,7 @@ object SavedMediaActions {
         }
         Toast.makeText(
             app,
-            "Busca el archivo en Descargas/KlipNote",
+            context.getString(R.string.hint_find_in_downloads),
             Toast.LENGTH_LONG
         ).show()
     }

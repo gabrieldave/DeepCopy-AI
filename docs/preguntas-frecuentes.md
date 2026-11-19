@@ -1,5 +1,7 @@
 # Preguntas frecuentes
 
+<p>🇺🇸 <a href="faq.md">English</a> · 🇪🇸 <strong>Español</strong></p>
+
 ## ¿Es gratis de verdad?
 
 Puedes usarla **sin pagar a KlipNote**: la app es gratis y de código abierto. El «gratis» de la transcripción viene de **créditos o minutos que regalan otros servicios** (Groq, Inworld, AssemblyAI, Deepgram). Esas ofertas son de cada empresa y **pueden cambiar o acabarse**.
@@ -34,4 +36,4 @@ No. Con una basta. Groq suele ser el mejor punto de partida.
 
 En el modo **Solo texto** te da el texto y **no guarda el video**. Otros modos pueden guardar audio o video según lo que elijas. Los **guiones** (texto) se quedan en el historial local de la app.
 
-Volver a las [guías](README.md).
+Volver a las [guías](README.es.md).

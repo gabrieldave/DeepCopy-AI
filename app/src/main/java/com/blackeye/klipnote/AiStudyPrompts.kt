@@ -14,237 +14,177 @@ enum class AiStudyMode {
     STUDY_QUIZ,
     CLEAN_SCRIPT;
 
-    /** Etiqueta del chip en UI. */
-    val chipLabel: String
-        get() = when (this) {
-            SUMMARY -> "📝 Resumen"
-            BRIEF -> "⚡ Brief"
-            INFOGRAPHIC -> "📊 Infografía"
-            DIAGRAMS -> "🔀 Diagramas"
-            DEEP_RESEARCH -> "🔍 Investigar"
-            BUILD_PROMPT -> "🤖 Crear Prompt"
-            STUDY_QUIZ -> "🎓 Clase + Quiz"
-            CLEAN_SCRIPT -> "✨ Pulir Guion"
-        }
+    fun chipLabel(context: Context): String = when (this) {
+        SUMMARY -> context.getString(R.string.ai_chip_summary)
+        BRIEF -> context.getString(R.string.ai_chip_brief)
+        INFOGRAPHIC -> context.getString(R.string.ai_chip_infographic)
+        DIAGRAMS -> context.getString(R.string.ai_chip_diagrams)
+        DEEP_RESEARCH -> context.getString(R.string.ai_chip_research)
+        BUILD_PROMPT -> context.getString(R.string.ai_chip_build_prompt)
+        STUDY_QUIZ -> context.getString(R.string.ai_chip_study_quiz)
+        CLEAN_SCRIPT -> context.getString(R.string.ai_chip_clean_script)
+    }
 
-    /** Nombre corto para la barra «Prompt de [Modo]». */
-    val modeName: String
-        get() = when (this) {
-            SUMMARY -> "Resumen"
-            BRIEF -> "Brief"
-            INFOGRAPHIC -> "Infografía"
-            DIAGRAMS -> "Diagramas"
-            DEEP_RESEARCH -> "Investigar"
-            BUILD_PROMPT -> "Crear Prompt"
-            STUDY_QUIZ -> "Clase + Quiz"
-            CLEAN_SCRIPT -> "Pulir Guion"
-        }
+    fun modeName(context: Context): String = when (this) {
+        SUMMARY -> context.getString(R.string.ai_mode_summary)
+        BRIEF -> context.getString(R.string.ai_mode_brief)
+        INFOGRAPHIC -> context.getString(R.string.ai_mode_infographic)
+        DIAGRAMS -> context.getString(R.string.ai_mode_diagrams)
+        DEEP_RESEARCH -> context.getString(R.string.ai_mode_research)
+        BUILD_PROMPT -> context.getString(R.string.ai_mode_build_prompt)
+        STUDY_QUIZ -> context.getString(R.string.ai_mode_study_quiz)
+        CLEAN_SCRIPT -> context.getString(R.string.ai_mode_clean_script)
+    }
 }
 
 @Keep
 object AiStudyPrompts {
 
-    private const val PREFS = "klipnote_ai_study"
-    private const val KEY_REPLY_IN_SPANISH = "reply_in_spanish"
-
-    /** Identificador del mega-prompt orquestado (botón Todo en 1). */
     const val MASTER_ALL_8 = "MASTER_ALL_8"
-    const val MASTER_ALL_8_LABEL = "🔥 Todo en 1 · Lanzar los 8 Super-Prompts"
-    const val MASTER_ALL_8_MODE_NAME = "Todo en 1"
 
-    fun isReplyInSpanish(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_REPLY_IN_SPANISH, true)
+    fun masterAll8Label(context: Context): String =
+        context.getString(R.string.ai_master_all_label)
 
-    fun setReplyInSpanish(context: Context, value: Boolean) {
-        prefs(context).edit().putBoolean(KEY_REPLY_IN_SPANISH, value).apply()
-    }
+    fun masterAll8ModeName(context: Context): String =
+        context.getString(R.string.ai_master_all_mode)
 
     fun build(
+        context: Context,
         mode: AiStudyMode,
         transcript: String,
-        sourceTitleOrUrl: String,
-        replyInSpanish: Boolean = true
+        sourceTitleOrUrl: String
     ): String {
-        val source = sourceTitleOrUrl.trim().ifBlank { "Sin título" }
-        val body = when (mode) {
-            AiStudyMode.SUMMARY -> summaryIntent()
-            AiStudyMode.BRIEF -> briefIntent()
-            AiStudyMode.INFOGRAPHIC -> infographicIntent()
-            AiStudyMode.DIAGRAMS -> diagramsIntent()
-            AiStudyMode.DEEP_RESEARCH -> deepResearchIntent()
-            AiStudyMode.BUILD_PROMPT -> buildPromptIntent()
-            AiStudyMode.STUDY_QUIZ -> studyQuizIntent()
-            AiStudyMode.CLEAN_SCRIPT -> cleanScriptIntent()
-        }
+        val replyInSpanish = AppLocales.isAppSpanish(context)
+        val source = sourceTitleOrUrl.trim().ifBlank { context.getString(R.string.untitled) }
+        val body = intentFor(mode, replyInSpanish)
         return buildString {
-            appendLine(languageRule(replyInSpanish))
+            appendLine(languageRule(context, replyInSpanish))
             appendLine()
             appendLine(body)
             appendLine()
-            appendSourceAndTranscript(source, transcript)
+            appendSourceAndTranscript(context, source, transcript)
         }
     }
 
-    /** Mega-prompt orquestado: las 8 secciones en una sola respuesta; fuente+transcript una vez. */
     fun buildMasterAll8(
+        context: Context,
         transcript: String,
-        sourceTitleOrUrl: String,
-        replyInSpanish: Boolean = true
+        sourceTitleOrUrl: String
     ): String {
-        val source = sourceTitleOrUrl.trim().ifBlank { "Sin título" }
+        val replyInSpanish = AppLocales.isAppSpanish(context)
+        val source = sourceTitleOrUrl.trim().ifBlank { context.getString(R.string.untitled) }
         return buildString {
-            appendLine(languageRule(replyInSpanish))
+            appendLine(languageRule(context, replyInSpanish))
             appendLine()
-            appendLine(masterAll8Intent())
+            appendLine(masterAll8Intent(replyInSpanish))
             appendLine()
-            appendSourceAndTranscript(source, transcript)
+            appendSourceAndTranscript(context, source, transcript)
         }
     }
 
-    private fun StringBuilder.appendSourceAndTranscript(source: String, transcript: String) {
-        appendLine("--- FUENTE ---")
+    private fun intentFor(mode: AiStudyMode, es: Boolean): String = when (mode) {
+        AiStudyMode.SUMMARY -> if (es) summaryIntentEs() else summaryIntentEn()
+        AiStudyMode.BRIEF -> if (es) briefIntentEs() else briefIntentEn()
+        AiStudyMode.INFOGRAPHIC -> if (es) infographicIntentEs() else infographicIntentEn()
+        AiStudyMode.DIAGRAMS -> if (es) diagramsIntentEs() else diagramsIntentEn()
+        AiStudyMode.DEEP_RESEARCH -> if (es) deepResearchIntentEs() else deepResearchIntentEn()
+        AiStudyMode.BUILD_PROMPT -> if (es) buildPromptIntentEs() else buildPromptIntentEn()
+        AiStudyMode.STUDY_QUIZ -> if (es) studyQuizIntentEs() else studyQuizIntentEn()
+        AiStudyMode.CLEAN_SCRIPT -> if (es) cleanScriptIntentEs() else cleanScriptIntentEn()
+    }
+
+    private fun StringBuilder.appendSourceAndTranscript(
+        context: Context,
+        source: String,
+        transcript: String
+    ) {
+        appendLine(context.getString(R.string.ai_source_header))
         appendLine(source)
         appendLine()
-        appendLine("--- TRANSCRIPCIÓN COMPLETA ---")
+        appendLine(context.getString(R.string.ai_transcript_header))
         append(transcript.trim())
     }
 
-    private fun languageRule(replyInSpanish: Boolean): String =
+    private fun languageRule(context: Context, replyInSpanish: Boolean): String =
         if (replyInSpanish) {
-            "IDIOMA DE RESPUESTA: Analiza fielmente la transcripción original " +
-                "(aunque esté en inglés u otro idioma) y entrega TODO el resultado en " +
-                "español claro y profesional."
+            context.getString(R.string.ai_language_rule_es)
         } else {
-            "IDIOMA DE RESPUESTA: Responde en el mismo idioma de la transcripción."
+            context.getString(R.string.ai_language_rule_match)
         }
 
-    private fun masterAll8Intent(): String = """
-        Actúa como un equipo multidisciplinario de expertos (estratega ejecutivo, tutor de estudio,
-        editor de guiones, diseñador instruccional, arquitecto de información, investigador senior,
-        ingeniero de prompts y profesor práctico).
+    private fun masterAll8Intent(es: Boolean): String = if (es) {
+        """
+            Actúa como un equipo multidisciplinario de expertos. Entrega UNA respuesta con 8 secciones
+            numeradas. Sé fiel a la transcripción; no inventes hechos.
+        """.trimIndent()
+    } else {
+        """
+            Act as a multidisciplinary expert team. Deliver ONE answer with 8 numbered sections.
+            Stay faithful to the transcript; do not invent facts.
+        """.trimIndent()
+    }
 
-        Entrega UNA sola respuesta completa, profunda y bien estructurada con EXACTAMENTE estas
-        8 secciones numeradas (usa los títulos tal cual). Sé fiel a la transcripción; no inventes
-        hechos que no estén en la fuente. La fuente y la transcripción aparecen UNA sola vez al final.
-
-        1) ⚡ Brief Ejecutivo
-           - Síntesis en exactamente 2 líneas.
-           - 5 puntos accionables (viñetas cortas).
-           - La regla de oro / lección principal lista para aplicar hoy (1 frase).
-
-        2) 📝 Resumen Completo de Estudio
-           - Idea central en 1-2 frases.
-           - Desglose completo sin relleno de cada concepto o paso clave.
-           - Datos, cifras o fórmulas mencionadas (si las hay).
-           - Conclusión práctica: qué recordar y aplicar.
-
-        3) ✨ Guion Pulido y Estructurado
-           - Limpia muletillas, repeticiones y cortes del habla.
-           - Redacta por párrafos y subtítulos conservando el 100% de las ideas originales
-             (sin añadir ni omitir conceptos) y el orden lógico del discurso.
-
-        4) 📊 Infografía Lista
-           - Esquema visual por bloques cortos de alto impacto (título de bloque, bullets, jerarquía).
-           - Inmediatamente después, un prompt visual detallado listo para generar la infografía
-             (estilo, layout, tipografía, iconografía, paleta).
-
-        5) 🔀 Diagramas y Mapa Mental
-           - Diagrama de flujo paso a paso en texto limpio (cajas → flechas).
-           - Mapa conceptual jerárquico (nodos padre/hijo).
-           - Bloque Mermaid listo para renderizar (`flowchart TD` o `mindmap`).
-
-        6) 🔍 Investigación Profunda (Deep Research)
-           - Afirmaciones del video vs. lo demostrado.
-           - Contexto técnico adicional y verificación de conceptos.
-           - Contrapuntos, limitaciones o riesgos.
-           - Siguientes pasos / qué investigar después.
-
-        7) 🤖 Ingeniería Inversa: Prompt Maestro Reutilizable
-           - Extrae el método/fórmula del autor y conviértelo en un Prompt Maestro con:
-             Rol, Objetivo, Variables de entrada `[...]` y Pasos exactos de ejecución.
-
-        8) 🎓 Mini-Clase Práctica + Quiz
-           - Explicación didáctica con ejemplo aplicado.
-           - Un ejercicio práctico rápido.
-           - Exactamente 5 preguntas de autoevaluación con respuestas al final
-             (sección separada «RESPUESTAS»).
+    private fun summaryIntentEs() = """
+        Eres un tutor de estudio experto. Resumen completo sin relleno: idea central, conceptos, datos y conclusión práctica.
     """.trimIndent()
 
-    private fun summaryIntent(): String = """
-        Eres un tutor de estudio experto. Elabora un **Resumen completo de estudio sin relleno**:
-        1) Idea central en 1-2 frases.
-        2) Explicación estructurada de cada concepto o paso clave.
-        3) Datos, cifras o fórmulas mencionadas (si las hay).
-        4) Conclusión práctica: qué debe recordar y aplicar el lector.
-        Sé fiel al contenido; no inventes información que no esté en la fuente.
+    private fun summaryIntentEn() = """
+        You are an expert study tutor. Full summary without filler: core idea, concepts, data, and practical takeaway.
     """.trimIndent()
 
-    private fun briefIntent(): String = """
-        Eres un editor ejecutivo. Entrega un **Brief de lectura rápida**:
-        1) Síntesis en exactamente 2 líneas.
-        2) Los 5 puntos más valiosos y accionables (viñetas cortas).
-        3) La lección principal lista para aplicar hoy (1 frase clara).
-        Prioriza claridad y utilidad inmediata; cero relleno.
+    private fun briefIntentEs() = """
+        Brief ejecutivo: 2 líneas de síntesis, 5 puntos accionables y lección principal para hoy.
     """.trimIndent()
 
-    private fun infographicIntent(): String = """
-        Eres diseñador instruccional + director de arte.
-        1) Extrae los puntos clave del contenido.
-        2) Diseña primero el **esquema completo** de una infografía didáctica dividida en
-           bloques visuales cortos de alto impacto (título de bloque, bullets, jerarquía visual).
-        3) Inmediatamente después, escribe un **prompt visual detallado** listo para generar
-           la infografía (estilo, layout, tipografía sugerida, iconografía, paleta) en español.
-        El esquema y el prompt visual deben estar claramente separados.
+    private fun briefIntentEn() = """
+        Executive brief: 2-line synthesis, 5 actionable bullets, and the main lesson for today.
     """.trimIndent()
 
-    private fun diagramsIntent(): String = """
-        Eres arquitecto de información. Transforma el proceso, método o arquitectura explicada
-        en la transcripción en tres entregables:
-        (1) Un diagrama de flujo visual paso a paso en texto limpio (cajas → flechas).
-        (2) Un mapa conceptual jerárquico (nodos padre/hijo).
-        (3) Un bloque de código Mermaid listo para renderizar (`flowchart TD` o `mindmap`,
-           elige el más adecuado al contenido).
-        Sé fiel a la lógica del autor; no agregues pasos inventados.
+    private fun infographicIntentEs() = """
+        Esquema de infografía didáctica y prompt visual detallado listo para generar la imagen.
     """.trimIndent()
 
-    private fun deepResearchIntent(): String = """
-        Actúa como investigador senior. Con base en la transcripción:
-        1) Analiza las afirmaciones del video (qué se afirma vs. qué se demuestra).
-        2) Profundiza técnicamente en los conceptos mencionados.
-        3) Aporta contexto adicional verificado y casos de estudio reales relacionados.
-        4) Señala posibles limitaciones, contrapuntos o riesgos.
-        5) Lista qué investigar después (preguntas abiertas + fuentes sugeridas).
-        Separa claramente hechos del video, contexto externo y opiniones/hipótesis.
+    private fun infographicIntentEn() = """
+        Didactic infographic outline plus a detailed visual generation prompt.
     """.trimIndent()
 
-    private fun buildPromptIntent(): String = """
-        Eres ingeniero de prompts. Haz ingeniería inversa del video:
-        Extrae la metodología, fórmula o marco de trabajo que enseña el autor y conviértelo
-        en un **Prompt Maestro reutilizable** con:
-        - Rol
-        - Objetivo
-        - Variables de entrada entre corchetes `[...]`
-        - Pasos exactos de ejecución
-        El Prompt Maestro debe permitir que una IA ejecute ese sistema cuando el usuario lo pegue
-        con sus propias variables, sin necesitar el video original.
+    private fun diagramsIntentEs() = """
+        Diagrama de flujo en texto, mapa conceptual jerárquico y bloque Mermaid listo para renderizar.
     """.trimIndent()
 
-    private fun studyQuizIntent(): String = """
-        Eres un profesor experto. Enséñame este tema con claridad:
-        1) Explicación didáctica con ejemplos claros.
-        2) Un ejercicio práctico de aplicación inmediata.
-        3) Exactamente 5 preguntas clave para dominar el tema, con las respuestas al final
-           (sección separada «RESPUESTAS»).
-        Mantén un tono motivador pero preciso; no inventes contenido ajeno a la fuente.
+    private fun diagramsIntentEn() = """
+        Text flowchart, hierarchical concept map, and Mermaid block ready to render.
     """.trimIndent()
 
-    private fun cleanScriptIntent(): String = """
-        Eres un editor de guiones. Limpia todas las muletillas, repeticiones y cortes del
-        lenguaje hablado y entrega el texto perfectamente redactado por párrafos y subtítulos,
-        respetando el **100% de las ideas originales** (sin añadir ni omitir conceptos).
-        Conserva el orden lógico del discurso; solo mejora claridad y fluidez escrita.
+    private fun deepResearchIntentEs() = """
+        Afirmaciones vs demostración, profundización técnica, contexto verificado, limitaciones y siguientes pasos.
     """.trimIndent()
 
-    private fun prefs(context: Context) =
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private fun deepResearchIntentEn() = """
+        Claims vs evidence, technical depth, verified context, limitations, and next research steps.
+    """.trimIndent()
+
+    private fun buildPromptIntentEs() = """
+        Convierte el método en un Prompt Maestro reutilizable: Rol, Objetivo, variables [...] y pasos.
+    """.trimIndent()
+
+    private fun buildPromptIntentEn() = """
+        Turn the method into a reusable Master Prompt: Role, Goal, variables [...], and steps.
+    """.trimIndent()
+
+    private fun studyQuizIntentEs() = """
+        Explicación didáctica, ejercicio práctico y 5 preguntas con respuestas en sección RESPUESTAS.
+    """.trimIndent()
+
+    private fun studyQuizIntentEn() = """
+        Clear teaching, a practice exercise, and 5 questions with answers in a RESPONSES section.
+    """.trimIndent()
+
+    private fun cleanScriptIntentEs() = """
+        Limpia muletillas y entrega guion por párrafos conservando el 100% de las ideas originales.
+    """.trimIndent()
+
+    private fun cleanScriptIntentEn() = """
+        Remove speech filler and deliver polished paragraphs keeping 100% of the original ideas.
+    """.trimIndent()
 }

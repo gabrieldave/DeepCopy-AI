@@ -1,5 +1,6 @@
 package com.blackeye.klipnote
 
+import android.content.Context
 import androidx.annotation.Keep
 
 enum class LanguageMode {
@@ -43,10 +44,11 @@ fun LanguageMode.billingBaseMode(): LanguageMode = when (this) {
     LanguageMode.AUTO, LanguageMode.FIXED -> LanguageMode.AUTO
 }
 
-fun LanguageMode.shortUiLabel(forcedCode: String? = null): String = when (this) {
-    LanguageMode.AUTO -> "Detectar"
-    LanguageMode.MULTI -> "ES+EN"
-    LanguageMode.FIXED -> forcedCode?.takeIf { it.isNotBlank() }?.uppercase() ?: "Fijo"
+fun LanguageMode.shortUiLabel(context: Context, forcedCode: String? = null): String = when (this) {
+    LanguageMode.AUTO -> context.getString(R.string.lang_mode_auto)
+    LanguageMode.MULTI -> context.getString(R.string.lang_mode_multi)
+    LanguageMode.FIXED -> forcedCode?.takeIf { it.isNotBlank() }?.uppercase()
+        ?: context.getString(R.string.lang_mode_fixed)
 }
 
 @Keep
@@ -137,6 +139,7 @@ class SttProviderException(
 ) : Exception(message) {
     companion object {
         fun fromHttp(
+            context: Context,
             provider: SttProvider,
             code: Int,
             body: String,
@@ -150,10 +153,14 @@ class SttProviderException(
                 else -> SttFailureKind.OTHER
             }
             val label = when (kind) {
-                SttFailureKind.PROMO_ENDED -> "PROMO_TERMINADA (HTTP $code)"
-                SttFailureKind.COOLDOWN -> "COOLDOWN TEMPORAL (HTTP 429)"
-                SttFailureKind.UNAUTHORIZED -> "KEY INVÁLIDA (HTTP 401)"
-                SttFailureKind.MODEL_GONE -> "MODELO RETIRADO (HTTP $code)"
+                SttFailureKind.PROMO_ENDED ->
+                    "${context.getString(R.string.health_offer_ended)} (HTTP $code)"
+                SttFailureKind.COOLDOWN ->
+                    "${context.getString(R.string.health_paused_daily)} (HTTP 429)"
+                SttFailureKind.UNAUTHORIZED ->
+                    "${context.getString(R.string.health_key_invalid)} (HTTP 401)"
+                SttFailureKind.MODEL_GONE ->
+                    "${context.getString(R.string.error_generic)} (HTTP $code)"
                 else -> "HTTP $code"
             }
             val detail = body.take(200).ifBlank { label }
@@ -178,12 +185,12 @@ data class ProviderStatus(
     val remainingUsd: Double? = null
 )
 
-fun SttProvider.displayName(): String = when (this) {
-    SttProvider.GROQ_FREE -> "Groq Free"
-    SttProvider.INWORLD -> "Inworld Free"
-    SttProvider.ASSEMBLY_AI -> "AssemblyAI"
-    SttProvider.DEEPGRAM -> "Deepgram"
-    SttProvider.PAID_FALLBACK -> "Respaldo Pagado"
+fun SttProvider.displayName(context: Context): String = when (this) {
+    SttProvider.GROQ_FREE -> context.getString(R.string.provider_groq_free)
+    SttProvider.INWORLD -> context.getString(R.string.provider_inworld_free)
+    SttProvider.ASSEMBLY_AI -> context.getString(R.string.provider_assembly)
+    SttProvider.DEEPGRAM -> context.getString(R.string.provider_deepgram)
+    SttProvider.PAID_FALLBACK -> context.getString(R.string.provider_paid_backup)
 }
 
 fun SttProvider.levelIndex(): Int = when (this) {
@@ -194,34 +201,41 @@ fun SttProvider.levelIndex(): Int = when (this) {
     SttProvider.PAID_FALLBACK -> 5
 }
 
-fun SttProvider.chipLabel(): String = when (this) {
-    SttProvider.GROQ_FREE -> "1 · Groq"
-    SttProvider.INWORLD -> "2 · Inworld"
-    SttProvider.ASSEMBLY_AI -> "3 · AssemblyAI"
-    SttProvider.DEEPGRAM -> "4 · Deepgram"
-    SttProvider.PAID_FALLBACK -> "5 · Pagado"
+fun SttProvider.chipLabel(context: Context): String = when (this) {
+    SttProvider.GROQ_FREE -> context.getString(R.string.chip_groq)
+    SttProvider.INWORLD -> context.getString(R.string.chip_inworld)
+    SttProvider.ASSEMBLY_AI -> context.getString(R.string.chip_assembly)
+    SttProvider.DEEPGRAM -> context.getString(R.string.chip_deepgram)
+    SttProvider.PAID_FALLBACK -> context.getString(R.string.chip_paid)
 }
 
-fun SttProvider.shortName(): String = when (this) {
-    SttProvider.GROQ_FREE -> "Groq"
-    SttProvider.INWORLD -> "Inworld"
-    SttProvider.ASSEMBLY_AI -> "AssemblyAI"
-    SttProvider.DEEPGRAM -> "Deepgram"
-    SttProvider.PAID_FALLBACK -> "Pagado"
+fun SttProvider.shortName(context: Context): String = when (this) {
+    SttProvider.GROQ_FREE -> context.getString(R.string.provider_groq_short)
+    SttProvider.INWORLD -> context.getString(R.string.provider_inworld_free).substringBefore(' ')
+    SttProvider.ASSEMBLY_AI -> context.getString(R.string.provider_assembly)
+    SttProvider.DEEPGRAM -> context.getString(R.string.provider_deepgram)
+    SttProvider.PAID_FALLBACK -> context.getString(R.string.provider_paid_short)
 }
 
 /** Pill compacta del TopBar Capturar: Auto verde / Prueba ámbar. */
 fun activeMotorPillText(
+    context: Context,
     selection: RoutingSelection,
     autoPrimary: SttProvider?,
     hasKeys: Boolean = true
 ): String = when {
-    !hasKeys -> "Sin llaves"
-    selection is RoutingSelection.Auto ->
-        "Usando: ${autoPrimary?.shortName() ?: "Groq"}"
+    !hasKeys -> context.getString(R.string.no_keys)
+    selection is RoutingSelection.Auto -> {
+        val name = autoPrimary?.shortName(context)
+            ?: context.getString(R.string.provider_groq_short)
+        context.getString(R.string.using_provider, name)
+    }
     selection is RoutingSelection.Manual ->
-        "Probando: ${selection.provider.shortName()}"
-    else -> "Sin llaves"
+        context.getString(
+            R.string.testing_provider_short,
+            selection.provider.shortName(context)
+        )
+    else -> context.getString(R.string.no_keys)
 }
 
 /** Falla exclusiva de Modo Prueba: no hay failover silencioso. */

@@ -37,10 +37,10 @@ object KlipNoteNotify {
         nm.createNotificationChannel(
             NotificationChannel(
                 CHANNEL_PROGRESS,
-                "Progreso de descarga",
+                context.getString(R.string.notif_channel_progress),
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Muestra el avance mientras KlipNote descarga o transcribe"
+                description = context.getString(R.string.notif_channel_progress_desc)
                 setShowBadge(false)
                 setSound(null, null)
                 enableVibration(false)
@@ -49,10 +49,10 @@ object KlipNoteNotify {
         nm.createNotificationChannel(
             NotificationChannel(
                 CHANNEL_DONE,
-                "Avisos al terminar",
+                context.getString(R.string.notif_channel_done),
                 NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
-                description = "Te avisa cuando el guion o la descarga están listos"
+                description = context.getString(R.string.notif_channel_done_desc)
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 250, 120, 250)
                 setSound(
@@ -110,10 +110,11 @@ object KlipNoteNotify {
             Intent(context, KlipNoteWorkService::class.java).setAction(KlipNoteWorkService.ACTION_CANCEL),
             pendingFlags()
         )
-        val title = text.ifBlank { "KlipNote trabajando…" }
+        val title = text.ifBlank { context.getString(R.string.notif_working) }
         val detail = when {
-            progressPercent != null -> "Progreso $progressPercent% · toca Cancelar para detener"
-            else -> "En segundo plano · toca Cancelar para detener"
+            progressPercent != null ->
+                context.getString(R.string.notif_progress_detail, progressPercent)
+            else -> context.getString(R.string.notif_progress_indeterminate)
         }
         val builder = NotificationCompat.Builder(context, CHANNEL_PROGRESS)
             .setSmallIcon(android.R.drawable.stat_sys_download)
@@ -129,7 +130,7 @@ object KlipNoteNotify {
             .setOnlyAlertOnce(true)
             .setSilent(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .addAction(0, "Cancelar", cancel)
+            .addAction(0, context.getString(R.string.cancel), cancel)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
         if (progressPercent != null) {

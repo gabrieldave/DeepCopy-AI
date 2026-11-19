@@ -1,5 +1,12 @@
 # Changelog — KlipNote
 
+## 1.7.0
+
+- **i18n:** inglés por defecto (`values/`) + español (`values-es/`); selector **App language** en Ajustes (sistema / English / Español), aparte del idioma de transcripción.
+- Docs bilingües: `README.md` (EN), `README.es.md` (ES) y guías en `docs/`.
+- AppCompat + `localeConfig` para idioma por app (Android 8–15).
+- Firma release sin ruta fija de keystore local: `ANDROID_KEYSTORE_PROPS` opcional (CI igual con secrets).
+
 ## 1.6.1
 
 Arreglos de interfaz (sin tocar cascada, Modo $0 ni cifrado de llaves):

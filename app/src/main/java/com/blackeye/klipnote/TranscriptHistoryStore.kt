@@ -57,8 +57,12 @@ object TranscriptHistoryStore {
         val entry = Entry(
             id = id,
             timestampMs = timestampMs,
-            sourceTitleOrUrl = sourceTitleOrUrl.trim().ifBlank { "Sin título" },
-            providerUsed = providerUsed.ifBlank { "—" },
+            sourceTitleOrUrl = sourceTitleOrUrl.trim().ifBlank {
+                context.getString(R.string.untitled_source)
+            },
+            providerUsed = providerUsed.ifBlank {
+                context.getString(R.string.history_provider_unknown)
+            },
             durationSec = durationSec,
             text = text
         )
@@ -116,8 +120,11 @@ object TranscriptHistoryStore {
                 val entry = Entry(
                     id = b.id,
                     timestampMs = b.timestampMs,
-                    sourceTitleOrUrl = b.fileName.ifBlank { "Sin título" },
-                    providerUsed = b.provider?.takeIf { it.isNotBlank() } ?: "—",
+                    sourceTitleOrUrl = b.fileName.ifBlank {
+                        context.getString(R.string.untitled_source)
+                    },
+                    providerUsed = b.provider?.takeIf { it.isNotBlank() }
+                        ?: context.getString(R.string.history_provider_unknown),
                     durationSec = b.durationSeconds,
                     text = b.transcript
                 )

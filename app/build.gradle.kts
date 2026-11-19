@@ -16,8 +16,8 @@ android {
         targetSdk = 35
 
         // Fuente de verdad única (local). CI no sobrescribe con GITHUB_RUN_NUMBER.
-        val localVersionCode = 129
-        val localVersionName = "1.6.3"
+        val localVersionCode = 130
+        val localVersionName = "1.7.0"
         versionCode = localVersionCode
         versionName = localVersionName
 
@@ -53,10 +53,9 @@ android {
                 keyAlias = System.getenv("ANDROID_KEY_ALIAS")
                 keyPassword = ciPassword
             } else {
-                val propsFile = file(
-                    "${System.getProperty("user.home")}/.blackeye-keys/android/keystore.properties"
-                )
-                if (propsFile.exists()) {
+                val propsPath = System.getenv("ANDROID_KEYSTORE_PROPS")
+                val propsFile = if (!propsPath.isNullOrBlank()) file(propsPath) else null
+                if (propsFile != null && propsFile.exists()) {
                     val props = Properties()
                     propsFile.inputStream().use { props.load(it) }
                     storeFile = file(props.getProperty("storeFile"))
@@ -126,6 +125,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("androidx.annotation:annotation:1.9.1")
 
