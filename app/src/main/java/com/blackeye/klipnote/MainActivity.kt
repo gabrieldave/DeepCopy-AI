@@ -2112,6 +2112,7 @@ private fun AiStudyActionsSection(
     var lastCopiedId by remember { mutableStateOf<String?>(null) }
     var lastCopiedLabel by remember { mutableStateOf<String?>(null) }
     var lastCopiedPrompt by remember { mutableStateOf<String?>(null) }
+    var showCreativeActions by remember { mutableStateOf(false) }
 
     LaunchedEffect(lastCopiedId) {
         val id = lastCopiedId ?: return@LaunchedEffect
@@ -2126,6 +2127,20 @@ private fun AiStudyActionsSection(
         lastCopiedId = id
     }
 
+    fun openAiChooser(prompt: String) {
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, prompt)
+        }
+        runCatching {
+            context.startActivity(
+                Intent.createChooser(send, context.getString(R.string.send_to_ai))
+            )
+        }.onFailure {
+            Toast.makeText(context, context.getString(R.string.ai_share_unavailable), Toast.LENGTH_LONG).show()
+        }
+    }
+
     fun copyMode(mode: AiStudyMode) {
         val prompt = AiStudyPrompts.build(
             context = context,
@@ -2134,6 +2149,7 @@ private fun AiStudyActionsSection(
             sourceTitleOrUrl = sourceTitleOrUrl
         )
         markCopied(mode.name, mode.modeName(context), prompt)
+        openAiChooser(prompt)
     }
 
     fun copyMasterAll8() {
@@ -2147,13 +2163,14 @@ private fun AiStudyActionsSection(
             AiStudyPrompts.masterAll8ModeName(context),
             prompt
         )
+        openAiChooser(prompt)
     }
 
     Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF0F1623))
+            .background(KlipNeutrals.ChipBg)
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -2175,7 +2192,7 @@ private fun AiStudyActionsSection(
                 } else {
                     Accent
                 },
-                contentColor = Color(0xFF04110A)
+                contentColor = OnAccent
             )
         ) {
             Text(
@@ -2190,36 +2207,97 @@ private fun AiStudyActionsSection(
             )
         }
 
+        Text(
+            stringResource(R.string.ai_button_hint),
+            color = Muted,
+            fontSize = 12.sp
+        )
+
+        // Six text-first actions stay visible; creative actions are progressively disclosed.
+        Text(
+            stringResource(R.string.ai_group_analyze),
+            color = OnBg,
+            fontWeight = FontWeight.Medium,
+            fontSize = 12.sp
+        )
+
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            AiStudyMode.entries.forEach { mode ->
+            AiStudyMode.entries.filter { !it.isCreative() }.forEach { mode ->
                 val justCopied = lastCopiedId == mode.name
                 AssistChip(
                     onClick = { copyMode(mode) },
                     label = {
                         Text(
-                            if (justCopied) {
-                                stringResource(R.string.copied_to_clipboard)
-                            } else {
-                                mode.chipLabel(context)
-                            },
+                            if (justCopied) stringResource(R.string.copied_to_clipboard)
+                            else mode.chipLabel(context),
                             fontSize = 12.sp,
                             maxLines = 1,
                             softWrap = false
                         )
                     },
                     colors = AssistChipDefaults.assistChipColors(
-                        containerColor = if (justCopied) {
-                            Accent.copy(alpha = 0.28f)
-                        } else {
-                            Color(0xFF1A2333)
-                        },
+                        containerColor = if (justCopied) Accent.copy(alpha = 0.28f)
+                        else KlipNeutrals.Card,
                         labelColor = if (justCopied) Accent else OnBg
                     )
                 )
+            }
+        }
+
+        val creativeModes = AiStudyMode.entries.filter { it.isCreative() }
+        OutlinedButton(
+            onClick = { showCreativeActions = !showCreativeActions },
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = OnBg)
+        ) {
+            Text(
+                "${stringResource(R.string.ai_group_create)} (${creativeModes.size})",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+                maxLines = 2
+            )
+            Icon(
+                imageVector = if (showCreativeActions) Icons.Default.ExpandLess
+                else Icons.Default.ExpandMore,
+                contentDescription = if (showCreativeActions)
+                    stringResource(R.string.ai_hide_creative)
+                else stringResource(R.string.ai_show_creative),
+                tint = OnBg
+            )
+        }
+
+        if (showCreativeActions) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                creativeModes.forEach { mode ->
+                    val justCopied = lastCopiedId == mode.name
+                    AssistChip(
+                        onClick = { copyMode(mode) },
+                        label = {
+                            Text(
+                                if (justCopied) stringResource(R.string.copied_to_clipboard)
+                                else mode.chipLabel(context),
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        },
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = if (justCopied) Accent.copy(alpha = 0.28f)
+                            else KlipNeutrals.Card,
+                            labelColor = if (justCopied) Accent else OnBg
+                        )
+                    )
+                }
             }
         }
 
@@ -2244,13 +2322,7 @@ private fun AiStudyActionsSection(
                 TextButton(
                     onClick = {
                         val sendText = prompt ?: return@TextButton
-                        val send = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, sendText)
-                        }
-                        context.startActivity(
-                            Intent.createChooser(send, context.getString(R.string.send_to_ai))
-                        )
+                        openAiChooser(sendText)
                     }
                 ) {
                     Text(stringResource(R.string.send_to_ai), color = Accent, fontSize = 12.sp)

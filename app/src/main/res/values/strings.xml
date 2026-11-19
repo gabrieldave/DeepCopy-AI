@@ -393,46 +393,20 @@
     <string name="scripts_clear_confirm_body">All transcripts saved on this phone will be deleted.</string>
     <string name="scripts_search_empty">No transcript matches the search.</string>
     <string name="scripts_count">%1$d transcripts</string>
-    <string name="ai_study_title">✨ Study with AI</string>
-    <string name="ai_output_spanish">🌐 Output: Spanish</string>
-    <string name="ai_output_video_lang">🎞️ Video language</string>
     <string name="diarize_speaker_line">[Voice %1$d]:</string>
 
-    <!-- AI study modes -->
+    <!-- AI study modes (labels; prompt bodies live in AiStudyPrompts.kt) -->
     <string name="ai_chip_summary">📝 Summary</string>
     <string name="ai_chip_brief">📋 Brief</string>
     <string name="ai_chip_infographic">📊 Infographic</string>
-    <string name="ai_chip_study_guide">📚 Study guide</string>
-    <string name="ai_chip_quiz">❓ Quiz</string>
     <string name="ai_chip_flashcards">🃏 Flashcards</string>
-    <string name="ai_chip_outline">🗂 Outline</string>
     <string name="ai_chip_clean_script">✨ Clean script</string>
     <string name="ai_mode_summary">Summary</string>
     <string name="ai_mode_brief">Brief</string>
     <string name="ai_mode_infographic">Infographic</string>
-    <string name="ai_mode_study_guide">Study guide</string>
-    <string name="ai_mode_quiz">Quiz</string>
     <string name="ai_mode_flashcards">Flashcards</string>
-    <string name="ai_mode_outline">Outline</string>
     <string name="ai_mode_clean_script">Clean script</string>
-    <string name="ai_master_all_label">All in one · Launch all 8 super-prompts</string>
-    <string name="ai_master_all_mode_name">All in one</string>
-    <string name="ai_prompt_source_header">--- SOURCE ---</string>
-    <string name="ai_prompt_transcript_header">--- FULL TRANSCRIPT ---</string>
-    <string name="ai_prompt_language_rule_es">RESPONSE LANGUAGE: Faithfully analyze the original transcript (even if it is in English or another language) and deliver ALL results in clear, professional Spanish.</string>
-    <string name="ai_prompt_language_rule_same">RESPONSE LANGUAGE: Reply in the same language as the transcript.</string>
-    <string name="ai_prompt_language_rule_en">RESPONSE LANGUAGE: Faithfully analyze the original transcript (even if it is in another language) and deliver ALL results in clear, professional English.</string>
-
-    <!-- AI intents (English bodies for default locale) -->
-    <string name="ai_intent_summary">You are an expert editor. Produce a clear, faithful summary of the transcript below. Keep the author’s intent. Use short paragraphs and bullet points when helpful.\n\n%1$s\n\n%2$s\n%3$s\n\n%4$s</string>
-    <string name="ai_intent_brief">You are a briefing specialist. Turn the transcript into an executive brief: context, key points, decisions, and next steps if any.\n\n%1$s\n\n%2$s\n%3$s\n\n%4$s</string>
-    <string name="ai_intent_infographic">You are a visual content designer. Propose an infographic structure from the transcript: title, sections, short labels, and suggested icons or data callouts (describe them in text).\n\n%1$s\n\n%2$s\n%3$s\n\n%4$s</string>
-    <string name="ai_intent_study_guide">You are a teacher. Build a study guide from the transcript: learning goals, key concepts, explanations, and a short glossary.\n\n%1$s\n\n%2$s\n%3$s\n\n%4$s</string>
-    <string name="ai_intent_quiz">You are an examiner. Create a quiz from the transcript (multiple choice and short answer) with an answer key at the end.\n\n%1$s\n\n%2$s\n%3$s\n\n%4$s</string>
-    <string name="ai_intent_flashcards">You are a study coach. Create flashcards (front/back) covering the main ideas in the transcript.\n\n%1$s\n\n%2$s\n%3$s\n\n%4$s</string>
-    <string name="ai_intent_outline">You are an organizer. Produce a hierarchical outline of the transcript with clear headings and subpoints.\n\n%1$s\n\n%2$s\n%3$s\n\n%4$s</string>
-    <string name="ai_intent_clean_script">You are a transcript cleaner. Produce a clean, readable script: fix obvious STT errors, keep meaning, mark speakers if present, remove filler when it does not add meaning.\n\n%1$s\n\n%2$s\n%3$s\n\n%4$s</string>
-    <string name="ai_intent_master_all_8">You are a multi-format study assistant. Using ONE transcript, produce ALL of the following sections with clear headings: 1) Summary 2) Brief 3) Infographic plan 4) Study guide 5) Quiz + answers 6) Flashcards 7) Outline 8) Clean script.\n\n%1$s\n\n%2$s\n%3$s\n\n%4$s</string>
+    <string name="ai_master_all_label">8 in 1 · Create all 8 results</string>
 
     <!-- Client empty-key / misc user errors -->
     <string name="error_groq_key_empty">Groq API key is empty</string>
@@ -562,7 +536,7 @@
     <string name="site_fallback">The site</string>
     <string name="skip">Skip</string>
     <string name="start">Start</string>
-    <string name="study_with_ai">✨ Study with AI</string>
+    <string name="study_with_ai">✨ Study and create with AI</string>
     <string name="technical_detail">Technical detail: %1$s</string>
     <string name="test_service_manual">Try one service manually</string>
     <string name="testing_provider_short">Trying: %1$s</string>
@@ -634,4 +608,26 @@
     <string name="download_apk">Download APK</string>
     <string name="update_up_to_date">You\'re up to date</string>
     <string name="update_check_failed">Couldn\'t check for updates. Check your connection and try again.</string>
+
+    <!-- 2026 AI actions: output artifacts, not plans -->
+    <string name="ai_chip_website">🌐 HTML website</string>
+    <string name="ai_mode_website">HTML website</string>
+    <string name="ai_chip_interactive">🎮 Interactive app</string>
+    <string name="ai_mode_interactive">Interactive app</string>
+    <string name="ai_chip_dashboard">📊 Live dashboard</string>
+    <string name="ai_mode_dashboard">Interactive dashboard</string>
+    <string name="ai_chip_slides">🖥️ Visual slides</string>
+    <string name="ai_mode_slides">Visual slides</string>
+    <string name="ai_chip_timeline">🕒 Timeline</string>
+    <string name="ai_mode_timeline">Timeline</string>
+    <string name="ai_chip_podcast">🎧 Audio / podcast</string>
+    <string name="ai_mode_podcast">Audio / podcast</string>
+    <string name="ai_chip_checklist">✅ Interactive checklist</string>
+    <string name="ai_mode_checklist">Interactive checklist</string>
+    <string name="ai_group_analyze">Understand and study</string>
+    <string name="ai_group_create">Create visuals and interactive tools</string>
+    <string name="ai_button_hint">Tap an action to open your AI app. The complete prompt is copied too.</string>
+    <string name="ai_share_unavailable">The prompt was copied. Open your AI app and paste it.</string>
+    <string name="ai_show_creative">Show visual tools</string>
+    <string name="ai_hide_creative">Hide visual tools</string>
 </resources>
