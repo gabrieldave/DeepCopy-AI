@@ -1,5 +1,10 @@
 # Changelog — KlipNote
 
+## 1.7.1
+
+- Ajustes: **Check for updates / Buscar actualizaciones** (consulta GitHub Releases latest y abre el APK en el navegador).
+- Notas de Release bilingües (EN + ES) en el workflow de build.
+
 ## 1.7.0
 
 - **i18n:** inglés por defecto (`values/`) + español (`values-es/`); selector **App language** en Ajustes (sistema / English / Español), aparte del idioma de transcripción.

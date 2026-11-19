@@ -624,4 +624,14 @@
     <string name="error_groq_size_skip">File &gt;24 MB → skipping to next tier</string>
     <string name="error_inworld_size_skip">File &gt;15 MB (Inworld sync ~16 MiB limit) → skipping to next tier</string>
     <string name="error_codec_unsupported">Codec not supported by muxer: %1$s</string>
+
+    <!-- App update check (Settings) -->
+    <string name="check_for_updates">Check for updates</string>
+    <string name="check_for_updates_subtitle">Current version v%1$s</string>
+    <string name="check_for_updates_checking">Checking…</string>
+    <string name="update_available_title">Update available</string>
+    <string name="update_available_body">Version %1$s is ready to download.</string>
+    <string name="download_apk">Download APK</string>
+    <string name="update_up_to_date">You\'re up to date</string>
+    <string name="update_check_failed">Couldn\'t check for updates. Check your connection and try again.</string>
 </resources>

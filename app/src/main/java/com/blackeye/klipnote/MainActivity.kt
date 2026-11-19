@@ -2679,6 +2679,8 @@ private fun MotoresTab(
             onThemeIdChange = onThemeIdChange
         )
 
+        CheckForUpdatesSection()
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -2843,9 +2845,123 @@ private fun MotoresTab(
 }
 
 @Composable
+private fun CheckForUpdatesSection() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var checking by remember { mutableStateOf(false) }
+    var dialog by remember { mutableStateOf<UpdateChecker.Result?>(null) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Card)
+            .clickable(enabled = !checking) {
+                checking = true
+                scope.launch {
+                    val result = UpdateChecker.checkLatest(BuildConfig.VERSION_NAME)
+                    checking = false
+                    dialog = result
+                }
+            }
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            if (checking) {
+                stringResource(R.string.check_for_updates_checking)
+            } else {
+                stringResource(R.string.check_for_updates)
+            },
+            color = OnBg,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 15.sp
+        )
+        Text(
+            stringResource(R.string.check_for_updates_subtitle, BuildConfig.VERSION_NAME),
+            color = Muted,
+            fontSize = 12.sp
+        )
+    }
+
+    when (val state = dialog) {
+        is UpdateChecker.Result.UpdateAvailable -> {
+            AlertDialog(
+                onDismissRequest = { dialog = null },
+                containerColor = Card,
+                titleContentColor = OnBg,
+                textContentColor = OnBg,
+                title = { Text(stringResource(R.string.update_available_title), fontWeight = FontWeight.Bold) },
+                text = {
+                    Text(
+                        stringResource(R.string.update_available_body, state.versionName),
+                        color = Muted,
+                        fontSize = 14.sp
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            dialog = null
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(state.downloadUrl))
+                                )
+                            }
+                        }
+                    ) {
+                        Text(stringResource(R.string.download_apk), color = Accent)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { dialog = null }) {
+                        Text(stringResource(R.string.action_cancel), color = Muted)
+                    }
+                }
+            )
+        }
+        UpdateChecker.Result.UpToDate -> {
+            AlertDialog(
+                onDismissRequest = { dialog = null },
+                containerColor = Card,
+                titleContentColor = OnBg,
+                textContentColor = OnBg,
+                title = { Text(stringResource(R.string.check_for_updates), fontWeight = FontWeight.Bold) },
+                text = {
+                    Text(stringResource(R.string.update_up_to_date), color = Muted, fontSize = 14.sp)
+                },
+                confirmButton = {
+                    TextButton(onClick = { dialog = null }) {
+                        Text(stringResource(R.string.help_got_it), color = Accent)
+                    }
+                }
+            )
+        }
+        UpdateChecker.Result.Failed -> {
+            AlertDialog(
+                onDismissRequest = { dialog = null },
+                containerColor = Card,
+                titleContentColor = OnBg,
+                textContentColor = OnBg,
+                title = { Text(stringResource(R.string.check_for_updates), fontWeight = FontWeight.Bold) },
+                text = {
+                    Text(stringResource(R.string.update_check_failed), color = Muted, fontSize = 14.sp)
+                },
+                confirmButton = {
+                    TextButton(onClick = { dialog = null }) {
+                        Text(stringResource(R.string.help_got_it), color = Accent)
+                    }
+                }
+            )
+        }
+        null -> Unit
+    }
+}
+
+@Composable
 private fun AppLanguageSection() {
     val context = LocalContext.current
-  val saved = remember { mutableStateOf(AppLocales.getSavedTag(context)) }
+    val saved = remember { mutableStateOf(AppLocales.getSavedTag(context)) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
