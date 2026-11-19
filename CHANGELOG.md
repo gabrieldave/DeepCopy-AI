@@ -1,5 +1,15 @@
 # Changelog — KlipNote
 
+## 1.7.2
+
+- **IA con entregables directos:** 16 acciones en inglés y español. Infografía visual, diagramas, web HTML, miniapp, panel interactivo, presentación, línea de tiempo, tarjetas, pódcast y checklist.
+- **8 en 1 corregido:** ocho entregables enumerados. Solicita imagen o SVG, diagramas y guion limpio, no indicaciones vagas.
+- **Enviar al primer toque:** cada botón copia la instrucción completa y abre el selector Android de aplicaciones de IA.
+- **Interfaz sin saturación:** seis acciones básicas visibles y diez herramientas visuales agrupadas en un desplegable.
+- **Pruebas de contrato:** cobertura JVM para 16 modos, entregables 8 en 1, infografía y HTML.
+- **Licencias:** archivo de avisos para componentes y requisitos pendientes de auditoría del APK, sin alterar la compilación o las llaves.
+
+
 ## 1.7.1
 
 - Ajustes: **Check for updates / Buscar actualizaciones** (consulta GitHub Releases latest y abre el APK en el navegador).
