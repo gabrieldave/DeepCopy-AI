@@ -49,8 +49,6 @@ We don’t promise “free forever”: each company sets its own offers and **th
 2. Open it on your phone. Allow installs from unknown sources if Android asks.
 3. To **update**, install the new APK over the old one — keys and transcripts should stay.
 
-Current Latest: **v1.6.0**.
-
 ---
 
 ## 🚀 How it works

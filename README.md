@@ -49,8 +49,6 @@ No prometemos «gratis para siempre»: las ofertas las pone cada empresa y **pue
 2. Ábrelo en el teléfono. Si Android pide permiso, permite instalar apps de orígenes desconocidos.
 3. Para **actualizar**, instala el APK nuevo encima: no deberías perder llaves ni guiones.
 
-Versión actual (Latest): **v1.6.0**.
-
 ---
 
 ## 🚀 Cómo funciona
