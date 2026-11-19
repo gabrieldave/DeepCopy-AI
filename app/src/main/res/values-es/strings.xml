@@ -374,44 +374,20 @@
     <string name="scripts_clear_confirm_body">Se eliminarán todos los guiones guardados en este teléfono.</string>
     <string name="scripts_search_empty">Ningún guion coincide con la búsqueda.</string>
     <string name="scripts_count">%1$d guiones</string>
-    <string name="ai_study_title">✨ Estudiar con IA</string>
-    <string name="ai_output_spanish">🌐 Salida: Español</string>
-    <string name="ai_output_video_lang">🎞️ Idioma del video</string>
     <string name="diarize_speaker_line">[Voz %1$d]:</string>
 
+    <!-- Modos IA (etiquetas; cuerpos del prompt en AiStudyPrompts.kt) -->
     <string name="ai_chip_summary">📝 Resumen</string>
     <string name="ai_chip_brief">📋 Brief</string>
     <string name="ai_chip_infographic">📊 Infografía</string>
-    <string name="ai_chip_study_guide">📚 Guía de estudio</string>
-    <string name="ai_chip_quiz">❓ Quiz</string>
     <string name="ai_chip_flashcards">🃏 Flashcards</string>
-    <string name="ai_chip_outline">🗂 Esquema</string>
     <string name="ai_chip_clean_script">✨ Guion limpio</string>
     <string name="ai_mode_summary">Resumen</string>
     <string name="ai_mode_brief">Brief</string>
     <string name="ai_mode_infographic">Infografía</string>
-    <string name="ai_mode_study_guide">Guía de estudio</string>
-    <string name="ai_mode_quiz">Quiz</string>
     <string name="ai_mode_flashcards">Flashcards</string>
-    <string name="ai_mode_outline">Esquema</string>
     <string name="ai_mode_clean_script">Guion limpio</string>
     <string name="ai_master_all_label">8 en 1 · Crea los 8 resultados</string>
-    <string name="ai_master_all_mode_name">Todo en 1</string>
-    <string name="ai_prompt_source_header">--- FUENTE ---</string>
-    <string name="ai_prompt_transcript_header">--- TRANSCRIPCIÓN COMPLETA ---</string>
-    <string name="ai_prompt_language_rule_es">IDIOMA DE RESPUESTA: Analiza fielmente la transcripción original (aunque esté en inglés u otro idioma) y entrega TODO el resultado en español claro y profesional.</string>
-    <string name="ai_prompt_language_rule_same">IDIOMA DE RESPUESTA: Responde en el mismo idioma de la transcripción.</string>
-    <string name="ai_prompt_language_rule_en">IDIOMA DE RESPUESTA: Analiza fielmente la transcripción original (aunque esté en otro idioma) y entrega TODO el resultado en inglés claro y profesional.</string>
-
-    <string name="ai_intent_summary">Eres un editor experto. Produce un resumen claro y fiel de la transcripción. Mantén la intención del autor. Usa párrafos cortos y viñetas cuando ayuden.\n\n%1$s\n\n%2$s\n%3$s\n\n%4$s</string>
-    <string name="ai_intent_brief">Eres especialista en briefings. Convierte la transcripción en un brief ejecutivo: contexto, puntos clave, decisiones y siguientes pasos si los hay.\n\n%1$s\n\n%2$s\n%3$s\n\n%4$s</string>
-    <string name="ai_intent_infographic">Eres diseñador de contenido visual. Propón la estructura de una infografía a partir de la transcripción: título, secciones, etiquetas cortas e iconos o datos sugeridos (descríbelos en texto).\n\n%1$s\n\n%2$s\n%3$s\n\n%4$s</string>
-    <string name="ai_intent_study_guide">Eres docente. Arma una guía de estudio: objetivos, conceptos clave, explicaciones y un glosario corto.\n\n%1$s\n\n%2$s\n%3$s\n\n%4$s</string>
-    <string name="ai_intent_quiz">Eres examinador. Crea un quiz (opción múltiple y respuesta corta) con clave de respuestas al final.\n\n%1$s\n\n%2$s\n%3$s\n\n%4$s</string>
-    <string name="ai_intent_flashcards">Eres coach de estudio. Crea flashcards (frente/reverso) con las ideas principales.\n\n%1$s\n\n%2$s\n%3$s\n\n%4$s</string>
-    <string name="ai_intent_outline">Eres organizador. Produce un esquema jerárquico con títulos y subpuntos claros.\n\n%1$s\n\n%2$s\n%3$s\n\n%4$s</string>
-    <string name="ai_intent_clean_script">Eres limpiador de transcripciones. Entrega un guion limpio y legible: corrige errores obvios de STT, mantén el sentido, marca voces si hay, quita muletillas cuando no aporten.\n\n%1$s\n\n%2$s\n%3$s\n\n%4$s</string>
-    <string name="ai_intent_master_all_8">Eres un asistente de estudio multi-formato. Con UNA transcripción, produce TODAS estas secciones con títulos claros: 1) Resumen 2) Brief 3) Plan de infografía 4) Guía de estudio 5) Quiz + respuestas 6) Flashcards 7) Esquema 8) Guion limpio.\n\n%1$s\n\n%2$s\n%3$s\n\n%4$s</string>
 
     <string name="error_groq_key_empty">API Key Groq vacía</string>
     <string name="error_inworld_key_empty">API Key Inworld vacía</string>
@@ -427,14 +403,14 @@
     <string name="ai_chip_build_prompt">🛠 Armar prompt</string>
     <string name="ai_chip_diagrams">📐 Diagramas</string>
     <string name="ai_chip_research">🔎 Investigar</string>
-    <string name="ai_chip_study_quiz">📘 Estudiar + quiz</string>
+    <string name="ai_chip_study_quiz">📘 Lección + quiz</string>
     <string name="ai_language_rule_es">IDIOMA DE RESPUESTA: Analiza fielmente la transcripción original (aunque esté en inglés u otro idioma) y entrega TODO el resultado en español claro y profesional.</string>
     <string name="ai_language_rule_match">IDIOMA DE RESPUESTA: Responde en el mismo idioma de la transcripción.</string>
     <string name="ai_master_all_mode">Todo en 1</string>
     <string name="ai_mode_build_prompt">Armar prompt</string>
     <string name="ai_mode_diagrams">Diagramas</string>
     <string name="ai_mode_research">Investigar</string>
-    <string name="ai_mode_study_quiz">Estudiar + quiz</string>
+    <string name="ai_mode_study_quiz">Lección + quiz</string>
     <string name="ai_source_header">--- FUENTE ---</string>
     <string name="ai_transcript_header">--- TRANSCRIPCIÓN COMPLETA ---</string>
     <string name="allow">Permitir</string>

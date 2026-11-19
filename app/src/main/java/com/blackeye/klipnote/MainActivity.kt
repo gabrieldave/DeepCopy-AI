@@ -2170,7 +2170,7 @@ private fun AiStudyActionsSection(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF0F1623))
+            .background(KlipNeutrals.ChipBg)
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -2241,7 +2241,7 @@ private fun AiStudyActionsSection(
                     },
                     colors = AssistChipDefaults.assistChipColors(
                         containerColor = if (justCopied) Accent.copy(alpha = 0.28f)
-                        else Color(0xFF1A2333),
+                        else KlipNeutrals.Card,
                         labelColor = if (justCopied) Accent else OnBg
                     )
                 )
@@ -2293,7 +2293,7 @@ private fun AiStudyActionsSection(
                         },
                         colors = AssistChipDefaults.assistChipColors(
                             containerColor = if (justCopied) Accent.copy(alpha = 0.28f)
-                            else Color(0xFF1A2333),
+                            else KlipNeutrals.Card,
                             labelColor = if (justCopied) Accent else OnBg
                         )
                     )

@@ -66,4 +66,34 @@ class AiStudyPromptsTest {
         assertTrue(AiStudyPrompts.intentFor(AiStudyMode.INFOGRAPHIC, true)
             .contains("NUNCA entregues un prompt"))
     }
+
+    @Test
+    fun diagramsRequestCompleteMermaidOrSvgArtifacts() {
+        val spanish = AiStudyPrompts.intentFor(AiStudyMode.DIAGRAMS, true)
+        val english = AiStudyPrompts.intentFor(AiStudyMode.DIAGRAMS, false)
+        assertTrue(spanish.contains("Mermaid"))
+        assertTrue(spanish.contains("SVG"))
+        assertTrue(english.contains("Mermaid"))
+        assertTrue(english.contains("SVG"))
+        assertTrue(AiStudyMode.DIAGRAMS.isCreative())
+    }
+
+    @Test
+    fun creativeAndPrimaryCountsMatchUiContract() {
+        val primary = AiStudyMode.entries.filter { !it.isCreative() }
+        val creative = AiStudyMode.entries.filter { it.isCreative() }
+        assertEquals(6, primary.size)
+        assertEquals(10, creative.size)
+        assertEquals(
+            setOf(
+                AiStudyMode.SUMMARY,
+                AiStudyMode.BRIEF,
+                AiStudyMode.DEEP_RESEARCH,
+                AiStudyMode.BUILD_PROMPT,
+                AiStudyMode.STUDY_QUIZ,
+                AiStudyMode.CLEAN_SCRIPT
+            ),
+            primary.toSet()
+        )
+    }
 }
