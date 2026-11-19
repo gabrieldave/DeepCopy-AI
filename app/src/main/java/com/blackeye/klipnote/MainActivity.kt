@@ -1035,6 +1035,7 @@ private fun KlipNoteApp(
                             transcriptEntries = TranscriptHistoryStore.clear(context)
                             expandedGuionId = null
                         },
+                        onEntriesChanged = { transcriptEntries = it },
                         onGoToCapturar = { selectedTab = MainTab.Capturar }
                     )
                 }
@@ -2345,9 +2346,11 @@ private fun GuionesTab(
     onOpenLink: (String) -> Unit,
     onDelete: (String) -> Unit,
     onClearAll: () -> Unit,
+    onEntriesChanged: (List<TranscriptHistoryStore.Entry>) -> Unit = {},
     onGoToCapturar: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val filtered = remember(entries, search) {
         val q = search.trim().lowercase()
         if (q.isBlank()) entries
@@ -2363,38 +2366,154 @@ private fun GuionesTab(
     var menuOpen by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
 
-    if (entries.isEmpty()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(
-                Icons.Default.Description,
-                contentDescription = null,
-                tint = Accent.copy(alpha = 0.85f),
-                modifier = Modifier.size(72.dp)
-            )
-            Spacer(Modifier.height(16.dp))
-            Text(
-                stringResource(R.string.scripts_empty),
-                color = OnBg,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 16.sp,
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = onGoToCapturar,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Accent,
-                    contentColor = OnAccent
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    val json = TranscriptBackup.exportJson(entries)
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        out.write(json.toByteArray(Charsets.UTF_8))
+                    }
+                    true
+                }.getOrDefault(false)
+            }
+            Toast.makeText(
+                context,
+                context.getString(
+                    if (ok) R.string.scripts_export_ok else R.string.scripts_export_failed
                 ),
-                shape = RoundedCornerShape(12.dp)
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val added = withContext(Dispatchers.IO) {
+                runCatching {
+                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: return@runCatching -1
+                    TranscriptBackup.importInto(context, bytes)
+                }.getOrDefault(-1)
+            }
+            if (added < 0) {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.scripts_import_failed),
+                    Toast.LENGTH_SHORT
+                ).show()
+            } else {
+                onEntriesChanged(TranscriptHistoryStore.load(context))
+                Toast.makeText(
+                    context,
+                    if (added == 0) {
+                        context.getString(R.string.scripts_import_none)
+                    } else {
+                        context.getString(R.string.scripts_import_ok, added)
+                    },
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            containerColor = Card,
+            titleContentColor = OnBg,
+            textContentColor = OnBg,
+            title = { Text(stringResource(R.string.clear_all_history_title)) },
+            text = { Text(stringResource(R.string.scripts_clear_confirm_body), color = Muted) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmClear = false
+                    onClearAll()
+                }) { Text(stringResource(R.string.delete), color = KlipNeutrals.Red) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClear = false }) {
+                    Text(stringResource(R.string.cancel), color = Muted)
+                }
+            }
+        )
+    }
+
+    if (entries.isEmpty()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.End
             ) {
-                Text(stringResource(R.string.go_to_capture), fontWeight = FontWeight.SemiBold)
+                Box {
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(
+                            Icons.Default.MoreVert,
+                            contentDescription = stringResource(R.string.cd_more),
+                            tint = Muted
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = menuOpen,
+                        onDismissRequest = { menuOpen = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.scripts_export), color = OnBg) },
+                            onClick = {
+                                menuOpen = false
+                                exportLauncher.launch(TranscriptBackup.FILE_NAME)
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.scripts_import), color = OnBg) },
+                            onClick = {
+                                menuOpen = false
+                                importLauncher.launch(arrayOf("application/json", "*/*"))
+                            }
+                        )
+                    }
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    Icons.Default.Description,
+                    contentDescription = null,
+                    tint = Accent.copy(alpha = 0.85f),
+                    modifier = Modifier.size(72.dp)
+                )
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    stringResource(R.string.scripts_empty),
+                    color = OnBg,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = onGoToCapturar,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Accent,
+                        contentColor = OnAccent
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(stringResource(R.string.go_to_capture), fontWeight = FontWeight.SemiBold)
+                }
             }
         }
         return
@@ -2433,12 +2552,30 @@ private fun GuionesTab(
             )
             Box {
                 IconButton(onClick = { menuOpen = true }) {
-                    Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.cd_more), tint = Muted)
+                    Icon(
+                        Icons.Default.MoreVert,
+                        contentDescription = stringResource(R.string.cd_more),
+                        tint = Muted
+                    )
                 }
                 DropdownMenu(
                     expanded = menuOpen,
                     onDismissRequest = { menuOpen = false }
                 ) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.scripts_export), color = OnBg) },
+                        onClick = {
+                            menuOpen = false
+                            exportLauncher.launch(TranscriptBackup.FILE_NAME)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.scripts_import), color = OnBg) },
+                        onClick = {
+                            menuOpen = false
+                            importLauncher.launch(arrayOf("application/json", "*/*"))
+                        }
+                    )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.clear_history), color = KlipNeutrals.Red) },
                         onClick = {
@@ -2448,27 +2585,6 @@ private fun GuionesTab(
                     )
                 }
             }
-        }
-        if (confirmClear) {
-            AlertDialog(
-                onDismissRequest = { confirmClear = false },
-                containerColor = Card,
-                titleContentColor = OnBg,
-                textContentColor = OnBg,
-                title = { Text(stringResource(R.string.clear_all_history_title)) },
-                text = { Text(stringResource(R.string.scripts_clear_confirm_body), color = Muted) },
-                confirmButton = {
-                    TextButton(onClick = {
-                        confirmClear = false
-                        onClearAll()
-                    }) { Text(stringResource(R.string.delete), color = KlipNeutrals.Red) }
-                },
-                dismissButton = {
-                    TextButton(onClick = { confirmClear = false }) {
-                        Text(stringResource(R.string.cancel), color = Muted)
-                    }
-                }
-            )
         }
         if (filtered.isEmpty()) {
             Box(

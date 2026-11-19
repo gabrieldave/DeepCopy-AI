@@ -258,6 +258,27 @@
     <!-- Keys dialog -->
     <string name="keys_dialog_title">My keys</string>
     <string name="keys_dialog_intro">Everyone adds their own keys. They are encrypted and stay only on this phone. You don’t need all 5: one is enough, and the app uses free ones first.</string>
+    <string name="keys_export">Export keys</string>
+    <string name="keys_import">Import keys</string>
+    <string name="keys_backup_password_title">Backup password</string>
+    <string name="keys_backup_password_body">Choose a password of at least 8 characters. You will need it to open this file on another phone.</string>
+    <string name="keys_backup_password_confirm">Type the password again</string>
+    <string name="keys_backup_password_hint">Password</string>
+    <string name="keys_backup_import_title">Open keys backup</string>
+    <string name="keys_backup_import_body">Enter the password for this backup. Your keys stay on this phone and are never shown in full.</string>
+    <string name="keys_backup_weak_password">Use at least 8 characters.</string>
+    <string name="keys_backup_password_mismatch">Passwords do not match.</string>
+    <string name="keys_backup_bad_password">Wrong password or damaged file.</string>
+    <string name="keys_backup_export_ok">Keys backup saved.</string>
+    <string name="keys_backup_import_ok">Keys restored on this phone.</string>
+    <string name="keys_backup_failed">Could not finish the backup.</string>
+    <string name="scripts_export">Export scripts</string>
+    <string name="scripts_import">Import scripts</string>
+    <string name="scripts_export_ok">Scripts backup saved.</string>
+    <string name="scripts_export_failed">Could not save the scripts backup.</string>
+    <string name="scripts_import_ok">Added %1$d new script(s).</string>
+    <string name="scripts_import_none">No new scripts to add.</string>
+    <string name="scripts_import_failed">Could not read that scripts file.</string>
     <string name="keys_how_get_key">How do I get my key?</string>
     <string name="keys_get_my_key">Get my key</string>
     <string name="keys_how">How?</string>

@@ -1,5 +1,12 @@
 # Changelog — KlipNote
 
+## 1.8.0
+
+- **Encrypted keys backup:** export/import from Settings → My keys with a password (PBKDF2 + AES-GCM). File `.knbackup`; never includes cookies or scripts.
+- **Scripts backup (separate):** export/import UTF-8 JSON from the Guiones ⋮ menu; import merges by ID (no duplicates) and reports how many new scripts were added.
+- **ES — Respaldo cifrado de llaves:** exportar/importar desde Ajustes → Mis llaves con contraseña (PBKDF2 + AES-GCM). Archivo `.knbackup`; nunca incluye cookies ni guiones.
+- **ES — Respaldo separado de guiones:** exportar/importar JSON UTF-8 desde el menú ⋮ de Guiones; al importar fusiona por ID (sin duplicar) e indica cuántos guiones nuevos se añadieron.
+
 ## 1.7.5
 
 - **UX / a11y (P3):** minimum secondary text at 12 sp; more UI neutrals centralized in `KlipNeutrals`; expand/collapse icons get content descriptions.

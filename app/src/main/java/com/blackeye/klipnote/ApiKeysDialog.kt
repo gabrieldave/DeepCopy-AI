@@ -5,6 +5,9 @@ import com.blackeye.klipnote.ui.KlipPalette
 
 import android.content.ClipboardManager
 import android.content.Context
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
@@ -56,7 +60,6 @@ import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
@@ -69,6 +72,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
 
 private val CardBg get() = KlipNeutrals.Card
 private val Accent get() = KlipPalette.accent
@@ -126,6 +130,59 @@ fun MultiProviderKeysDialog(
 
     var projectAutoLinked by remember { mutableStateOf(false) }
     var projectLinking by remember { mutableStateOf(false) }
+
+    var showExportPassword by remember { mutableStateOf(false) }
+    var showImportPassword by remember { mutableStateOf(false) }
+    var exportPassword by remember { mutableStateOf("") }
+    var exportPasswordConfirm by remember { mutableStateOf("") }
+    var importPassword by remember { mutableStateOf("") }
+    var pendingExportBytes by remember { mutableStateOf<ByteArray?>(null) }
+    var pendingImportBytes by remember { mutableStateOf<ByteArray?>(null) }
+    var passwordError by remember { mutableStateOf<String?>(null) }
+
+    val createBackupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        val bytes = pendingExportBytes
+        pendingExportBytes = null
+        if (uri == null || bytes == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                    true
+                }.getOrDefault(false)
+            }
+            Toast.makeText(
+                context,
+                context.getString(
+                    if (ok) R.string.keys_backup_export_ok else R.string.keys_backup_failed
+                ),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    val openBackupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val bytes = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                }.getOrNull()
+            }
+            if (bytes == null || bytes.isEmpty()) {
+                Toast.makeText(context, context.getString(R.string.keys_backup_failed), Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            pendingImportBytes = bytes
+            importPassword = ""
+            passwordError = null
+            showImportPassword = true
+        }
+    }
 
     fun notifyChanged() = onChanged()
 
@@ -311,21 +368,182 @@ fun MultiProviderKeysDialog(
                     )
                 }
                 HorizontalDivider(color = BorderSubtle)
-                Button(
-                    onClick = { dismissFlushing() },
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Accent,
-                        contentColor = OnAccent
-                    ),
-                    shape = RoundedCornerShape(12.dp)
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(stringResource(R.string.ready), fontWeight = FontWeight.SemiBold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        TextButton(
+                            onClick = {
+                                exportPassword = ""
+                                exportPasswordConfirm = ""
+                                passwordError = null
+                                showExportPassword = true
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(stringResource(R.string.keys_export), color = Muted, fontSize = 12.sp)
+                        }
+                        TextButton(
+                            onClick = {
+                                openBackupLauncher.launch(arrayOf("application/octet-stream", "*/*"))
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(stringResource(R.string.keys_import), color = Muted, fontSize = 12.sp)
+                        }
+                    }
+                    Button(
+                        onClick = { dismissFlushing() },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Accent,
+                            contentColor = OnAccent
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(stringResource(R.string.ready), fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }
+    }
+
+    if (showExportPassword) {
+        AlertDialog(
+            onDismissRequest = { showExportPassword = false },
+            containerColor = CardBg,
+            titleContentColor = OnBg,
+            textContentColor = OnBg,
+            title = { Text(stringResource(R.string.keys_backup_password_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.keys_backup_password_body), color = Muted, fontSize = 12.sp)
+                    OutlinedTextField(
+                        value = exportPassword,
+                        onValueChange = { exportPassword = it; passwordError = null },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        placeholder = {
+                            Text(stringResource(R.string.keys_backup_password_hint), color = Muted)
+                        },
+                        colors = keysFieldColors()
+                    )
+                    OutlinedTextField(
+                        value = exportPasswordConfirm,
+                        onValueChange = { exportPasswordConfirm = it; passwordError = null },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        placeholder = {
+                            Text(stringResource(R.string.keys_backup_password_confirm), color = Muted)
+                        },
+                        colors = keysFieldColors()
+                    )
+                    passwordError?.let { Text(it, color = Red, fontSize = 12.sp) }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    when (
+                        val outcome = ApiKeyBackup.exportEncrypted(
+                            context,
+                            exportPassword,
+                            exportPasswordConfirm
+                        )
+                    ) {
+                        is ApiKeyBackup.Outcome.Ok -> {
+                            showExportPassword = false
+                            pendingExportBytes = outcome.bytes
+                            createBackupLauncher.launch(ApiKeyBackup.FILE_NAME)
+                        }
+                        ApiKeyBackup.Outcome.WeakPassword ->
+                            passwordError = context.getString(R.string.keys_backup_weak_password)
+                        ApiKeyBackup.Outcome.PasswordMismatch ->
+                            passwordError = context.getString(R.string.keys_backup_password_mismatch)
+                        else ->
+                            passwordError = context.getString(R.string.keys_backup_failed)
+                    }
+                }) {
+                    Text(stringResource(R.string.keys_export), color = Accent)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExportPassword = false }) {
+                    Text(stringResource(R.string.cancel), color = Muted)
+                }
+            }
+        )
+    }
+
+    if (showImportPassword) {
+        AlertDialog(
+            onDismissRequest = {
+                showImportPassword = false
+                pendingImportBytes = null
+            },
+            containerColor = CardBg,
+            titleContentColor = OnBg,
+            textContentColor = OnBg,
+            title = { Text(stringResource(R.string.keys_backup_import_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.keys_backup_import_body), color = Muted, fontSize = 12.sp)
+                    OutlinedTextField(
+                        value = importPassword,
+                        onValueChange = { importPassword = it; passwordError = null },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        placeholder = {
+                            Text(stringResource(R.string.keys_backup_password_hint), color = Muted)
+                        },
+                        colors = keysFieldColors()
+                    )
+                    passwordError?.let { Text(it, color = Red, fontSize = 12.sp) }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val bytes = pendingImportBytes
+                    if (bytes == null) {
+                        showImportPassword = false
+                        return@TextButton
+                    }
+                    when (val outcome = ApiKeyBackup.importEncrypted(context, bytes, importPassword)) {
+                        is ApiKeyBackup.Outcome.Ok -> {
+                            showImportPassword = false
+                            pendingImportBytes = null
+                            notifyChanged()
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.keys_backup_import_ok),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        ApiKeyBackup.Outcome.WeakPassword ->
+                            passwordError = context.getString(R.string.keys_backup_weak_password)
+                        ApiKeyBackup.Outcome.BadPasswordOrCorrupt ->
+                            passwordError = context.getString(R.string.keys_backup_bad_password)
+                        else ->
+                            passwordError = context.getString(R.string.keys_backup_failed)
+                    }
+                }) {
+                    Text(stringResource(R.string.keys_import), color = Accent)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showImportPassword = false
+                    pendingImportBytes = null
+                }) {
+                    Text(stringResource(R.string.cancel), color = Muted)
+                }
+            }
+        )
     }
 }
 

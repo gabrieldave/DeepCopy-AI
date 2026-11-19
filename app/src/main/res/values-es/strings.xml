@@ -242,6 +242,27 @@
 
     <string name="keys_dialog_title">Mis llaves</string>
     <string name="keys_dialog_intro">Cada quien pone sus propias llaves. Se cifran y se quedan solo en este teléfono. No necesitas las 5: con una basta, y la app usa las gratis primero.</string>
+    <string name="keys_export">Exportar llaves</string>
+    <string name="keys_import">Importar llaves</string>
+    <string name="keys_backup_password_title">Contraseña del respaldo</string>
+    <string name="keys_backup_password_body">Elige una contraseña de al menos 8 caracteres. La necesitarás para abrir este archivo en otro teléfono.</string>
+    <string name="keys_backup_password_confirm">Escribe la contraseña otra vez</string>
+    <string name="keys_backup_password_hint">Contraseña</string>
+    <string name="keys_backup_import_title">Abrir respaldo de llaves</string>
+    <string name="keys_backup_import_body">Escribe la contraseña de este respaldo. Tus llaves se quedan en este teléfono y nunca se muestran completas.</string>
+    <string name="keys_backup_weak_password">Usa al menos 8 caracteres.</string>
+    <string name="keys_backup_password_mismatch">Las contraseñas no coinciden.</string>
+    <string name="keys_backup_bad_password">Contraseña incorrecta o archivo dañado.</string>
+    <string name="keys_backup_export_ok">Respaldo de llaves guardado.</string>
+    <string name="keys_backup_import_ok">Llaves restauradas en este teléfono.</string>
+    <string name="keys_backup_failed">No se pudo completar el respaldo.</string>
+    <string name="scripts_export">Exportar guiones</string>
+    <string name="scripts_import">Importar guiones</string>
+    <string name="scripts_export_ok">Respaldo de guiones guardado.</string>
+    <string name="scripts_export_failed">No se pudo guardar el respaldo de guiones.</string>
+    <string name="scripts_import_ok">Se añadieron %1$d guion(es) nuevo(s).</string>
+    <string name="scripts_import_none">No había guiones nuevos que añadir.</string>
+    <string name="scripts_import_failed">No se pudo leer ese archivo de guiones.</string>
     <string name="keys_how_get_key">¿Cómo consigo mi llave?</string>
     <string name="keys_get_my_key">Conseguir mi llave</string>
     <string name="keys_how">¿Cómo?</string>
