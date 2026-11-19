@@ -51,19 +51,30 @@ runtime app code is covered by the rows above.
 
 ## 2. Native binaries — `youtubedl-android` 0.18.1
 
-Upstream / packaging fork used by KlipNote:  
-**[JunkFood02/youtubedl-android](https://github.com/JunkFood02/youtubedl-android)** (`0.18.1`)  
-Maven coordinates: `io.github.junkfood02.youtubedl-android:{library,ffmpeg,aria2c}:0.18.1`  
-Package license (library): **GPL-3.0** — see [LICENSES/GPL-3.0.txt](LICENSES/GPL-3.0.txt).
+**Binary / source tree for the packaged natives** (verified):  
+[yausername/youtubedl-android tag `0.18.1`](https://github.com/yausername/youtubedl-android/tree/0.18.1)  
+Commit: [`d725d5c9a18c3a99a13ee0308bf78275dc310760`](https://github.com/yausername/youtubedl-android/commit/d725d5c9a18c3a99a13ee0308bf78275dc310760)  
+(“Bump version 0.18.1”; annotated tag message: “Release version 0.18.1”).
 
-Historical upstream: [yausername/youtubedl-android](https://github.com/yausername/youtubedl-android).  
-Build/provenance transparency for packaged natives is tracked in
-[youtubedl-android#358](https://github.com/yausername/youtubedl-android/issues/358).
+**Maven publication** (Gradle coordinates used by KlipNote; publisher namespace):  
+`io.github.junkfood02.youtubedl-android:{library,ffmpeg,aria2c}:0.18.1`  
+Credit for that Maven namespace / packaging work: **JunkFood02**  
+(see also [JunkFood02/Seal](https://github.com/JunkFood02/Seal) in §3).  
+Package license (library): **GPL-3.0** — [LICENSES/GPL-3.0.txt](LICENSES/GPL-3.0.txt).
+
+Build/provenance transparency for the *exact* producing inputs of the shipped
+`.so` files is still tracked upstream in
+[youtubedl-android#358](https://github.com/yausername/youtubedl-android/issues/358)
+(open as of this writing).
 
 Verified in KlipNote release intermediates (`libffmpeg.so` / `libaria2c.so`, arm64-v8a):
 
 ### FFmpeg 7.1.1 (`Lavc61.19.101`)
 - License: **GPL-3.0** (build enables GPL codecs).
+- **Official upstream sources for this version (public, no login):**
+  - Release tarball: https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz
+  - Git tag tree: https://github.com/FFmpeg/FFmpeg/tree/n7.1.1
+  - Legal: https://ffmpeg.org/legal.html
 - Configure flags observed in the binary:  
   `--enable-gpl --enable-version3 --enable-gnutls --enable-libx264 --enable-libx265`
   (among others).
@@ -71,7 +82,23 @@ Verified in KlipNote release intermediates (`libffmpeg.so` / `libaria2c.so`, arm
 - Separately, `libavformat` may link **libsrt** / **libssh**, which in this packaging
   reference **`libcrypto.so.3`** (OpenSSL crypto ABI). That is not the same as
   building FFmpeg with `--enable-openssl` as its primary TLS backend.
-- Legal: https://ffmpeg.org/legal.html
+- **Android ARM64 packaging / patches used for the APK binaries:** the provider
+  documents a *general* Termux/Docker rebuild method in
+  [`BUILD_FFMPEG.md` @ `0.18.1`](https://github.com/yausername/youtubedl-android/blob/0.18.1/BUILD_FFMPEG.md)
+  (clone [termux/termux-packages](https://github.com/termux/termux-packages),
+  `./build-package.sh ffmpeg`, pack `.deb` → zip). That file does **not** pin:
+  - the Termux revision that produced the `.so` files in tag `0.18.1`,
+  - a container image digest,
+  - a patch list / recipe hash, or
+  - per-ABI build logs for `arm64-v8a`.
+  Prebuilt Termux pools are only pointed at generically in the README
+  ([android5+](https://packages.termux.dev/apt/termux-main-21/pool/main/),
+  [android7+](https://packages.termux.dev/apt/termux-main/pool/main/)).
+  **Gap:** without a confirmed Termux commit (or equivalent recipe + hashes)
+  matching the shipped `libffmpeg.so`, Corresponding Source for the *exact*
+  Android binary cannot be closed from public docs alone. Evidence that would
+  close it: immutable builder digest, Termux package revision, applied patches,
+  and hashes of the published AAR natives (see #358).
 
 ### OpenSSL 3.5.2 (`libcrypto.so.3` / related)
 - License: **Apache-2.0** — [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt).
@@ -82,7 +109,22 @@ Verified in KlipNote release intermediates (`libffmpeg.so` / `libaria2c.so`, arm
 ### aria2 1.37.0 (`aria2/1.37.0`)
 - License: **GPL-2.0-or-later** — [LICENSES/GPL-2.0.txt](LICENSES/GPL-2.0.txt).
 - TLS: **GnuTLS** (`libgnutls.so` / `LibgnutlsTLSSession`).
-- Upstream: https://github.com/aria2/aria2
+- **Official upstream sources for this version (public, no login):**
+  - Release tag: https://github.com/aria2/aria2/releases/tag/release-1.37.0
+  - Source archives on that release: `aria2-1.37.0.tar.xz` / `.tar.gz` / `.tar.bz2`
+  - Project: https://github.com/aria2/aria2
+- Upstream also publishes a generic Android NDK build artifact
+  (`aria2-1.37.0-aarch64-linux-android-build1.zip` on the same release page).
+  That is **not** proven to be bit-identical to `libaria2c.so` inside the
+  `youtubedl-android` `0.18.1` AAR.
+- **Android packaging used by the provider:** README @ `0.18.1` says to obtain
+  dependencies from the Termux pools above and “follow the method used to build
+  python or ffmpeg” ([BUILD_FFMPEG.md](https://github.com/yausername/youtubedl-android/blob/0.18.1/BUILD_FFMPEG.md) /
+  [BUILD_PYTHON.md](https://github.com/yausername/youtubedl-android/blob/0.18.1/BUILD_PYTHON.md)).
+  There is **no** pinned Termux revision, patch set, or script that
+  reconstructs the exact `libaria2c.so` shipped in the APK.
+  **Gap:** same class of missing provenance as FFmpeg; #358 remains the place
+  to record a confirmed producing recipe.
 
 ### Python 3.12.11 (embedded via youtubedl-android / libpython)
 - License: **PSF-2.0** — https://docs.python.org/3/license.html
@@ -149,16 +191,28 @@ To rebuild KlipNote and obtain Corresponding Source for GPL/LGPL components:
    Tag/release matching the distributed APK (for example `v1.8.1`).
 2. **Build:** JDK 17 + Android SDK 35; from the repo root run  
    `./gradlew assembleRelease` (or `assembleDebug` for unsigned debug).
-3. **youtubedl-android / natives:** source and build scripts at  
-   https://github.com/JunkFood02/youtubedl-android (`0.18.1`; see also
-   yausername issue #358 for packaged binary provenance). Maven artifacts:  
+3. **youtubedl-android / natives (source tree of the packaged binaries):**  
+   https://github.com/yausername/youtubedl-android/tree/0.18.1  
+   Commit [`d725d5c9a18c3a99a13ee0308bf78275dc310760`](https://github.com/yausername/youtubedl-android/commit/d725d5c9a18c3a99a13ee0308bf78275dc310760).  
+   General native rebuild notes:  
+   [BUILD_FFMPEG.md](https://github.com/yausername/youtubedl-android/blob/0.18.1/BUILD_FFMPEG.md),  
+   [BUILD_PYTHON.md](https://github.com/yausername/youtubedl-android/blob/0.18.1/BUILD_PYTHON.md).  
+   Provenance still incomplete for the exact ARM64 `.so` producing inputs:  
+   [youtubedl-android#358](https://github.com/yausername/youtubedl-android/issues/358).  
+   **Maven artifacts** (JunkFood02 publisher coordinates):  
    `io.github.junkfood02.youtubedl-android:*:0.18.1`.
-4. **Seal (reference patterns):** https://github.com/JunkFood02/Seal
-5. **yt-dlp / EJS (packaged + runtime):** https://github.com/yt-dlp/yt-dlp
+4. **Official versioned sources for major GPL natives (not Android-specific):**  
+   FFmpeg 7.1.1 — https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz /  
+   https://github.com/FFmpeg/FFmpeg/tree/n7.1.1  
+   aria2 1.37.0 — https://github.com/aria2/aria2/releases/tag/release-1.37.0
+5. **Seal (reference patterns; JunkFood02):** https://github.com/JunkFood02/Seal
+6. **yt-dlp / EJS (packaged + runtime):** https://github.com/yt-dlp/yt-dlp
 
 Public Git repositories and this notice help redistributors locate source and
 license texts. They are **not** a blanket claim that every binary obligation for
-every upstream dependency is fully discharged by those links alone.
+every upstream dependency is fully discharged by those links alone — in
+particular, the Termux/Docker steps needed to bit-reproduce the ARM64 natives
+inside the AARs are only documented at a general level until #358 is answered.
 
 ---
 
