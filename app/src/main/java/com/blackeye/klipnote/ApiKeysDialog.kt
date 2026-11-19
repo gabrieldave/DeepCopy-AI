@@ -55,6 +55,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
@@ -175,14 +177,13 @@ fun MultiProviderKeysDialog(
             ) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
                     Text(
-                        "Mis llaves",
+                        stringResource(R.string.keys_dialog_title),
                         color = OnBg,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 18.sp
                     )
                     Text(
-                        "Cada quien pone sus propias llaves. Se cifran y se quedan solo en este teléfono. " +
-                            "No necesitas las 5: con una basta, y la app usa las gratis primero.",
+                        stringResource(R.string.keys_dialog_intro),
                         color = Muted,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(top = 2.dp)
@@ -321,7 +322,7 @@ fun MultiProviderKeysDialog(
                     ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Listo", fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.ready), fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -378,7 +379,7 @@ private fun AutosaveKeyCard(
             SavedChip(mask)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { replacing = true; value = ""; lastLen = 0 }) {
-                    Text("Cambiar", color = Accent)
+                    Text(stringResource(R.string.change), color = Accent)
                 }
                 FilledTonalButton(
                     onClick = onClear,
@@ -387,7 +388,7 @@ private fun AutosaveKeyCard(
                         contentColor = Red
                     )
                 ) {
-                    Text("Borrar")
+                    Text(stringResource(R.string.delete))
                 }
             }
         } else {
@@ -400,11 +401,11 @@ private fun AutosaveKeyCard(
                     if (jump && new.trim().isNotBlank()) commit(new)
                 },
                 onPaste = { pasted -> commit(pasted) },
-                placeholder = "Pega API key…"
+                placeholder = stringResource(R.string.keys_hint_generic)
             )
             if (mask != null) {
                 TextButton(onClick = { replacing = false; value = ""; lastLen = 0 }) {
-                    Text("Cancelar", color = Muted)
+                    Text(stringResource(R.string.cancel), color = Muted)
                 }
             }
         }
@@ -482,7 +483,7 @@ private fun DeepgramAutosaveCard(
             SavedChip(mask)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { replacing = true; value = ""; lastLen = 0 }) {
-                    Text("Cambiar", color = Accent)
+                    Text(stringResource(R.string.change), color = Accent)
                 }
                 FilledTonalButton(
                     onClick = onClearKey,
@@ -491,7 +492,7 @@ private fun DeepgramAutosaveCard(
                         contentColor = Red
                     )
                 ) {
-                    Text("Borrar")
+                    Text(stringResource(R.string.delete))
                 }
             }
         } else {
@@ -504,18 +505,18 @@ private fun DeepgramAutosaveCard(
                     if (jump && new.trim().isNotBlank()) commitKey(new)
                 },
                 onPaste = { pasted -> commitKey(pasted) },
-                placeholder = "Pega API key Deepgram…"
+                placeholder = stringResource(R.string.keys_hint_generic)
             )
             if (mask != null) {
                 TextButton(onClick = { replacing = false; value = ""; lastLen = 0 }) {
-                    Text("Cancelar", color = Muted)
+                    Text(stringResource(R.string.cancel), color = Muted)
                 }
             }
         }
 
         when {
             projectLinking -> {
-                Text("Vinculando Project ID…", color = Muted, fontSize = 12.sp)
+                Text(stringResource(R.string.linking_project_id), color = Muted, fontSize = 12.sp)
             }
             projectId.isNotBlank() && !editingProject -> {
                 val suffix = if (projectId.length <= 4) projectId else projectId.takeLast(4)
@@ -536,7 +537,7 @@ private fun DeepgramAutosaveCard(
                             projectLastLen = projectId.length
                         }
                     ) {
-                        Text("Editar", color = Muted, fontSize = 12.sp)
+                        Text(stringResource(R.string.edit), color = Muted, fontSize = 12.sp)
                     }
                 }
             }
@@ -552,8 +553,8 @@ private fun DeepgramAutosaveCard(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        label = { Text("Project ID") },
-                        placeholder = { Text("Deepgram project_id", color = Muted) },
+                        label = { Text(stringResource(R.string.project_id)) },
+                        placeholder = { Text(stringResource(R.string.project_id), color = Muted) },
                         colors = keysFieldColors(),
                         trailingIcon = {
                             OutlinedButton(
@@ -562,7 +563,7 @@ private fun DeepgramAutosaveCard(
                                 },
                                 modifier = Modifier.padding(end = 4.dp)
                             ) {
-                                Text("Pegar", color = Accent, fontSize = 12.sp)
+                                Text(stringResource(R.string.paste), color = Accent, fontSize = 12.sp)
                             }
                         }
                     )
@@ -571,7 +572,7 @@ private fun DeepgramAutosaveCard(
                             editingProject = false
                             projectText = projectId
                         }) {
-                            Text("Cancelar", color = Muted)
+                            Text(stringResource(R.string.cancel), color = Muted)
                         }
                     }
                 }
@@ -675,7 +676,7 @@ private fun PaidAutosaveCard(
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             EngineChip(
-                label = "Groq Paid",
+                label = stringResource(R.string.paid_engine_groq),
                 selected = engineSel == PaidFallbackEngine.GROQ_PAID,
                 onClick = {
                     focusManager.clearFocus(force = true)
@@ -683,7 +684,7 @@ private fun PaidAutosaveCard(
                 }
             )
             EngineChip(
-                label = "Microsoft MAI",
+                label = stringResource(R.string.paid_engine_mai),
                 selected = engineSel == PaidFallbackEngine.MICROSOFT_MAI,
                 onClick = {
                     focusManager.clearFocus(force = true)
@@ -702,7 +703,7 @@ private fun PaidAutosaveCard(
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { replacing = true; value = ""; lastLen = 0 }) {
-                    Text("Cambiar", color = Accent)
+                    Text(stringResource(R.string.change), color = Accent)
                 }
                 FilledTonalButton(
                     onClick = onClear,
@@ -711,7 +712,7 @@ private fun PaidAutosaveCard(
                         contentColor = Red
                     )
                 ) {
-                    Text("Borrar")
+                    Text(stringResource(R.string.delete))
                 }
             }
         } else {
@@ -724,7 +725,7 @@ private fun PaidAutosaveCard(
                     if (jump && new.trim().isNotBlank()) commit(new)
                 },
                 onPaste = { pasted -> commit(pasted) },
-                placeholder = "API key pagada…"
+                placeholder = stringResource(R.string.keys_hint_generic)
             )
             AnimatedVisibility(visible = engineSel == PaidFallbackEngine.MICROSOFT_MAI) {
                 OutlinedTextField(
@@ -732,13 +733,15 @@ private fun PaidAutosaveCard(
                     onValueChange = { endpointText = it },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    placeholder = { Text("Endpoint Azure / OpenAI-compat", color = Muted) },
+                    placeholder = {
+                        Text(stringResource(R.string.keys_paid_endpoint_placeholder), color = Muted)
+                    },
                     colors = keysFieldColors()
                 )
             }
             if (mask != null) {
                 TextButton(onClick = { replacing = false; value = ""; lastLen = 0 }) {
-                    Text("Cancelar", color = Muted)
+                    Text(stringResource(R.string.cancel), color = Muted)
                 }
             }
         }
@@ -813,14 +816,15 @@ private fun LevelCard(
     }
 }
 
-/** Oferta + "¿Cómo consigo mi llave?" + botón que abre la página del proveedor. */
+/** Offer text + “How do I get my key?” toggle that opens the provider page. */
 @Composable
 private fun ProviderGuide(provider: SttProvider) {
-    val info = ProviderCatalog.info(provider)
+    val context = LocalContext.current
+    val info = ProviderCatalog.info(context, provider)
     val uriHandler = LocalUriHandler.current
     var showSteps by remember { mutableStateOf(false) }
     Text(
-        ProviderCatalog.offerText(provider),
+        ProviderCatalog.offerText(context, provider),
         color = if (info.isFree) OnBg else Color(0xFFFBBF24),
         fontSize = 12.sp
     )
@@ -830,10 +834,14 @@ private fun ProviderGuide(provider: SttProvider) {
             border = BorderStroke(1.dp, Accent.copy(alpha = 0.55f)),
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
         ) {
-            Text("Conseguir mi llave", color = Accent, fontSize = 12.sp)
+            Text(stringResource(R.string.get_my_key), color = Accent, fontSize = 12.sp)
         }
         TextButton(onClick = { showSteps = !showSteps }) {
-            Text(if (showSteps) "Ocultar pasos" else "¿Cómo?", color = Muted, fontSize = 12.sp)
+            Text(
+                if (showSteps) stringResource(R.string.keys_hide_steps) else stringResource(R.string.keys_how),
+                color = Muted,
+                fontSize = 12.sp
+            )
         }
     }
     AnimatedVisibility(visible = showSteps) {
@@ -891,7 +899,7 @@ private fun KeyInputRow(
                     vertical = 4.dp
                 )
             ) {
-                Text("Pegar", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.paste), color = Accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     )

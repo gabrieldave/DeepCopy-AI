@@ -31,36 +31,36 @@ object OfferHealthMonitor {
      */
     fun seedFromStore(context: Context): List<ProviderStatus> = listOf(
         seedSlot(
+            context = context,
             provider = SttProvider.GROQ_FREE,
-            label = "Groq Free",
             hasKey = ApiKeyStore.hasSlot(context, ApiKeyStore.ProviderSlot.GROQ),
             mask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.GROQ),
             remainingSeconds = BillingManager.getGroqRemainingSeconds(context)
         ),
         seedSlot(
+            context = context,
             provider = SttProvider.INWORLD,
-            label = "Inworld Free",
             hasKey = ApiKeyStore.hasSlot(context, ApiKeyStore.ProviderSlot.INWORLD),
             mask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.INWORLD),
             remainingSeconds = BillingManager.getInworldRemainingSeconds(context)
         ),
         seedSlot(
+            context = context,
             provider = SttProvider.ASSEMBLY_AI,
-            label = "AssemblyAI",
             hasKey = ApiKeyStore.hasSlot(context, ApiKeyStore.ProviderSlot.ASSEMBLY_AI),
             mask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.ASSEMBLY_AI),
             remainingSeconds = BillingManager.getAssemblyRemainingSeconds(context)
         ),
         seedSlot(
+            context = context,
             provider = SttProvider.DEEPGRAM,
-            label = "Deepgram",
             hasKey = ApiKeyStore.hasSlot(context, ApiKeyStore.ProviderSlot.DEEPGRAM),
             mask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.DEEPGRAM),
             remainingSeconds = null
         ),
         seedSlot(
+            context = context,
             provider = SttProvider.PAID_FALLBACK,
-            label = "Respaldo Pagado",
             hasKey = ApiKeyStore.hasSlot(context, ApiKeyStore.ProviderSlot.PAID_FALLBACK),
             mask = ApiKeyStore.maskDisplay(context, ApiKeyStore.ProviderSlot.PAID_FALLBACK),
             remainingSeconds = null
@@ -79,8 +79,8 @@ object OfferHealthMonitor {
                 local == null -> remote ?: ProviderStatus(
                     provider = provider,
                     health = ProviderHealth.NO_KEY,
-                    label = provider.displayName(),
-                    detail = "SIN KEY"
+                    label = provider.displayName(context),
+                    detail = HealthUi.noKey(context)
                 )
                 local.health == ProviderHealth.NO_KEY -> local
                 remote == null || remote.health == ProviderHealth.NO_KEY -> local
@@ -92,18 +92,19 @@ object OfferHealthMonitor {
     }
 
     private fun seedSlot(
+        context: Context,
         provider: SttProvider,
-        label: String,
         hasKey: Boolean,
         mask: String?,
         remainingSeconds: Double?
     ): ProviderStatus {
+        val label = provider.displayName(context)
         if (!hasKey) {
             return ProviderStatus(
                 provider = provider,
                 health = ProviderHealth.NO_KEY,
                 label = label,
-                detail = "SIN KEY",
+                detail = HealthUi.noKey(context),
                 remainingSeconds = remainingSeconds
             )
         }
@@ -111,7 +112,7 @@ object OfferHealthMonitor {
             provider = provider,
             health = ProviderHealth.KEY_READY,
             label = label,
-            detail = "KEY LISTA · Key ${mask ?: "••••"}",
+            detail = HealthUi.keyReady(context, mask),
             remainingSeconds = remainingSeconds
         )
     }
@@ -149,8 +150,8 @@ object OfferHealthMonitor {
             return ProviderStatus(
                 provider = SttProvider.GROQ_FREE,
                 health = ProviderHealth.NO_KEY,
-                label = "Groq Free",
-                detail = "SIN KEY"
+                label = SttProvider.GROQ_FREE.displayName(context),
+                detail = HealthUi.noKey(context)
             )
         }
         if (BillingManager.isPromoEnded(SttProvider.GROQ_FREE)) {
@@ -165,8 +166,8 @@ object OfferHealthMonitor {
             return ProviderStatus(
                 provider = SttProvider.INWORLD,
                 health = ProviderHealth.NO_KEY,
-                label = "Inworld Free",
-                detail = "SIN KEY"
+                label = SttProvider.INWORLD.displayName(context),
+                detail = HealthUi.noKey(context)
             )
         }
         val remaining = BillingManager.getInworldRemainingSeconds(context)
@@ -174,8 +175,8 @@ object OfferHealthMonitor {
             return ProviderStatus(
                 provider = SttProvider.INWORLD,
                 health = ProviderHealth.PAUSED_LIMIT,
-                label = "Inworld Free",
-                detail = "BOLSA AGOTADA",
+                label = SttProvider.INWORLD.displayName(context),
+                detail = HealthUi.bagEmpty(context),
                 remainingSeconds = 0.0
             )
         }
@@ -191,8 +192,8 @@ object OfferHealthMonitor {
             return ProviderStatus(
                 provider = SttProvider.DEEPGRAM,
                 health = ProviderHealth.NO_KEY,
-                label = "Deepgram",
-                detail = "SIN KEY"
+                label = SttProvider.DEEPGRAM.displayName(context),
+                detail = HealthUi.noKey(context)
             )
         }
         val snap = DeepgramBillingClient.fetchOfficialBalance(context, key)
@@ -201,31 +202,34 @@ object OfferHealthMonitor {
                 ProviderStatus(
                     provider = SttProvider.DEEPGRAM,
                     health = ProviderHealth.OFFER_ENDED,
-                    label = "Deepgram",
-                    detail = "KEY INVÁLIDA"
+                    label = SttProvider.DEEPGRAM.displayName(context),
+                    detail = HealthUi.keyInvalid(context)
                 )
             snap.balanceUsd != null && snap.balanceUsd < BillingManager.DEEPGRAM_SAFE_FLOOR_USD ->
                 ProviderStatus(
                     provider = SttProvider.DEEPGRAM,
                     health = ProviderHealth.OFFER_ENDED,
-                    label = "Deepgram",
-                    detail = "SIN SALDO (<\$1)",
+                    label = SttProvider.DEEPGRAM.displayName(context),
+                    detail = HealthUi.noBalance(context),
                     remainingUsd = snap.balanceUsd
                 )
             snap.balanceUsd != null ->
                 ProviderStatus(
                     provider = SttProvider.DEEPGRAM,
                     health = ProviderHealth.ACTIVE_FREE,
-                    label = "Deepgram",
-                    detail = "ACTIVO · ${BillingManager.formatUsd(snap.balanceUsd, 2)}",
+                    label = SttProvider.DEEPGRAM.displayName(context),
+                    detail = HealthUi.active(
+                        context,
+                        BillingManager.formatUsd(snap.balanceUsd, 2)
+                    ),
                     remainingUsd = snap.balanceUsd
                 )
             else ->
                 ProviderStatus(
                     provider = SttProvider.DEEPGRAM,
                     health = ProviderHealth.ACTIVE_FREE,
-                    label = "Deepgram",
-                    detail = "ACTIVO (uso local)"
+                    label = SttProvider.DEEPGRAM.displayName(context),
+                    detail = HealthUi.activeLocal(context)
                 )
         }
     }
@@ -235,19 +239,19 @@ object OfferHealthMonitor {
             return ProviderStatus(
                 provider = SttProvider.PAID_FALLBACK,
                 health = ProviderHealth.NO_KEY,
-                label = "Respaldo Pagado",
-                detail = "SIN KEY"
+                label = SttProvider.PAID_FALLBACK.displayName(context),
+                detail = HealthUi.noKey(context)
             )
         }
         val allowed = BillingManager.getAllowPaidFallback(context)
         return ProviderStatus(
             provider = SttProvider.PAID_FALLBACK,
             health = if (allowed) ProviderHealth.ACTIVE_FREE else ProviderHealth.PAUSED_LIMIT,
-            label = "Respaldo Pagado",
+            label = SttProvider.PAID_FALLBACK.displayName(context),
             detail = if (allowed) {
-                "LISTO · ${ApiKeyStore.getPaidFallbackEngine(context).name}"
+                HealthUi.ready(context, ApiKeyStore.getPaidFallbackEngine(context).name)
             } else {
-                "Modo \$0 Estricto (bloqueado)"
+                HealthUi.zeroModeBlocked(context)
             }
         )
     }

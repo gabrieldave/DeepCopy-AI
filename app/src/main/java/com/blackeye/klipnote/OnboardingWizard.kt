@@ -47,6 +47,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -129,7 +130,7 @@ fun OnboardingWizard(
             horizontalArrangement = Arrangement.End
         ) {
             TextButton(onClick = { finish() }) {
-                Text("Saltar", color = Muted, fontSize = 15.sp)
+                Text(stringResource(R.string.skip), color = Muted, fontSize = 15.sp)
             }
         }
 
@@ -158,7 +159,7 @@ fun OnboardingWizard(
             ) {
             Image(
                 painter = painterResource(R.drawable.ic_launcher_foreground),
-                contentDescription = "KlipNote",
+                contentDescription = stringResource(R.string.app_name),
                 modifier = Modifier.size(96.dp)
             )
             Spacer(Modifier.height(20.dp))
@@ -166,7 +167,7 @@ fun OnboardingWizard(
             when (page) {
                 0 -> {
                     Text(
-                        "Convierte videos y audios en texto",
+                        stringResource(R.string.onboarding_title_1),
                         color = OnBg,
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
@@ -176,8 +177,7 @@ fun OnboardingWizard(
                     )
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        "Pega un enlace de YouTube, TikTok o Instagram, o comparte un video. " +
-                            "El texto se copia solo.",
+                        stringResource(R.string.onboarding_body_1),
                         color = Muted,
                         fontSize = 15.sp,
                         textAlign = TextAlign.Center,
@@ -187,7 +187,7 @@ fun OnboardingWizard(
                 }
                 1 -> {
                     Text(
-                        "Necesitas una llave gratis",
+                        stringResource(R.string.onboarding_title_2),
                         color = OnBg,
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
@@ -197,7 +197,7 @@ fun OnboardingWizard(
                     )
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        "Te recomendamos Groq: tarda 2 minutos.",
+                        stringResource(R.string.onboarding_body_2),
                         color = Muted,
                         fontSize = 15.sp,
                         textAlign = TextAlign.Center,
@@ -220,7 +220,7 @@ fun OnboardingWizard(
                         ),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Conseguir mi llave", fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.get_my_key), fontWeight = FontWeight.Bold)
                     }
                     Spacer(Modifier.height(14.dp))
                     OutlinedTextField(
@@ -232,7 +232,7 @@ fun OnboardingWizard(
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         placeholder = {
-                            Text("Pega aquí tu llave (gsk_…)", color = Muted)
+                            Text(stringResource(R.string.onboarding_paste_key_hint), color = Muted)
                         },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = Accent,
@@ -256,15 +256,14 @@ fun OnboardingWizard(
                         horizontalAlignment = Alignment.Start
                     ) {
                         Text(
-                            "Para gastar \$0",
+                            stringResource(R.string.onboarding_zero_title),
                             color = Amber,
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            "NO registres tarjeta en Groq ni en los otros servicios gratis. " +
-                                "Si pones tarjeta y se acaba el regalo, te pueden cobrar.",
+                            stringResource(R.string.onboarding_zero_body),
                             color = OnBg,
                             fontSize = 14.sp,
                             lineHeight = 20.sp
@@ -273,7 +272,7 @@ fun OnboardingWizard(
                 }
                 else -> {
                     Text(
-                        "¡Listo!",
+                        stringResource(R.string.done),
                         color = OnBg,
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
@@ -282,7 +281,7 @@ fun OnboardingWizard(
                     )
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        "Pega un enlace o comparte un video a KlipNote.",
+                        stringResource(R.string.onboarding_body_3),
                         color = Muted,
                         fontSize = 15.sp,
                         textAlign = TextAlign.Center,
@@ -309,7 +308,7 @@ fun OnboardingWizard(
         ) {
             if (page > 0) {
                 TextButton(onClick = { page -= 1 }) {
-                    Text("Atrás", color = Muted, fontSize = 15.sp)
+                    Text(stringResource(R.string.back), color = Muted, fontSize = 15.sp)
                 }
                 Spacer(Modifier.width(8.dp))
             }
@@ -331,7 +330,11 @@ fun OnboardingWizard(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Text(
-                    if (page == 2) "Empezar" else "Continuar",
+                    if (page == 2) {
+                        stringResource(R.string.start)
+                    } else {
+                        stringResource(R.string.continue_btn)
+                    },
                     fontWeight = FontWeight.Bold
                 )
             }

@@ -73,7 +73,7 @@ object AudioExtractor {
                 }
             }
             require(audioTrackIndex >= 0 && audioFormat != null) {
-                "No se encontró track de audio"
+                context.getString(R.string.error_no_audio_track)
             }
 
             val codecMime = audioFormat.getString(android.media.MediaFormat.KEY_MIME) ?: ""
@@ -82,7 +82,9 @@ object AudioExtractor {
                 codecMime.contains("vorbis", ignoreCase = true) ||
                 codecMime.contains("flac", ignoreCase = true)
             ) {
-                throw IllegalStateException("Codec no soportado por muxer: $codecMime")
+                throw IllegalStateException(
+                    context.getString(R.string.error_codec_unsupported, codecMime)
+                )
             }
 
             extractor.selectTrack(audioTrackIndex)

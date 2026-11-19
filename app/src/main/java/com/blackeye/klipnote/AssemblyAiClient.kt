@@ -34,11 +34,11 @@ object AssemblyAiClient {
         file: File,
         languageCode: String? = null
     ): TranscriptionResult {
-        require(apiKey.isNotBlank()) { "API Key AssemblyAI vacía" }
+        require(apiKey.isNotBlank()) { context.getString(R.string.error_assembly_key_empty) }
 
-        val uploadUrl = upload(apiKey, file)
-        val id = createTranscript(apiKey, uploadUrl, languageCode)
-        val result = pollUntilDone(apiKey, id)
+        val uploadUrl = upload(context, apiKey, file)
+        val id = createTranscript(context, apiKey, uploadUrl, languageCode)
+        val result = pollUntilDone(context, apiKey, id)
 
         val duration = result.durationSeconds ?: 0.0
         BillingManager.consumeAssemblySeconds(context, duration)
@@ -55,8 +55,8 @@ object AssemblyAiClient {
             return ProviderStatus(
                 provider = SttProvider.ASSEMBLY_AI,
                 health = ProviderHealth.NO_KEY,
-                label = "AssemblyAI",
-                detail = "Sin key"
+                label = SttProvider.ASSEMBLY_AI.displayName(context),
+                detail = HealthUi.noKey(context)
             )
         }
         val remaining = BillingManager.getAssemblyRemainingSeconds(context)
@@ -71,36 +71,39 @@ object AssemblyAiClient {
                     200, 404, 405 -> ProviderStatus(
                         provider = SttProvider.ASSEMBLY_AI,
                         health = if (remaining > 0) ProviderHealth.ACTIVE_FREE else ProviderHealth.PAUSED_LIMIT,
-                        label = "AssemblyAI",
+                        label = SttProvider.ASSEMBLY_AI.displayName(context),
                         detail = if (remaining > 0) {
-                            "ACTIVO (Gratis) · ${String.format("%.1fh", remaining / 3600.0)} bolsa"
+                            HealthUi.activeFree(
+                                context,
+                                String.format("%.1fh", remaining / 3600.0)
+                            )
                         } else {
-                            "EN PAUSA / LÍMITE"
+                            HealthUi.pausedLimit(context)
                         },
                         remainingSeconds = remaining
                     )
                     401 -> ProviderStatus(
                         provider = SttProvider.ASSEMBLY_AI,
                         health = ProviderHealth.OFFER_ENDED,
-                        label = "AssemblyAI",
-                        detail = "KEY INVÁLIDA (HTTP 401)"
+                        label = SttProvider.ASSEMBLY_AI.displayName(context),
+                        detail = HealthUi.keyInvalid(context)
                     )
                     402, 403 -> ProviderStatus(
                         provider = SttProvider.ASSEMBLY_AI,
                         health = ProviderHealth.OFFER_ENDED,
-                        label = "AssemblyAI",
-                        detail = "OFERTA TERMINADA (HTTP ${response.code})"
+                        label = SttProvider.ASSEMBLY_AI.displayName(context),
+                        detail = HealthUi.offerEnded(context)
                     )
                     429 -> ProviderStatus(
                         provider = SttProvider.ASSEMBLY_AI,
                         health = ProviderHealth.PAUSED_LIMIT,
-                        label = "AssemblyAI",
-                        detail = "EN PAUSA / LÍMITE DIARIO"
+                        label = SttProvider.ASSEMBLY_AI.displayName(context),
+                        detail = HealthUi.pausedDaily(context)
                     )
                     else -> ProviderStatus(
                         provider = SttProvider.ASSEMBLY_AI,
                         health = ProviderHealth.UNKNOWN,
-                        label = "AssemblyAI",
+                        label = SttProvider.ASSEMBLY_AI.displayName(context),
                         detail = "HTTP ${response.code}",
                         remainingSeconds = remaining
                     )
@@ -110,14 +113,14 @@ object AssemblyAiClient {
             ProviderStatus(
                 provider = SttProvider.ASSEMBLY_AI,
                 health = ProviderHealth.UNKNOWN,
-                label = "AssemblyAI",
-                detail = e.message?.take(120) ?: "Error",
+                label = SttProvider.ASSEMBLY_AI.displayName(context),
+                detail = e.message?.take(120) ?: HealthUi.genericError(context),
                 remainingSeconds = remaining
             )
         }
     }
 
-    private fun upload(apiKey: String, file: File): String {
+    private fun upload(context: Context, apiKey: String, file: File): String {
         val body = object : RequestBody() {
             override fun contentType() = "application/octet-stream".toMediaType()
             override fun contentLength(): Long = file.length()
@@ -141,19 +144,21 @@ object AssemblyAiClient {
             val raw = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 throw SttProviderException.fromHttp(
-                    SttProvider.ASSEMBLY_AI,
-                    response.code,
-                    raw,
-                    response.header("Retry-After")?.toLongOrNull()
+                    context = context,
+                    provider = SttProvider.ASSEMBLY_AI,
+                    code = response.code,
+                    body = raw,
+                    retryAfter = response.header("Retry-After")?.toLongOrNull()
                 )
             }
             val url = JSONObject(raw).optString("upload_url")
-            if (url.isBlank()) error("AssemblyAI upload sin upload_url")
+            if (url.isBlank()) error(context.getString(R.string.error_generic))
             return url
         }
     }
 
     private fun createTranscript(
+        context: Context,
         apiKey: String,
         uploadUrl: String,
         languageCode: String?
@@ -187,19 +192,20 @@ object AssemblyAiClient {
             val raw = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 throw SttProviderException.fromHttp(
-                    SttProvider.ASSEMBLY_AI,
-                    response.code,
-                    raw,
-                    response.header("Retry-After")?.toLongOrNull()
+                    context = context,
+                    provider = SttProvider.ASSEMBLY_AI,
+                    code = response.code,
+                    body = raw,
+                    retryAfter = response.header("Retry-After")?.toLongOrNull()
                 )
             }
             val id = JSONObject(raw).optString("id")
-            if (id.isBlank()) error("AssemblyAI transcript sin id")
+            if (id.isBlank()) error(context.getString(R.string.error_generic))
             return id
         }
     }
 
-    private fun pollUntilDone(apiKey: String, id: String): TranscriptionResult {
+    private fun pollUntilDone(context: Context, apiKey: String, id: String): TranscriptionResult {
         while (true) {
             val request = Request.Builder()
                 .url("$TRANSCRIPT_URL/$id")
@@ -210,10 +216,11 @@ object AssemblyAiClient {
                 val raw = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
                     throw SttProviderException.fromHttp(
-                        SttProvider.ASSEMBLY_AI,
-                        response.code,
-                        raw,
-                        response.header("Retry-After")?.toLongOrNull()
+                        context = context,
+                        provider = SttProvider.ASSEMBLY_AI,
+                        code = response.code,
+                        body = raw,
+                        retryAfter = response.header("Retry-After")?.toLongOrNull()
                     )
                 }
                 val root = JSONObject(raw)

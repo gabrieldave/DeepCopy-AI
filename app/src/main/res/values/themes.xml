@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.KlipNote" parent="android:Theme.Material.NoActionBar">
+    <style name="Theme.KlipNote" parent="Theme.AppCompat.NoActionBar">
         <item name="android:statusBarColor">@color/klipnote_bg</item>
         <item name="android:navigationBarColor">@color/klipnote_bg</item>
         <item name="android:windowBackground">@color/klipnote_bg</item>

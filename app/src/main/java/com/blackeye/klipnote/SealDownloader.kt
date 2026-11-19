@@ -111,13 +111,13 @@ object SealDownloader {
         }
     }
 
-    /** Marca que llevan los mensajes amigables de «necesita login» (ver [friendlyDownloadError]). */
-    private const val LOGIN_MARKER = "pide iniciar sesión"
+    private const val LOGIN_MARKER_INTERNAL = "needs sign-in"
 
     fun looksLikeLoginRequired(message: String?): Boolean {
         if (message.isNullOrBlank()) return false
         val m = message.lowercase()
-        return m.contains(LOGIN_MARKER) ||
+        return m.contains(LOGIN_MARKER_INTERNAL) ||
+            m.contains("pide iniciar sesión") ||
             m.contains("login required") ||
             m.contains("sign in to confirm") ||
             m.contains("use --cookies") ||
@@ -132,32 +132,34 @@ object SealDownloader {
      * Convierte errores técnicos de yt-dlp en mensajes que entiende cualquier persona.
      * Siempre agrega el detalle técnico al final (corto) para reportes en GitHub.
      */
-    fun friendlyDownloadError(raw: String?, url: String?): String {
+    fun friendlyDownloadError(context: Context, raw: String?, url: String?): String {
         val msg = raw.orEmpty()
         val m = msg.lowercase()
         val site = CookieStore.siteForUrl(url)
-        val siteName = site?.label ?: "El sitio"
+        val siteName = site?.label ?: context.getString(R.string.site_fallback)
+        val loginMarker = context.getString(R.string.login_marker_user)
         val friendly = when {
             looksLikeLoginRequired(msg) ->
-                "🔐 $siteName $LOGIN_MARKER para este video. Conecta tu cuenta en Ajustes → Videos que piden iniciar sesión " +
-                    "(se guardan solo en tu teléfono) y vuelve a intentar."
+                context.getString(R.string.login_download_error, siteName)
             m.contains("unsupported url") ->
-                "Este enlace no es compatible. Prueba con el enlace directo del video (botón Compartir → Copiar enlace)."
+                context.getString(R.string.download_error_unsupported)
             m.contains("private video") || m.contains("is private") || m.contains("video unavailable") ||
                 m.contains("has been removed") || m.contains("not available in your country") ->
-                "El video es privado, fue borrado o no está disponible en tu país."
+                context.getString(R.string.download_error_unavailable)
             m.contains("unable to resolve host") || m.contains("timed out") ||
                 m.contains("network is unreachable") || m.contains("connection reset") ->
-                "Sin conexión estable. Revisa tu internet y vuelve a intentar."
+                context.getString(R.string.download_error_network)
             else ->
-                "🛠️ $siteName cambió algo y la descarga falló. KlipNote actualiza su motor de descargas solo; " +
-                    "prueba de nuevo más tarde. Mientras, descarga el video con otra app y compártelo a KlipNote: " +
-                    "la transcripción sigue funcionando."
+                context.getString(R.string.download_error_site_changed, siteName)
         }
         val detail = msg.lineSequence().firstOrNull { it.contains("ERROR", ignoreCase = true) }
             ?: msg.lineSequence().firstOrNull()
             ?: ""
-        return if (detail.isBlank()) friendly else "$friendly\n\nDetalle técnico: ${detail.trim().take(180)}"
+        return if (detail.isBlank()) {
+            friendly
+        } else {
+            "$friendly\n\n${context.getString(R.string.technical_detail, detail.trim().take(180))}"
+        }
     }
 
     fun initAsync(context: Context) {
@@ -187,16 +189,16 @@ object SealDownloader {
     }
 
     suspend fun updateYtDlpNightly(context: Context): String = withContext(Dispatchers.IO) {
-        ensureReady()
+        ensureReady(context)
         val status = YoutubeDL.getInstance().updateYoutubeDL(
             context.applicationContext,
             YoutubeDL.UpdateChannel.NIGHTLY
         )
         markYtDlpUpdated(context.applicationContext)
         when (status) {
-            YoutubeDL.UpdateStatus.DONE -> "ACTUALIZADO"
-            YoutubeDL.UpdateStatus.ALREADY_UP_TO_DATE -> "YA ESTÁ AL DÍA"
-            null -> "Sin respuesta de actualización"
+            YoutubeDL.UpdateStatus.DONE -> context.getString(R.string.ytdlp_update_done)
+            YoutubeDL.UpdateStatus.ALREADY_UP_TO_DATE -> context.getString(R.string.ytdlp_update_up_to_date)
+            null -> context.getString(R.string.ytdlp_update_no_response)
         }
     }
 
@@ -207,9 +209,9 @@ object SealDownloader {
         downloadKind: DownloadKind = DownloadKind.AUDIO_M4A,
         onProgress: (String) -> Unit
     ): DownloadArtifact = withContext(Dispatchers.IO) {
-        ensureReady()
+        ensureReady(context)
         val url = extractFirstUrl(rawInput)
-            ?: throw IllegalArgumentException("No hay URL http(s) en el texto")
+            ?: throw IllegalArgumentException(context.getString(R.string.error_no_http_url))
 
         try {
             downloadOnce(context, url, mode, downloadKind, onProgress)
@@ -219,9 +221,9 @@ object SealDownloader {
             val msg = t.message.orEmpty()
             if (!needsYtDlpHeal(msg)) throw t
             Log.w(TAG, "Auto-heal yt-dlp NIGHTLY tras: $msg")
-            onProgress("Actualizando yt-dlp (auto-heal)…")
+            onProgress(context.getString(R.string.ytdlp_auto_heal))
             runCatching { updateYtDlpNightly(context) }
-            onProgress("Reintentando descarga…")
+            onProgress(context.getString(R.string.download_retry))
             downloadOnce(context, url, mode, downloadKind, onProgress)
         }
     }
@@ -250,11 +252,17 @@ object SealDownloader {
         val request = buildRequest(context, url, outTemplate, wantVideo, compressForStt)
 
         try {
-            onProgress("Descargando 0%…")
+            onProgress(context.getString(R.string.status_downloading_percent, 0))
             YoutubeDL.getInstance().execute(request, processId) { progress, eta, _line ->
                 val pct = progress.coerceIn(0f, 100f).toInt()
-                val etaLabel = if (eta > 0) " · ETA ${eta}s" else ""
-                onProgress("Descargando $pct%$etaLabel…")
+                val etaLabel = if (eta > 0) {
+                    context.getString(R.string.download_progress_eta, eta)
+                } else {
+                    ""
+                }
+                onProgress(
+                    context.getString(R.string.status_downloading_percent, pct) + etaLabel
+                )
             }
         } catch (e: YoutubeDL.CanceledException) {
             workDir.deleteRecursively()
@@ -266,7 +274,7 @@ object SealDownloader {
         val produced = workDir.walkTopDown()
             .filter { it.isFile && !it.name.endsWith(".part") }
             .maxByOrNull { it.length() }
-            ?: throw IllegalStateException("yt-dlp no generó archivo")
+            ?: throw IllegalStateException(context.getString(R.string.error_ytdlp_no_output))
 
         val title = produced.nameWithoutExtension
             .replace(Regex("""\s\[[^\]]+]$"""), "")
@@ -379,13 +387,15 @@ object SealDownloader {
      * El archivo [input] (calidad completa del usuario) no se modifica.
      */
     fun compressAudioForStt(context: Context, input: File): File {
-        require(input.isFile && input.length() > 0L) { "No hay audio/video de entrada para comprimir" }
-        ensureReady()
+        require(input.isFile && input.length() > 0L) {
+            context.getString(R.string.error_compress_no_input)
+        }
+        ensureReady(context)
         val app = context.applicationContext
         val out = File(app.cacheDir, "stt_compact_${System.currentTimeMillis()}.m4a")
         val ffmpegBin = File(app.applicationInfo.nativeLibraryDir, "libffmpeg.so")
         require(ffmpegBin.isFile) {
-            "libffmpeg.so no encontrado. Reinicia la app para inicializar yt-dlp/FFmpeg."
+            context.getString(R.string.error_ffmpeg_missing)
         }
         val packages = File(app.noBackupFilesDir, "youtubedl-android/packages")
         val ldParts = listOf(
@@ -416,8 +426,11 @@ object SealDownloader {
         if (code != 0 || !out.isFile || out.length() == 0L) {
             runCatching { out.delete() }
             throw IllegalStateException(
-                "No se pudo comprimir el audio para transcribir (FFmpeg $code). " +
+                context.getString(
+                    R.string.error_compress_failed,
+                    code,
                     log.lineSequence().lastOrNull { it.isNotBlank() }?.take(160).orEmpty()
+                )
             )
         }
         Log.i(TAG, "STT compress OK: ${out.length() / 1024} KB")
@@ -459,10 +472,10 @@ object SealDownloader {
             .apply()
     }
 
-    private fun ensureReady() {
+    private fun ensureReady(context: Context) {
         if (_ready.value == ReadyState.READY && initialized.get()) return
         throw IllegalStateException(
-            _readyError.value ?: "YoutubeDL aún no está listo. Espera unos segundos."
+            _readyError.value ?: context.getString(R.string.error_ytdlp_not_ready)
         )
     }
 

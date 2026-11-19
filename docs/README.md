@@ -1,11 +1,13 @@
-# Guías de KlipNote
+# KlipNote guides
 
-Paso a paso, en español sencillo. Empieza por donde te haga falta:
+<p>🇺🇸 <strong>English</strong> · 🇪🇸 <a href="README.es.md">Español</a></p>
 
-| Guía | Para qué sirve |
+Step-by-step guides. Start where you need:
+
+| Guide | What it’s for |
 |---|---|
-| [Llaves gratis](llaves-gratis.md) | Cómo sacar la llave de cada servicio y pegarla en la app |
-| [Preguntas frecuentes](preguntas-frecuentes.md) | Gratis de verdad, seguridad, Play Store, sitios que fallan… |
-| [Contribuir ofertas](contribuir-ofertas.md) | Actualizar las ofertas gratis con un Pull Request, sin programar |
+| [Free keys](free-keys.md) | How to get each provider’s key and paste it in the app |
+| [FAQ](faq.md) | Really free?, safety, Play Store, sites that break… |
+| [Contribute offers](contributing-offers.md) | Update free offers with a Pull Request, no coding |
 
-Volver al [README principal](../README.md).
+Back to the [main README](../README.md).

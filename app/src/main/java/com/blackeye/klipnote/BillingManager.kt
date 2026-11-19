@@ -429,6 +429,7 @@ object BillingManager {
     }
 
     fun formatGroqQuotaDetail(
+        context: Context,
         remainingSeconds: Double,
         limitSeconds: Double,
         usedTodaySeconds: Double,
@@ -436,16 +437,22 @@ object BillingManager {
     ): String {
         val usedLabel = formatGroqUsedToday(usedTodaySeconds)
         if (!hasLiveQuota && usedTodaySeconds <= 0.0) {
-            return "Listo · Usado hoy: $usedLabel"
+            return context.getString(R.string.groq_quota_ready_used_today, usedLabel)
         }
         val remMin = (remainingSeconds / 60.0).toInt().coerceAtLeast(0)
         val limMin = (limitSeconds / 60.0).toInt().coerceAtLeast(1)
         val window = when {
-            limitSeconds <= 8_000.0 -> "ventana 1h"
-            limitSeconds <= 30_000.0 -> "ventana día"
-            else -> "ventana"
+            limitSeconds <= 8_000.0 -> context.getString(R.string.groq_window_hour)
+            limitSeconds <= 30_000.0 -> context.getString(R.string.groq_window_day)
+            else -> context.getString(R.string.groq_window_day)
         }
-        return "${remMin}m / ${limMin}m disp. ($window) · Usado hoy: $usedLabel"
+        return context.getString(
+            R.string.groq_quota_detail,
+            remMin,
+            limMin,
+            window,
+            usedLabel
+        )
     }
 
     fun groqQuotaProgress(remainingSeconds: Double, limitSeconds: Double, hasLiveQuota: Boolean): Float {

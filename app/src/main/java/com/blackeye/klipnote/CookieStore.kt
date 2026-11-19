@@ -44,9 +44,7 @@ enum class CookieSite(
             "https://m.youtube.com/",
             "https://youtube.com/"
         ),
-        hosts = listOf("youtube.com", "youtu.be", "youtube-nocookie.com"),
-        note = "Google a veces bloquea iniciar sesión dentro de apps. Si te pasa, usa «Pegar cookies.txt» " +
-            "exportado desde Firefox en tu PC. Usa una cuenta secundaria: YouTube puede limitar cuentas usadas para descargar."
+        hosts = listOf("youtube.com", "youtu.be", "youtube-nocookie.com")
     ),
     TIKTOK(
         label = "TikTok",
@@ -143,10 +141,15 @@ object CookieStore {
         prefs(context).edit().putString(KEY_USER_AGENT, userAgent?.takeIf { it.isNotBlank() }).apply()
     }
 
+    fun noteFor(context: Context, site: CookieSite): String? = when (site) {
+        CookieSite.YOUTUBE -> context.getString(R.string.cookie_youtube_help)
+        else -> null
+    }
+
     fun statusLabel(context: Context, site: CookieSite): String = when {
-        !hasCookies(context, site) -> "Sin conectar"
-        !isEnabled(context) -> "Conectado (cookies desactivadas)"
-        else -> "Conectado"
+        !hasCookies(context, site) -> context.getString(R.string.cookie_status_not_connected)
+        !isEnabled(context) -> context.getString(R.string.cookie_status_connected_off)
+        else -> context.getString(R.string.cookie_status_connected)
     }
 
     /**
@@ -165,7 +168,7 @@ object CookieStore {
         }
         if (rows.isEmpty()) {
             throw IllegalStateException(
-                "No hay cookies de ${site.label}. Inicia sesión arriba primero y luego pulsa Guardar."
+                app.getString(R.string.cookie_error_none, site.label)
             )
         }
 
@@ -185,14 +188,16 @@ object CookieStore {
     /** Pega un cookies.txt Netscape (o líneas name=value) para el sitio y lo guarda en privado. */
     fun saveFromPaste(context: Context, site: CookieSite, raw: String): Int {
         val text = raw.trim()
-        if (text.isBlank()) throw IllegalArgumentException("Pegado vacío")
+        if (text.isBlank()) {
+            throw IllegalArgumentException(context.getString(R.string.cookie_error_empty_paste))
+        }
 
         val normalized = if (text.contains('\t') || text.contains("# Netscape")) {
             if (text.startsWith("#")) text + "\n" else COOKIE_HEADER + text.trimStart() + "\n"
         } else {
             val pairs = parseCookieHeader(text.replace('\n', ';'))
             if (pairs.isEmpty()) {
-                throw IllegalArgumentException("Formato de cookies no reconocido")
+                throw IllegalArgumentException(context.getString(R.string.cookie_error_invalid))
             }
             buildString {
                 append(COOKIE_HEADER)
@@ -207,7 +212,9 @@ object CookieStore {
             val t = line.trim()
             t.isNotEmpty() && !t.startsWith("#") && t.contains('\t')
         }
-        if (count == 0) throw IllegalArgumentException("No se encontraron cookies válidas")
+        if (count == 0) {
+            throw IllegalArgumentException(context.getString(R.string.cookie_error_invalid))
+        }
         cookiesFile(context.applicationContext, site).writeText(normalized)
         setEnabled(context.applicationContext, true)
         return count

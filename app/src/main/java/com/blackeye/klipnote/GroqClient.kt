@@ -40,13 +40,13 @@ object GroqClient {
         enforceFreeSizeLimit: Boolean = true,
         languageCode: String? = null
     ): TranscriptionResult {
-        require(apiKey.isNotBlank()) { "API Key Groq vacía" }
+        require(apiKey.isNotBlank()) { context.getString(R.string.error_groq_key_empty) }
         if (enforceFreeSizeLimit && file.length() > MAX_FREE_BYTES) {
             throw SttProviderException(
                 provider = SttProvider.GROQ_FREE,
                 httpCode = null,
                 kind = SttFailureKind.SIZE_SKIP,
-                message = "Archivo >24MB → Saltando a Nivel 2"
+                message = context.getString(R.string.error_groq_size_skip)
             )
         }
 
@@ -79,6 +79,7 @@ object GroqClient {
             if (!response.isSuccessful) {
                 val retryAfter = response.header("Retry-After")?.toLongOrNull()
                 throw SttProviderException.fromHttp(
+                    context = context,
                     provider = if (enforceFreeSizeLimit) SttProvider.GROQ_FREE else SttProvider.PAID_FALLBACK,
                     code = response.code,
                     body = raw,
@@ -95,8 +96,8 @@ object GroqClient {
             return ProviderStatus(
                 provider = SttProvider.GROQ_FREE,
                 health = ProviderHealth.NO_KEY,
-                label = "Groq Free",
-                detail = "Sin key"
+                label = SttProvider.GROQ_FREE.displayName(context),
+                detail = HealthUi.noKey(context)
             )
         }
         return try {
@@ -116,12 +117,16 @@ object GroqClient {
             ProviderStatus(
                 provider = SttProvider.GROQ_FREE,
                 health = ProviderHealth.ACTIVE_FREE,
-                label = "Groq Free",
-                detail = "ACTIVO · " + BillingManager.formatGroqQuotaDetail(
-                    remainingSeconds = remaining,
-                    limitSeconds = limit,
-                    usedTodaySeconds = used,
-                    hasLiveQuota = live
+                label = SttProvider.GROQ_FREE.displayName(context),
+                detail = HealthUi.active(
+                    context,
+                    BillingManager.formatGroqQuotaDetail(
+                        context = context,
+                        remainingSeconds = remaining,
+                        limitSeconds = limit,
+                        usedTodaySeconds = used,
+                        hasLiveQuota = live
+                    )
                 ),
                 remainingSeconds = remaining
             )
@@ -131,8 +136,8 @@ object GroqClient {
             ProviderStatus(
                 provider = SttProvider.GROQ_FREE,
                 health = ProviderHealth.UNKNOWN,
-                label = "Groq Free",
-                detail = e.message?.take(120) ?: "Error"
+                label = SttProvider.GROQ_FREE.displayName(context),
+                detail = e.message?.take(120) ?: HealthUi.genericError(context)
             )
         }
     }
@@ -148,7 +153,7 @@ object GroqClient {
         return ProviderStatus(
             provider = SttProvider.GROQ_FREE,
             health = health,
-            label = "Groq Free",
+            label = SttProvider.GROQ_FREE.displayName(context),
             detail = e.message?.take(160) ?: e.kind.name,
             remainingSeconds = BillingManager.getGroqRemainingSeconds(context)
         )

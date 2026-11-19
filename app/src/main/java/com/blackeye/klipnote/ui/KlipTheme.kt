@@ -18,6 +18,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
+import com.blackeye.klipnote.R
 
 /** Neutros fijos (fondo oscuro). Ámbar/rojo no cambian con el tema. */
 object KlipNeutrals {
@@ -31,13 +32,31 @@ object KlipNeutrals {
     val ChipBg = Color(0xFF0F1623)
 }
 
-enum class KlipThemeId(val prefKey: String, val label: String) {
-    GREEN("green", "Verde KlipNote"),
-    BLUE("blue", "Azul"),
-    PURPLE("purple", "Morado"),
-    ORANGE("orange", "Naranja"),
-    PINK("pink", "Rosa"),
-    DYNAMIC("dynamic", "Dinámico");
+enum class KlipThemeId(val prefKey: String) {
+    GREEN("green"),
+    BLUE("blue"),
+    PURPLE("purple"),
+    ORANGE("orange"),
+    PINK("pink"),
+    DYNAMIC("dynamic");
+
+    fun label(context: Context): String = when (this) {
+        GREEN -> context.getString(R.string.theme_green)
+        BLUE -> context.getString(R.string.theme_blue)
+        PURPLE -> context.getString(R.string.theme_purple)
+        ORANGE -> context.getString(R.string.theme_orange)
+        PINK -> context.getString(R.string.theme_pink)
+        DYNAMIC -> context.getString(R.string.theme_dynamic)
+    }
+
+    fun shortLabel(context: Context): String = when (this) {
+        GREEN -> context.getString(R.string.theme_green_short)
+        BLUE -> context.getString(R.string.theme_blue)
+        PURPLE -> context.getString(R.string.theme_purple)
+        ORANGE -> context.getString(R.string.theme_orange)
+        PINK -> context.getString(R.string.theme_pink)
+        DYNAMIC -> context.getString(R.string.theme_dynamic)
+    }
 
     companion object {
         fun fromPref(raw: String?): KlipThemeId {

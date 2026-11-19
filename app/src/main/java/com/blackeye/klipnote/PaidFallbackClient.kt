@@ -31,7 +31,7 @@ object PaidFallbackClient {
         groqModel: String = "whisper-large-v3-turbo",
         languageCode: String? = null
     ): TranscriptionResult {
-        require(apiKey.isNotBlank()) { "API Key de respaldo pagado vacía" }
+        require(apiKey.isNotBlank()) { context.getString(R.string.error_paid_key_empty) }
         return when (engine) {
             PaidFallbackEngine.GROQ_PAID -> GroqClient.transcribe(
                 context = context,
@@ -51,6 +51,7 @@ object PaidFallbackClient {
             }
 
             PaidFallbackEngine.MICROSOFT_MAI -> microsoftTranscribe(
+                context = context,
                 apiKey = apiKey,
                 endpoint = endpoint,
                 file = file,
@@ -61,6 +62,7 @@ object PaidFallbackClient {
     }
 
     private fun microsoftTranscribe(
+        context: Context,
         apiKey: String,
         endpoint: String,
         file: File,
@@ -68,15 +70,15 @@ object PaidFallbackClient {
         languageCode: String?
     ): TranscriptionResult {
         val base = endpoint.trim().trimEnd('/')
-        require(base.isNotBlank()) { "Endpoint Microsoft/MAI vacío" }
+        require(base.isNotBlank()) { context.getString(R.string.error_mai_endpoint_empty) }
 
         // Fast Transcription API o endpoint OpenAI-compatible configurable.
         return if (base.contains("openai", ignoreCase = true) ||
             base.contains("/audio/transcriptions", ignoreCase = true)
         ) {
-            openaiCompatible(apiKey, base, file, mimeType, languageCode)
+            openaiCompatible(context, apiKey, base, file, mimeType, languageCode)
         } else {
-            azureFastTranscription(apiKey, base, file, mimeType, languageCode)
+            azureFastTranscription(context, apiKey, base, file, mimeType, languageCode)
         }
     }
 
@@ -100,6 +102,7 @@ object PaidFallbackClient {
     }
 
     private fun azureFastTranscription(
+        context: Context,
         apiKey: String,
         endpoint: String,
         file: File,
@@ -128,10 +131,11 @@ object PaidFallbackClient {
             val raw = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 throw SttProviderException.fromHttp(
-                    SttProvider.PAID_FALLBACK,
-                    response.code,
-                    raw,
-                    response.header("Retry-After")?.toLongOrNull()
+                    context = context,
+                    provider = SttProvider.PAID_FALLBACK,
+                    code = response.code,
+                    body = raw,
+                    retryAfter = response.header("Retry-After")?.toLongOrNull()
                 )
             }
             return parseAzure(raw, languageCode)
@@ -139,6 +143,7 @@ object PaidFallbackClient {
     }
 
     private fun openaiCompatible(
+        context: Context,
         apiKey: String,
         endpoint: String,
         file: File,
@@ -173,10 +178,11 @@ object PaidFallbackClient {
             val raw = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 throw SttProviderException.fromHttp(
-                    SttProvider.PAID_FALLBACK,
-                    response.code,
-                    raw,
-                    response.header("Retry-After")?.toLongOrNull()
+                    context = context,
+                    provider = SttProvider.PAID_FALLBACK,
+                    code = response.code,
+                    body = raw,
+                    retryAfter = response.header("Retry-After")?.toLongOrNull()
                 )
             }
             val root = JSONObject(raw)
