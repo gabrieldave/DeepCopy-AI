@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -175,6 +176,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         KlipNoteNotify.ensureChannels(this)
         KlipNoteNotify.clearOrphanProgressIfNeeded(this)
+        TranscriptHistoryStore.migrateFromBillingIfNeeded(this)
         handleShareIntent(intent)
         setContent {
             val appContext = this@MainActivity
@@ -512,14 +514,31 @@ private fun KlipNoteApp(
         )
     }
 
-    fun persistGuion(source: String, result: TranscriptionResult) {
-        transcriptEntries = TranscriptHistoryStore.append(
-            context = context,
-            sourceTitleOrUrl = source,
-            providerUsed = result.providerLabel,
-            durationSec = result.durationSeconds ?: 0.0,
-            text = result.transcript
-        )
+    /** Respaldo UI: no duplica si el servicio ya guardó con el mismo [historyId] o texto. */
+    fun persistGuion(
+        source: String,
+        result: TranscriptionResult,
+        historyId: String? = null
+    ) {
+        if (result.transcript.isBlank()) return
+        transcriptEntries = if (!historyId.isNullOrBlank()) {
+            TranscriptHistoryStore.upsertById(
+                context = context,
+                id = historyId,
+                sourceTitleOrUrl = source,
+                providerUsed = result.providerLabel,
+                durationSec = result.durationSeconds ?: 0.0,
+                text = result.transcript
+            )
+        } else {
+            TranscriptHistoryStore.append(
+                context = context,
+                sourceTitleOrUrl = source,
+                providerUsed = result.providerLabel,
+                durationSec = result.durationSeconds ?: 0.0,
+                text = result.transcript
+            )
+        }
     }
 
     fun startTranscription(uri: Uri, fileName: String) {
@@ -539,9 +558,9 @@ private fun KlipNoteApp(
                 savedInDownloads = false,
                 onPhase = { phase = it },
                 onText = { transcriptText = it },
-                onMeta = {
-                    lastResultMeta = it
-                    persistGuion(fileName, it)
+                onMeta = { meta, historyId ->
+                    lastResultMeta = meta
+                    persistGuion(fileName, meta, historyId)
                 },
                 onBalance = { balanceSnapshot = it },
                 onAppSpent = {
@@ -661,7 +680,9 @@ private fun KlipNoteApp(
                 lastResultMeta = s.meta
                 lastSavedMedia = s.savedMedia
                 lastSourceLabel = s.sourceLabel.ifBlank { lastSourceLabel }
-                s.meta?.let { persistGuion(lastSourceLabel, it) }
+                // Respaldo: el servicio ya debió guardar; upsertById evita duplicados.
+                s.meta?.let { persistGuion(lastSourceLabel, it, s.historyId) }
+                transcriptEntries = TranscriptHistoryStore.load(context)
                 historyEntries = BillingManager.loadHistory(context)
                 appSpent = BillingManager.getAppSpent(context)
                 localUsage = BillingManager.getLocalUsage(context)
@@ -1654,9 +1675,17 @@ private fun SavedMediaBanner(
             OutlinedButton(
                 onClick = onShareFile,
                 modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
             ) {
-                Text("Compartir", color = Accent, fontSize = 12.sp, maxLines = 1)
+                Text(
+                    "Compartir",
+                    color = Accent,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }
@@ -1977,22 +2006,52 @@ private fun ResultWorkspaceCard(
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            TextButton(onClick = onCopy, modifier = Modifier.weight(1f)) {
+            TextButton(
+                onClick = onCopy,
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+            ) {
                 Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Accent, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.size(6.dp))
-                Text("Copiar", color = Accent)
+                Spacer(Modifier.size(4.dp))
+                Text(
+                    "Copiar",
+                    color = Accent,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
-            TextButton(onClick = onShare, modifier = Modifier.weight(1f)) {
+            TextButton(
+                onClick = onShare,
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+            ) {
                 Icon(Icons.Default.Share, contentDescription = null, tint = Accent, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.size(6.dp))
-                Text("Compartir", color = Accent)
+                Spacer(Modifier.size(4.dp))
+                Text(
+                    "Compartir",
+                    color = Accent,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
-            TextButton(onClick = onClear, modifier = Modifier.weight(1f)) {
+            TextButton(
+                onClick = onClear,
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+            ) {
                 Icon(Icons.Default.Clear, contentDescription = null, tint = Muted, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.size(6.dp))
-                Text("Limpiar", color = Muted)
+                Spacer(Modifier.size(4.dp))
+                Text(
+                    "Limpiar",
+                    color = Muted,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
         if (text.isNotBlank()) {
@@ -2951,7 +3010,7 @@ private suspend fun runTranscription(
     savedInDownloads: Boolean = false,
     onPhase: (UiPhase) -> Unit,
     onText: (String) -> Unit,
-    onMeta: (TranscriptionResult) -> Unit,
+    onMeta: (TranscriptionResult, historyId: String?) -> Unit,
     onBalance: (DeepgramBillingClient.BalanceSnapshot) -> Unit,
     onAppSpent: (Double) -> Unit,
     onHistoryChanged: (List<BillingManager.HistoryEntry>) -> Unit,
@@ -3063,10 +3122,21 @@ private suspend fun runTranscription(
             provider = result.providerLabel
         )
         BillingManager.appendHistory(context, entry)
+        if (result.transcript.isNotBlank()) {
+            TranscriptHistoryStore.upsertById(
+                context = context,
+                id = entry.id,
+                sourceTitleOrUrl = fileName,
+                providerUsed = result.providerLabel,
+                durationSec = duration,
+                text = result.transcript,
+                timestampMs = entry.timestampMs
+            )
+        }
         onHistoryChanged(BillingManager.loadHistory(context))
 
         onText(result.transcript)
-        onMeta(result)
+        onMeta(result, entry.id)
         onPhase(UiPhase.Done(result))
         if (result.transcript.isNotBlank()) {
             copyToClipboard(context, result.transcript)

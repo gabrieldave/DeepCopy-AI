@@ -17,7 +17,9 @@ object KlipNoteJobHub {
             val meta: TranscriptionResult?,
             val savedMedia: SavedMediaInfo?,
             val sourceLabel: String,
-            val toastMessage: String
+            val toastMessage: String,
+            /** Mismo ID que [BillingManager.HistoryEntry] / Guiones; para upsert sin duplicar. */
+            val historyId: String? = null
         ) : JobState()
         data class Failed(val message: String) : JobState()
         data object Cancelled : JobState()
@@ -38,14 +40,16 @@ object KlipNoteJobHub {
         meta: TranscriptionResult?,
         savedMedia: SavedMediaInfo?,
         sourceLabel: String,
-        toastMessage: String
+        toastMessage: String,
+        historyId: String? = null
     ) {
         _state.value = JobState.Success(
             transcript = transcript,
             meta = meta,
             savedMedia = savedMedia,
             sourceLabel = sourceLabel,
-            toastMessage = toastMessage
+            toastMessage = toastMessage,
+            historyId = historyId
         )
     }
 

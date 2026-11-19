@@ -173,24 +173,22 @@ class KlipNoteWorkService : Service() {
 
             if (mode == SealDownloader.LinkMode.DOWNLOAD_ONLY) {
                 val msg = "✅ Tu ${if (artifact.isVideo) "video" else "audio"} está en Descargas/KlipNote"
-                BillingManager.appendHistory(
-                    app,
-                    BillingManager.newHistoryEntry(
-                        fileName = artifact.savedDisplayName ?: artifact.title,
-                        durationSeconds = 0.0,
-                        mode = languageMode,
-                        diarize = false,
-                        appCostUsd = 0.0,
-                        balanceBefore = null,
-                        balanceAfter = null,
-                        transcript = "",
-                        audioPath = null,
-                        provider = "Descarga",
-                        downloadUri = savedMedia?.uri?.toString(),
-                        downloadDisplayName = savedMedia?.displayName,
-                        downloadIsVideo = savedMedia?.isVideo ?: false
-                    )
+                val downloadEntry = BillingManager.newHistoryEntry(
+                    fileName = artifact.savedDisplayName ?: artifact.title,
+                    durationSeconds = 0.0,
+                    mode = languageMode,
+                    diarize = false,
+                    appCostUsd = 0.0,
+                    balanceBefore = null,
+                    balanceAfter = null,
+                    transcript = "",
+                    audioPath = null,
+                    provider = "Descarga",
+                    downloadUri = savedMedia?.uri?.toString(),
+                    downloadDisplayName = savedMedia?.displayName,
+                    downloadIsVideo = savedMedia?.isVideo ?: false
                 )
+                BillingManager.appendHistory(app, downloadEntry)
                 finishSuccess(
                     transcript = "",
                     meta = null,
@@ -198,7 +196,8 @@ class KlipNoteWorkService : Service() {
                     sourceLabel = artifact.title,
                     toastMessage = "Guardado en Descargas/KlipNote · ${artifact.savedDisplayName ?: artifact.title}",
                     notifTitle = "✅ Listo",
-                    notifBody = msg
+                    notifBody = msg,
+                    historyId = downloadEntry.id
                 )
                 return
             }
@@ -271,26 +270,33 @@ class KlipNoteWorkService : Service() {
                     dest.absolutePath
                 }.getOrNull()
 
-                BillingManager.appendHistory(
-                    app,
-                    BillingManager.newHistoryEntry(
-                        fileName = artifact.title,
-                        durationSeconds = result.durationSeconds ?: 0.0,
-                        mode = languageMode,
-                        diarize = diarize,
-                        appCostUsd = result.costUsd,
-                        balanceBefore = balanceBefore,
-                        balanceAfter = null,
-                        transcript = result.transcript,
-                        audioPath = persistedAudio,
-                        provider = result.providerLabel,
-                        downloadUri = savedMedia?.uri?.toString(),
-                        downloadDisplayName = savedMedia?.displayName,
-                        downloadIsVideo = savedMedia?.isVideo ?: false
-                    )
+                val historyEntry = BillingManager.newHistoryEntry(
+                    fileName = artifact.title,
+                    durationSeconds = result.durationSeconds ?: 0.0,
+                    mode = languageMode,
+                    diarize = diarize,
+                    appCostUsd = result.costUsd,
+                    balanceBefore = balanceBefore,
+                    balanceAfter = null,
+                    transcript = result.transcript,
+                    audioPath = persistedAudio,
+                    provider = result.providerLabel,
+                    downloadUri = savedMedia?.uri?.toString(),
+                    downloadDisplayName = savedMedia?.displayName,
+                    downloadIsVideo = savedMedia?.isVideo ?: false
                 )
-
+                BillingManager.appendHistory(app, historyEntry)
+                // Guiones: persistir desde el servicio (no depende de la UI abierta).
                 if (result.transcript.isNotBlank()) {
+                    TranscriptHistoryStore.upsertById(
+                        context = app,
+                        id = historyEntry.id,
+                        sourceTitleOrUrl = artifact.title,
+                        providerUsed = result.providerLabel,
+                        durationSec = result.durationSeconds ?: 0.0,
+                        text = result.transcript,
+                        timestampMs = historyEntry.timestampMs
+                    )
                     copyToClipboard(app, result.transcript)
                 }
 
@@ -310,7 +316,8 @@ class KlipNoteWorkService : Service() {
                         "También guardamos el archivo en Descargas/KlipNote"
                     } else {
                         "Ábrelo en KlipNote para ver el texto"
-                    }
+                    },
+                    historyId = historyEntry.id
                 )
             } finally {
                 AudioExtractor.cleanup(extracted)
@@ -372,14 +379,16 @@ class KlipNoteWorkService : Service() {
         sourceLabel: String,
         toastMessage: String,
         notifTitle: String,
-        notifBody: String
+        notifBody: String,
+        historyId: String? = null
     ) {
         KlipNoteJobHub.setSuccess(
             transcript = transcript,
             meta = meta,
             savedMedia = savedMedia,
             sourceLabel = sourceLabel,
-            toastMessage = toastMessage
+            toastMessage = toastMessage,
+            historyId = historyId
         )
         // Quitar FGS + notificación de progreso ANTES del aviso "Listo".
         dismissProgressForeground()
