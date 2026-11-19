@@ -1,15 +1,16 @@
 name: Release APK
 
-# Solo repo principal + push a main (o manual). Firma con secretos en environment
-# "release". No corre en pull_request ni en forks.
+# Publicación firmada:
+# - Automática solo al publicar un tag v*
+# - Manual (workflow_dispatch) solo desde main
+# - No sobrescribe Releases ni APK existentes
+# - Secretos de firma vía environment "release"
+# - No corre en pull_request ni en forks
+
 on:
   push:
-    branches: [main]
-    paths-ignore:
-      - "config/**"
-      - "**.md"
-      - ".github/workflows/pr-checks.yml"
-      - ".github/workflows/debug-apk.yml"
+    tags:
+      - "v*"
   workflow_dispatch:
 
 permissions: {}
@@ -20,7 +21,12 @@ concurrency:
 
 jobs:
   release:
-    if: github.repository == 'gabrieldave/KlipNote' && (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main')
+    if: >
+      github.repository == 'gabrieldave/KlipNote' &&
+      (
+        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+      )
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -64,32 +70,72 @@ jobs:
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.p12"
-          test -s "$RUNNER_TEMP/release.p12"
-          chmod 600 "$RUNNER_TEMP/release.p12"
+          # Nombre neutro: el secreto puede ser JKS o PKCS12; la extensión no define el formato.
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
+          test -s "$RUNNER_TEMP/release.keystore"
+          chmod 600 "$RUNNER_TEMP/release.keystore"
 
       - name: Assemble release APK
         env:
-          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.p12
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: gradle assembleRelease --console=plain
 
-      - name: Resolve APK and version
+      - name: Resolve APK, version and release tag
         id: ver
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
+          set -euo pipefail
           SRC=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
           test -n "$SRC"
           AAPT2=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort | tail -n 1)
           BADGING=$("$AAPT2" dump badging "$SRC" | head -n 1)
           VNAME=$(echo "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
           VCODE=$(echo "$BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")
+          test -n "$VNAME"
+          test -n "$VCODE"
+          EXPECTED_TAG="v${VNAME}"
+
+          if [ "$EVENT_NAME" = "push" ]; then
+            TAG="$REF_NAME"
+            if [ "$TAG" != "$EXPECTED_TAG" ]; then
+              echo "::error::El tag '${TAG}' no coincide con versionName del APK ('${EXPECTED_TAG}')."
+              exit 1
+            fi
+          else
+            # workflow_dispatch desde main: el Release usará v<versionName>
+            TAG="$EXPECTED_TAG"
+          fi
+
+          DEST="KlipNote-${TAG}.apk"
+          cp "$SRC" "$DEST"
           echo "versionName=$VNAME" >> "$GITHUB_OUTPUT"
           echo "versionCode=$VCODE" >> "$GITHUB_OUTPUT"
-          DEST="KlipNote-v${VNAME}.apk"
-          cp "$SRC" "$DEST"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "APK_PATH=$DEST" >> "$GITHUB_ENV"
           ls -lh "$DEST"
+
+      - name: Refuse overwrite of existing Release or APK asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          APK_PATH: ${{ env.APK_PATH }}
+        run: |
+          set -euo pipefail
+          ASSET_NAME=$(basename "$APK_PATH")
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::Ya existe el Release '${TAG}'. Sobrescritura prohibida."
+            exit 1
+          fi
+          # Defensa extra: si el tag git existe y ya hay assets asociados vía API de releases
+          if gh api "repos/${{ github.repository }}/releases/tags/${TAG}" >/dev/null 2>&1; then
+            echo "::error::El tag '${TAG}' ya tiene Release. Sobrescritura prohibida."
+            exit 1
+          fi
+          echo "OK: no existe Release ni asset previo para ${TAG} / ${ASSET_NAME}"
 
       - name: Upload release APK artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -98,21 +144,21 @@ jobs:
           path: ${{ env.APK_PATH }}
           if-no-files-found: error
 
-      - name: Create or update GitHub Release
+      - name: Create GitHub Release (no overwrite)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.ver.outputs.tag }}
         run: |
-          TAG="v${{ steps.ver.outputs.versionName }}"
+          set -euo pipefail
           NOTES=$(printf '%s\n\n%s' \
             "KlipNote ${TAG} — Signed APK. Free & open-source (GPL-3.0). Add your own free API keys in the app (Settings → My keys). Guide: README." \
             "APK firmado. Gratis y de código abierto (GPL-3.0). Pon tus propias llaves gratis en la app (Ajustes → Mis llaves). Guía: README.es.md.")
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$APK_PATH" --clobber
-            gh release edit "$TAG" --notes "$NOTES" --latest
-          else
-            gh release create "$TAG" "$APK_PATH" --title "KlipNote $TAG" --notes "$NOTES" --latest
-          fi
+          # Sin --clobber: falla si el asset ya existiera
+          gh release create "$TAG" "$APK_PATH" \
+            --title "KlipNote $TAG" \
+            --notes "$NOTES" \
+            --latest
 
       - name: Cleanup keystore
         if: always()
-        run: rm -f "$RUNNER_TEMP/release.p12"
+        run: rm -f "$RUNNER_TEMP/release.keystore"
