@@ -370,7 +370,7 @@
     <string name="capture_video_mp4">Video MP4</string>
     <string name="capture_pick_file">Elegir video o audio del teléfono</string>
     <string name="capture_engine_sheet_hint">Cambia Auto o fija un motor sin salir de Capturar.</string>
-    <string name="capture_no_openable_link">Sin enlace abríble</string>
+    <string name="capture_no_openable_link">Sin enlace abrible</string>
     <string name="extract_transcript">Extraer Guion</string>
     <string name="services_ready_one">1 servicio listo</string>
     <string name="services_ready_many">%1$d servicios listos</string>

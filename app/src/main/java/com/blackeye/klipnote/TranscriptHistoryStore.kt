@@ -30,7 +30,9 @@ object TranscriptHistoryStore {
         val sourceTitleOrUrl: String,
         val providerUsed: String,
         val durationSec: Double,
-        val text: String
+        val text: String,
+        /** URL del enlace original (null en archivos locales o guiones viejos). */
+        val sourceUrl: String? = null
     )
 
     fun load(context: Context): List<Entry> = synchronized(lock) {
@@ -48,7 +50,8 @@ object TranscriptHistoryStore {
         providerUsed: String,
         durationSec: Double,
         text: String,
-        timestampMs: Long = System.currentTimeMillis()
+        timestampMs: Long = System.currentTimeMillis(),
+        sourceUrl: String? = null
     ): List<Entry> = synchronized(lock) {
         if (text.isBlank() || id.isBlank()) return loadUnlocked(context)
         val current = loadUnlocked(context)
@@ -64,7 +67,8 @@ object TranscriptHistoryStore {
                 context.getString(R.string.history_provider_unknown)
             },
             durationSec = durationSec,
-            text = text
+            text = text,
+            sourceUrl = sourceUrl?.trim()?.takeIf { it.isNotEmpty() }
         )
         val next = (listOf(entry) + current).take(MAX_ENTRIES)
         saveUnlocked(context, next)
@@ -77,7 +81,8 @@ object TranscriptHistoryStore {
         sourceTitleOrUrl: String,
         providerUsed: String,
         durationSec: Double,
-        text: String
+        text: String,
+        sourceUrl: String? = null
     ): List<Entry> {
         if (text.isBlank()) return load(context)
         return upsertById(
@@ -86,7 +91,8 @@ object TranscriptHistoryStore {
             sourceTitleOrUrl = sourceTitleOrUrl,
             providerUsed = providerUsed,
             durationSec = durationSec,
-            text = text
+            text = text,
+            sourceUrl = sourceUrl
         )
     }
 
@@ -129,7 +135,8 @@ object TranscriptHistoryStore {
                     providerUsed = b.provider?.takeIf { it.isNotBlank() }
                         ?: context.getString(R.string.history_provider_unknown),
                     durationSec = b.durationSeconds,
-                    text = b.transcript
+                    text = b.transcript,
+                    sourceUrl = SealDownloader.extractFirstUrl(b.fileName)
                 )
                 current = (listOf(entry) + current).take(MAX_ENTRIES)
                 count++
@@ -149,6 +156,11 @@ object TranscriptHistoryStore {
             buildList {
                 for (i in 0 until arr.length()) {
                     val o = arr.getJSONObject(i)
+                    val url = if (o.has("sourceUrl") && !o.isNull("sourceUrl")) {
+                        o.optString("sourceUrl").trim().takeIf { it.isNotEmpty() }
+                    } else {
+                        null
+                    }
                     add(
                         Entry(
                             id = o.optString("id", UUID.randomUUID().toString()),
@@ -156,7 +168,8 @@ object TranscriptHistoryStore {
                             sourceTitleOrUrl = o.optString("sourceTitleOrUrl"),
                             providerUsed = o.optString("providerUsed"),
                             durationSec = o.optDouble("durationSec"),
-                            text = o.optString("text")
+                            text = o.optString("text"),
+                            sourceUrl = url
                         )
                     )
                 }
@@ -175,6 +188,8 @@ object TranscriptHistoryStore {
                     put("providerUsed", e.providerUsed)
                     put("durationSec", e.durationSec)
                     put("text", e.text)
+                    if (e.sourceUrl != null) put("sourceUrl", e.sourceUrl)
+                    else put("sourceUrl", JSONObject.NULL)
                 }
             )
         }

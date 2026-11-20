@@ -298,6 +298,7 @@ class KlipNoteWorkService : Service() {
                 BillingManager.appendHistory(app, historyEntry)
                 // Guiones: persistir desde el servicio (no depende de la UI abierta).
                 if (result.transcript.isNotBlank()) {
+                    val linkUrl = SealDownloader.extractFirstUrl(rawUrl) ?: rawUrl.trim()
                     TranscriptHistoryStore.upsertById(
                         context = app,
                         id = historyEntry.id,
@@ -305,7 +306,8 @@ class KlipNoteWorkService : Service() {
                         providerUsed = result.providerLabel,
                         durationSec = result.durationSeconds ?: 0.0,
                         text = result.transcript,
-                        timestampMs = historyEntry.timestampMs
+                        timestampMs = historyEntry.timestampMs,
+                        sourceUrl = linkUrl.takeIf { it.isNotBlank() }
                     )
                     // Auto-guardar guion en Descargas/KlipNote/Texto
                     SealDownloader.saveTranscriptTxt(app, artifact.title, result.transcript)

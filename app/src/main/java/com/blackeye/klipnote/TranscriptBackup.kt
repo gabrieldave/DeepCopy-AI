@@ -39,6 +39,10 @@ object TranscriptBackup {
             sb.append("\"providerUsed\":\"").append(esc(e.providerUsed)).append("\",")
             sb.append("\"durationSec\":").append(e.durationSec).append(',')
             sb.append("\"text\":\"").append(esc(e.text)).append('"')
+            val url = e.sourceUrl
+            if (!url.isNullOrBlank()) {
+                sb.append(",\"sourceUrl\":\"").append(esc(url)).append('"')
+            }
             sb.append('}')
         }
         sb.append("]}")
@@ -63,6 +67,7 @@ object TranscriptBackup {
             val source = jsonStringField(obj, "sourceTitleOrUrl").orEmpty()
             val provider = jsonStringField(obj, "providerUsed").orEmpty()
             val duration = jsonDoubleField(obj, "durationSec") ?: 0.0
+            val sourceUrl = jsonStringField(obj, "sourceUrl")?.takeIf { it.isNotBlank() }
             entries.add(
                 TranscriptHistoryStore.Entry(
                     id = id,
@@ -70,7 +75,8 @@ object TranscriptBackup {
                     sourceTitleOrUrl = source,
                     providerUsed = provider,
                     durationSec = duration,
-                    text = text
+                    text = text,
+                    sourceUrl = sourceUrl
                 )
             )
         }
@@ -97,7 +103,8 @@ object TranscriptBackup {
                 providerUsed = e.providerUsed,
                 durationSec = e.durationSec,
                 text = e.text,
-                timestampMs = e.timestampMs
+                timestampMs = e.timestampMs,
+                sourceUrl = e.sourceUrl
             )
             if (e.id !in beforeIds) {
                 val now = TranscriptHistoryStore.load(context)

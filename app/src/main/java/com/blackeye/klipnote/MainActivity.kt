@@ -524,6 +524,7 @@ private fun KlipNoteApp(
         historyId: String? = null
     ) {
         if (result.transcript.isBlank()) return
+        val linkUrl = SealDownloader.extractFirstUrl(source)
         transcriptEntries = if (!historyId.isNullOrBlank()) {
             TranscriptHistoryStore.upsertById(
                 context = context,
@@ -531,7 +532,8 @@ private fun KlipNoteApp(
                 sourceTitleOrUrl = source,
                 providerUsed = result.providerLabel,
                 durationSec = result.durationSeconds ?: 0.0,
-                text = result.transcript
+                text = result.transcript,
+                sourceUrl = linkUrl
             )
         } else {
             TranscriptHistoryStore.append(
@@ -539,7 +541,8 @@ private fun KlipNoteApp(
                 sourceTitleOrUrl = source,
                 providerUsed = result.providerLabel,
                 durationSec = result.durationSeconds ?: 0.0,
-                text = result.transcript
+                text = result.transcript,
+                sourceUrl = linkUrl
             )
         }
     }
@@ -1007,15 +1010,12 @@ private fun KlipNoteApp(
                             copyToClipboard(context, text)
                             notifyCopied()
                         },
-                        onOpenLink = { raw ->
-                            val url = SealDownloader.extractFirstUrl(raw)
-                            if (url != null) {
-                                runCatching {
-                                    context.startActivity(
-                                        Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                    )
-                                }
-                            } else {
+                        onOpenLink = { url ->
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                )
+                            }.onFailure {
                                 Toast.makeText(
                                     context,
                                     context.getString(R.string.capture_no_openable_link),
@@ -2672,18 +2672,23 @@ private fun GuionesTab(
                             onCopied = { onCopy(entry.text) }
                         )
                         if (expanded) {
+                            val openableUrl = entry.sourceUrl?.let {
+                                SealDownloader.extractFirstUrl(it)
+                            } ?: SealDownloader.extractFirstUrl(entry.sourceTitleOrUrl)
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                TextButton(onClick = { onOpenLink(entry.sourceTitleOrUrl) }) {
-                                    Text(
-                                        stringResource(R.string.open_link),
-                                        color = Accent,
-                                        fontSize = 12.sp,
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
+                                if (openableUrl != null) {
+                                    TextButton(onClick = { onOpenLink(openableUrl) }) {
+                                        Text(
+                                            stringResource(R.string.open_link),
+                                            color = Accent,
+                                            fontSize = 12.sp,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
                                 }
                                 TextButton(onClick = { onDelete(entry.id) }) {
                                     Text(

@@ -1,6 +1,7 @@
 package com.blackeye.klipnote
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -52,6 +53,41 @@ class TranscriptBackupTest {
         assertTrue(TranscriptBackup.parse("{not json") is TranscriptBackup.ParseResult.Corrupt)
         assertTrue(TranscriptBackup.parse("{\"format\":\"other\",\"entries\":[]}") is TranscriptBackup.ParseResult.Corrupt)
         assertTrue(TranscriptBackup.parse("{\"format\":\"klipnote-transcripts-v1\"}") is TranscriptBackup.ParseResult.Corrupt)
+    }
+
+    @Test
+    fun exportImport_preservesSourceUrl_andLegacyWithoutSourceUrlLoadsAsNull() {
+        val withUrl = TranscriptHistoryStore.Entry(
+            id = "url-1",
+            timestampMs = 10L,
+            sourceTitleOrUrl = "Video title",
+            providerUsed = "Groq",
+            durationSec = 1.0,
+            text = "hola",
+            sourceUrl = "https://youtu.be/abc123"
+        )
+        val json = TranscriptBackup.exportJson(listOf(withUrl), exportedAtMs = 2L)
+        assertTrue(json.contains("\"sourceUrl\":\"https://youtu.be/abc123\""))
+        val parsed = TranscriptBackup.parse(json)
+        assertTrue(parsed is TranscriptBackup.ParseResult.Ok)
+        val back = (parsed as TranscriptBackup.ParseResult.Ok).entries.single()
+        assertEquals("https://youtu.be/abc123", back.sourceUrl)
+
+        val legacy = """
+            {"format":"klipnote-transcripts-v1","exportedAtMs":1,"entries":[{
+              "id":"legacy-1",
+              "timestampMs":5,
+              "sourceTitleOrUrl":"Viejo",
+              "providerUsed":"Groq",
+              "durationSec":1.0,
+              "text":"sin url"
+            }]}
+        """.trimIndent()
+        val legacyParsed = TranscriptBackup.parse(legacy)
+        assertTrue(legacyParsed is TranscriptBackup.ParseResult.Ok)
+        val legacyEntry = (legacyParsed as TranscriptBackup.ParseResult.Ok).entries.single()
+        assertEquals("legacy-1", legacyEntry.id)
+        assertNull(legacyEntry.sourceUrl)
     }
 
     @Test

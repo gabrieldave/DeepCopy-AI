@@ -1,5 +1,10 @@
 # Changelog — KlipNote
 
+## 1.9.2
+
+- **Scripts / Open link:** persist optional `sourceUrl` with each transcript so Open link works after download titles replace the URL; hide the button when there is no openable link.
+- **ES — Guiones / Abrir enlace:** se guarda `sourceUrl` opcional para abrir el enlace real aunque el título ya no sea una URL; el botón solo aparece si hay enlace abrible.
+
 ## 1.9.1
 
 - **UI:** unified Copy / Save .txt / Share .txt action bar (same size, 12 sp, single line) on Capture results and Guiones; removed leftover empty space from the old 8-in-1 row.
