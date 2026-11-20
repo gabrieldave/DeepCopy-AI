@@ -34,7 +34,6 @@
     <string name="save">Save</string>
     <string name="cancel">Cancel</string>
     <string name="copied">Copied</string>
-    <string name="copy_plain">Copy plain text</string>
     <string name="copy_with_prompt">Copy + AI prompt</string>
     <string name="send_to_ai">Send to AI</string>
     <string name="diarize">Separate who is speaking</string>

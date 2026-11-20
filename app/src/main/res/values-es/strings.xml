@@ -32,7 +32,6 @@
     <string name="save">Guardar</string>
     <string name="cancel">Cancelar</string>
     <string name="copied">Copiado</string>
-    <string name="copy_plain">Copiar Texto Puro</string>
     <string name="copy_with_prompt">Copiar + Prompt IA</string>
     <string name="send_to_ai">Enviar a IA</string>
     <string name="diarize">Separar quién habla</string>
@@ -629,8 +628,8 @@
     <string name="ai_show_creative">Mostrar herramientas visuales</string>
     <string name="ai_hide_creative">Ocultar herramientas visuales</string>
     <string name="save_txt">Guardar .txt</string>
-    <string name="share_txt">Compartir .txt</string>
-    <string name="share_txt_title">Compartir guion (.txt)</string>
+    <string name="share_txt">Enviar .txt</string>
+    <string name="share_txt_title">Enviar guion (.txt)</string>
     <string name="save_txt_ok">Guardado en Descargas/KlipNote/Texto</string>
     <string name="save_txt_failed">No se pudo guardar el archivo .txt</string>
 </resources>

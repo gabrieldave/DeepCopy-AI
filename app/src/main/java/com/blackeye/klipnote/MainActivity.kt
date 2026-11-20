@@ -20,6 +20,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -58,9 +59,11 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -964,15 +967,6 @@ private fun KlipNoteApp(
                             copyToClipboard(context, transcriptText)
                             notifyCopied()
                         },
-                        onShare = {
-                            val send = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, transcriptText)
-                            }
-                            context.startActivity(
-                                Intent.createChooser(send, context.getString(R.string.send_to_ai))
-                            )
-                        },
                         onClearResult = {
                             transcriptText = ""
                             lastResultMeta = null
@@ -1493,7 +1487,6 @@ private fun CapturarTab(
     onDismissPreFlight: () -> Unit,
     onAutoTranscribeChange: (Boolean) -> Unit,
     onCopy: () -> Unit,
-    onShare: () -> Unit,
     onClearResult: () -> Unit,
     onBackToAuto: () -> Unit,
     onTextChange: (String) -> Unit,
@@ -1582,7 +1575,6 @@ private fun CapturarTab(
                 metaLabel = lastResultMeta?.resultBadge(copiedHint = copyFeedback),
                 onTextChange = onTextChange,
                 onCopy = onCopy,
-                onShare = onShare,
                 onClear = onClearResult
             )
         } else if (phase is UiPhase.Idle && preFlight == null) {
@@ -1998,16 +1990,119 @@ private fun ErrorCard(
 }
 
 @Composable
+private fun TranscriptActionBar(
+    text: String,
+    sourceTitleOrUrl: String,
+    modifier: Modifier = Modifier,
+    onCopied: (() -> Unit)? = null
+) {
+    if (text.isBlank()) return
+    val context = LocalContext.current
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        TranscriptActionButton(
+            label = stringResource(R.string.action_copy),
+            icon = Icons.Default.ContentCopy,
+            onClick = {
+                if (onCopied != null) {
+                    onCopied.invoke()
+                } else {
+                    copyToClipboard(context, text)
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.copied_to_clipboard),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            },
+            modifier = Modifier.weight(1f)
+        )
+        TranscriptActionButton(
+            label = stringResource(R.string.save_txt),
+            icon = Icons.Default.SaveAlt,
+            onClick = {
+                val uri = saveTranscriptTxt(context, sourceTitleOrUrl, text)
+                Toast.makeText(
+                    context,
+                    context.getString(
+                        if (uri != null) R.string.save_txt_ok else R.string.save_txt_failed
+                    ),
+                    Toast.LENGTH_SHORT
+                ).show()
+            },
+            modifier = Modifier.weight(1f)
+        )
+        TranscriptActionButton(
+            label = stringResource(R.string.share_txt),
+            icon = Icons.Default.Share,
+            onClick = {
+                val uri = saveOrShareTranscriptTxt(
+                    context = context,
+                    title = sourceTitleOrUrl,
+                    transcript = text,
+                    share = true
+                )
+                if (uri == null) {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.save_txt_failed),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            },
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun TranscriptActionButton(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier.height(40.dp),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, KlipNeutrals.FieldBorder),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = KlipNeutrals.ChipBg,
+            contentColor = Accent
+        ),
+        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = Accent,
+            modifier = Modifier.size(15.dp)
+        )
+        Spacer(Modifier.size(5.dp))
+        Text(
+            text = label,
+            color = Accent,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
 private fun ResultWorkspaceCard(
     text: String,
     sourceTitleOrUrl: String,
     metaLabel: String?,
     onTextChange: (String) -> Unit,
     onCopy: () -> Unit,
-    onShare: () -> Unit,
     onClear: () -> Unit
 ) {
-    val context = LocalContext.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -2024,112 +2119,33 @@ private fun ResultWorkspaceCard(
                 fontWeight = FontWeight.Medium
             )
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            TextButton(
-                onClick = onCopy,
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
-            ) {
-                Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Accent, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.size(4.dp))
-                Text(
-                    stringResource(R.string.action_copy),
-                    color = Accent,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            TextButton(
-                onClick = onShare,
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
-            ) {
-                Icon(Icons.Default.Share, contentDescription = null, tint = Accent, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.size(4.dp))
-                Text(
-                    stringResource(R.string.action_share),
-                    color = Accent,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+        if (text.isNotBlank()) {
+            TranscriptActionBar(
+                text = text,
+                sourceTitleOrUrl = sourceTitleOrUrl,
+                onCopied = onCopy
+            )
             TextButton(
                 onClick = onClear,
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                modifier = Modifier.height(36.dp)
             ) {
-                Icon(Icons.Default.Clear, contentDescription = null, tint = Muted, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.size(4.dp))
+                Icon(
+                    Icons.Default.Clear,
+                    contentDescription = null,
+                    tint = Muted,
+                    modifier = Modifier.size(15.dp)
+                )
+                Spacer(Modifier.size(5.dp))
                 Text(
                     stringResource(R.string.action_clear),
                     color = Muted,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
                     maxLines = 1,
                     softWrap = false,
                     overflow = TextOverflow.Ellipsis
                 )
-            }
-        }
-        if (text.isNotBlank()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                TextButton(
-                    onClick = {
-                        val uri = saveTranscriptTxt(context, sourceTitleOrUrl, text)
-                        Toast.makeText(
-                            context,
-                            context.getString(
-                                if (uri != null) R.string.save_txt_ok else R.string.save_txt_failed
-                            ),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    },
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
-                ) {
-                    Text(
-                        stringResource(R.string.save_txt),
-                        color = Accent,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                TextButton(
-                    onClick = {
-                        val uri = saveOrShareTranscriptTxt(
-                            context = context,
-                            title = sourceTitleOrUrl,
-                            transcript = text,
-                            share = true
-                        )
-                        if (uri == null) {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.save_txt_failed),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    },
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
-                ) {
-                    Text(
-                        stringResource(R.string.share_txt),
-                        color = Accent,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
             }
             AiStudyActionsSection(
                 transcript = text,
@@ -2650,84 +2666,41 @@ private fun GuionesTab(
                             maxLines = if (expanded) Int.MAX_VALUE else 3,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            TextButton(onClick = { onCopy(entry.text) }) {
-                                Icon(
-                                    Icons.Default.ContentCopy,
-                                    contentDescription = null,
-                                    tint = Accent,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(Modifier.size(4.dp))
-                                Text(stringResource(R.string.copy_plain), color = Accent)
-                            }
-                            TextButton(
-                                onClick = {
-                                    val uri = saveTranscriptTxt(
-                                        context,
-                                        entry.sourceTitleOrUrl,
-                                        entry.text
-                                    )
-                                    Toast.makeText(
-                                        context,
-                                        context.getString(
-                                            if (uri != null) {
-                                                R.string.save_txt_ok
-                                            } else {
-                                                R.string.save_txt_failed
-                                            }
-                                        ),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
+                        TranscriptActionBar(
+                            text = entry.text,
+                            sourceTitleOrUrl = entry.sourceTitleOrUrl,
+                            onCopied = { onCopy(entry.text) }
+                        )
+                        if (expanded) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text(
-                                    stringResource(R.string.save_txt),
-                                    color = Accent,
-                                    fontSize = 12.sp
-                                )
-                            }
-                            if (expanded) {
-                                TextButton(
-                                    onClick = {
-                                        val uri = saveOrShareTranscriptTxt(
-                                            context = context,
-                                            title = entry.sourceTitleOrUrl,
-                                            transcript = entry.text,
-                                            share = true
-                                        )
-                                        if (uri == null) {
-                                            Toast.makeText(
-                                                context,
-                                                context.getString(R.string.save_txt_failed),
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                        }
-                                    }
-                                ) {
-                                    Text(
-                                        stringResource(R.string.share_txt),
-                                        color = Accent,
-                                        fontSize = 12.sp
-                                    )
-                                }
                                 TextButton(onClick = { onOpenLink(entry.sourceTitleOrUrl) }) {
-                                    Text(stringResource(R.string.open_link), color = Accent)
+                                    Text(
+                                        stringResource(R.string.open_link),
+                                        color = Accent,
+                                        fontSize = 12.sp,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
                                 }
                                 TextButton(onClick = { onDelete(entry.id) }) {
-                                    Text(stringResource(R.string.delete), color = KlipNeutrals.Red)
+                                    Text(
+                                        stringResource(R.string.delete),
+                                        color = KlipNeutrals.Red,
+                                        fontSize = 12.sp,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
                                 }
                             }
-                        }
-                        if (expanded && entry.text.isNotBlank()) {
-                            Spacer(Modifier.height(4.dp))
-                            AiStudyActionsSection(
-                                transcript = entry.text,
-                                sourceTitleOrUrl = entry.sourceTitleOrUrl
-                            )
+                            if (entry.text.isNotBlank()) {
+                                AiStudyActionsSection(
+                                    transcript = entry.text,
+                                    sourceTitleOrUrl = entry.sourceTitleOrUrl
+                                )
+                            }
                         }
                     }
                 }

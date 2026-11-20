@@ -1,5 +1,10 @@
 # Changelog — KlipNote
 
+## 1.9.1
+
+- **UI:** unified Copy / Save .txt / Share .txt action bar (same size, 12 sp, single line) on Capture results and Guiones; removed leftover empty space from the old 8-in-1 row.
+- **ES — UI:** barra unificada Copiar / Guardar .txt / Enviar .txt (mismo tamaño, 12 sp, una línea) en Capturar y Guiones; sin hueco del antiguo «8 en 1».
+
 ## 1.9.0
 
 - **AI prompts without transcript:** the 16 AI actions copy only a short instruction prompt; attach the `.txt` from Downloads/KlipNote/Texto. Removed the «8 in 1» button.

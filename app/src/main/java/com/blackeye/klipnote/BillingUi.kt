@@ -903,7 +903,13 @@ private fun HistoryRow(
                 Text(stringResource(R.string.open), color = Accent)
             }
             TextButton(onClick = onCopy, enabled = entry.transcript.isNotBlank()) {
-                Text(stringResource(R.string.copy_plain), color = Accent)
+                Text(
+                    stringResource(R.string.action_copy),
+                    color = Accent,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    softWrap = false
+                )
             }
             TextButton(onClick = onDelete) { Text(stringResource(R.string.delete), color = Red) }
         }
