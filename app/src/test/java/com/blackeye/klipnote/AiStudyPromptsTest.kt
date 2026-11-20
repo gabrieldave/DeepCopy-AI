@@ -20,11 +20,51 @@ class AiStudyPromptsTest {
     }
 
     @Test
-    fun masterAlwaysNamesAllEightDeliverablesInBothLanguages() {
-        for (spanish in listOf(true, false)) {
-            val prompt = AiStudyPrompts.masterAll8Intent(spanish)
-            val sections = Regex("(?m)^([1-8])\\. ").findAll(prompt).map { it.groupValues[1] }.toList()
-            assertEquals((1..8).map { it.toString() }, sections)
+    fun allSixteenModesOmitTranscriptBodyAndReferToAttachedTxt() {
+        val marker = "UNIQUE_TRANSCRIPT_BODY_MARKER_XYZ_98765"
+        for (mode in AiStudyMode.entries) {
+            for (spanish in listOf(true, false)) {
+                val prompt = AiStudyPrompts.composePrompt(
+                    es = spanish,
+                    languageRule = if (spanish) "Idioma: español." else "Language: English.",
+                    mode = mode,
+                    sourceTitleOrUrl = "Mi fuente"
+                )
+                assertFalse(
+                    "$mode/$spanish must not embed transcript markers",
+                    prompt.contains("<<<TRANSCRIPT_START>>>") ||
+                        prompt.contains("<<<TRANSCRIPT_END>>>") ||
+                        prompt.contains(marker)
+                )
+                assertFalse(
+                    "$mode/$spanish must not paste a fake transcript body",
+                    prompt.contains(marker)
+                )
+                if (spanish) {
+                    assertTrue(
+                        "$mode ES must mention attached .txt",
+                        prompt.contains("archivo .txt adjunto") ||
+                            prompt.contains(".txt adjunto")
+                    )
+                    assertTrue(
+                        "$mode ES must mention KlipNote/Texto",
+                        prompt.contains("KlipNote/Texto")
+                    )
+                } else {
+                    assertTrue(
+                        "$mode EN must mention attached .txt",
+                        prompt.contains("attached .txt", ignoreCase = true)
+                    )
+                    assertTrue(
+                        "$mode EN must mention KlipNote/Texto",
+                        prompt.contains("KlipNote/Texto")
+                    )
+                }
+                assertTrue(
+                    "$mode may mention title/source only",
+                    prompt.contains("Mi fuente")
+                )
+            }
         }
     }
 
@@ -50,10 +90,14 @@ class AiStudyPromptsTest {
             AiStudyMode.PODCAST,
             AiStudyMode.CHECKLIST
         )) {
-            assertTrue("$mode must request an HTML artifact",
-                AiStudyPrompts.intentFor(mode, true).contains("HTML"))
-            assertTrue("$mode must request an English HTML artifact",
-                AiStudyPrompts.intentFor(mode, false).contains("HTML"))
+            assertTrue(
+                "$mode must request an HTML artifact",
+                AiStudyPrompts.intentFor(mode, true).contains("HTML")
+            )
+            assertTrue(
+                "$mode must request an English HTML artifact",
+                AiStudyPrompts.intentFor(mode, false).contains("HTML")
+            )
             assertTrue(mode.isCreative())
         }
     }
@@ -61,10 +105,14 @@ class AiStudyPromptsTest {
     @Test
     fun masterPromptBuilderIsTheOnlyTextFirstPromptCreationAction() {
         assertFalse(AiStudyMode.BUILD_PROMPT.isCreative())
-        assertTrue(AiStudyPrompts.intentFor(AiStudyMode.BUILD_PROMPT, true)
-            .contains("PROMPT MAESTRO"))
-        assertTrue(AiStudyPrompts.intentFor(AiStudyMode.INFOGRAPHIC, true)
-            .contains("NUNCA entregues un prompt"))
+        assertTrue(
+            AiStudyPrompts.intentFor(AiStudyMode.BUILD_PROMPT, true)
+                .contains("PROMPT MAESTRO")
+        )
+        assertTrue(
+            AiStudyPrompts.intentFor(AiStudyMode.INFOGRAPHIC, true)
+                .contains("NUNCA entregues un prompt")
+        )
     }
 
     @Test

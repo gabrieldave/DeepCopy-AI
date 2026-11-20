@@ -17,6 +17,45 @@ fun copyToClipboard(context: Context, text: String) {
     cm.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.app_name), text))
 }
 
+/** Guarda el guion en Descargas/KlipNote/Texto y opcionalmente abre el selector para compartirlo. */
+fun saveTranscriptTxt(
+    context: Context,
+    title: String,
+    transcript: String
+): Uri? = SealDownloader.saveTranscriptTxt(context, title, transcript)
+
+fun shareTranscriptTxt(context: Context, uri: Uri, displayName: String) {
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        putExtra(Intent.EXTRA_SUBJECT, displayName)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    try {
+        context.startActivity(
+            Intent.createChooser(send, context.getString(R.string.share_txt_title))
+        )
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(context, context.getString(R.string.error_no_app_share), Toast.LENGTH_SHORT).show()
+    }
+}
+
+/** Guarda el .txt y, si [share] es true, abre el selector con la Uri content://. */
+fun saveOrShareTranscriptTxt(
+    context: Context,
+    title: String,
+    transcript: String,
+    share: Boolean
+): Uri? {
+    val uri = saveTranscriptTxt(context, title, transcript) ?: return null
+    if (share) {
+        val name = SealDownloader.sanitizeFileName(title.ifBlank { "guion" }) + ".txt"
+        shareTranscriptTxt(context, uri, name)
+    }
+    return uri
+}
+
 /**
  * Archivo guardado en Descargas/KlipNote (MediaStore content Uri).
  */

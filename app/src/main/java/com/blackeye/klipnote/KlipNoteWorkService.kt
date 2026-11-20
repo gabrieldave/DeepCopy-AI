@@ -307,6 +307,8 @@ class KlipNoteWorkService : Service() {
                         text = result.transcript,
                         timestampMs = historyEntry.timestampMs
                     )
+                    // Auto-guardar guion en Descargas/KlipNote/Texto
+                    SealDownloader.saveTranscriptTxt(app, artifact.title, result.transcript)
                     copyToClipboard(app, result.transcript)
                 }
 

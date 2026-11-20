@@ -481,40 +481,51 @@ object SealDownloader {
         )
     }
 
-    private fun sanitizeFileName(raw: String): String {
+    /** Videos → Video, Audios → Audio, guiones .txt → Texto. */
+    const val SUBFOLDER_VIDEO = "Video"
+    const val SUBFOLDER_AUDIO = "Audio"
+    const val SUBFOLDER_TEXTO = "Texto"
+
+    fun sanitizeFileName(raw: String): String {
         val cleaned = raw.replace(Regex("""[\\/:*?"<>|]"""), "_").trim().ifBlank { "klipnote" }
         return cleaned.take(100)
     }
 
-    private fun saveToDownloadsKlipNote(
-        context: Context,
-        source: File,
-        displayName: String,
-        mime: String
-    ): Uri? {
+    private fun klipNoteSubfolderForMime(mime: String): String = when {
+        mime.startsWith("video/") -> SUBFOLDER_VIDEO
+        mime.startsWith("audio/") -> SUBFOLDER_AUDIO
+        mime == "text/plain" || mime.startsWith("text/") -> SUBFOLDER_TEXTO
+        else -> SUBFOLDER_AUDIO
+    }
+
+    /**
+     * Guarda el guion en UTF-8 como `.txt` en `Download/KlipNote/Texto/`.
+     * @return content Uri (MediaStore) o file Uri en API 26–28; null si falla.
+     */
+    fun saveTranscriptTxt(context: Context, title: String, transcript: String): Uri? {
+        val body = transcript.trim()
+        if (body.isEmpty()) return null
+        val displayName = sanitizeFileName(title.ifBlank { "guion" }) + ".txt"
         return try {
+            val bytes = body.toByteArray(Charsets.UTF_8)
             if (Build.VERSION.SDK_INT >= 29) {
-                val collection = if (mime.startsWith("video/")) {
-                    MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-                } else {
-                    MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-                }
                 val downloads = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
                 val values = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
                     put(
                         MediaStore.MediaColumns.RELATIVE_PATH,
-                        Environment.DIRECTORY_DOWNLOADS + "/KlipNote"
+                        Environment.DIRECTORY_DOWNLOADS + "/KlipNote/$SUBFOLDER_TEXTO"
                     )
                     put(MediaStore.MediaColumns.IS_PENDING, 1)
                 }
                 val resolver = context.contentResolver
-                val uri = resolver.insert(downloads, values)
-                    ?: resolver.insert(collection, values)
-                    ?: return null
-                resolver.openOutputStream(uri)?.use { out ->
-                    source.inputStream().use { inp -> inp.copyTo(out) }
+                val uri = resolver.insert(downloads, values) ?: return null
+                val out = resolver.openOutputStream(uri)
+                    ?: throw java.io.IOException("No se pudo abrir destino")
+                out.use {
+                    it.write(bytes)
+                    it.flush()
                 }
                 values.clear()
                 values.put(MediaStore.MediaColumns.IS_PENDING, 0)
@@ -524,7 +535,62 @@ object SealDownloader {
                 @Suppress("DEPRECATION")
                 val dir = File(
                     Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                    "KlipNote"
+                    "KlipNote/$SUBFOLDER_TEXTO"
+                )
+                if (!dir.exists()) dir.mkdirs()
+                val dest = File(dir, displayName)
+                dest.writeBytes(bytes)
+                Uri.fromFile(dest)
+            }
+        } catch (t: Throwable) {
+            Log.e(TAG, "No se pudo guardar guion .txt en Downloads/KlipNote/Texto", t)
+            null
+        }
+    }
+
+    private fun saveToDownloadsKlipNote(
+        context: Context,
+        source: File,
+        displayName: String,
+        mime: String
+    ): Uri? {
+        val sub = klipNoteSubfolderForMime(mime)
+        return try {
+            if (Build.VERSION.SDK_INT >= 29) {
+                val collection = when {
+                    mime.startsWith("video/") ->
+                        MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                    mime.startsWith("audio/") ->
+                        MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                    else -> null
+                }
+                val downloads = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                    put(
+                        MediaStore.MediaColumns.RELATIVE_PATH,
+                        Environment.DIRECTORY_DOWNLOADS + "/KlipNote/$sub"
+                    )
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+                val resolver = context.contentResolver
+                val uri = resolver.insert(downloads, values)
+                    ?: collection?.let { resolver.insert(it, values) }
+                    ?: return null
+                resolver.openOutputStream(uri)?.use { out ->
+                    source.inputStream().use { inp -> inp.copyTo(out) }
+                    out.flush()
+                }
+                values.clear()
+                values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+                uri
+            } else {
+                @Suppress("DEPRECATION")
+                val dir = File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                    "KlipNote/$sub"
                 )
                 if (!dir.exists()) dir.mkdirs()
                 val dest = File(dir, displayName)
@@ -532,7 +598,7 @@ object SealDownloader {
                 Uri.fromFile(dest)
             }
         } catch (t: Throwable) {
-            Log.e(TAG, "No se pudo guardar en Downloads/KlipNote", t)
+            Log.e(TAG, "No se pudo guardar en Downloads/KlipNote/$sub", t)
             null
         }
     }

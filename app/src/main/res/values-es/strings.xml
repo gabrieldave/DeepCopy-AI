@@ -410,8 +410,6 @@
     <string name="ai_mode_infographic">Infografía</string>
     <string name="ai_mode_flashcards">Flashcards</string>
     <string name="ai_mode_clean_script">Guion limpio</string>
-    <string name="ai_master_all_label">8 en 1 · Crea los 8 resultados</string>
-
     <string name="error_groq_key_empty">API Key Groq vacía</string>
     <string name="error_inworld_key_empty">API Key Inworld vacía</string>
     <string name="error_assembly_key_empty">API Key AssemblyAI vacía</string>
@@ -427,15 +425,12 @@
     <string name="ai_chip_diagrams">📐 Diagramas</string>
     <string name="ai_chip_research">🔎 Investigar</string>
     <string name="ai_chip_study_quiz">📘 Lección + quiz</string>
-    <string name="ai_language_rule_es">IDIOMA DE RESPUESTA: Analiza fielmente la transcripción original (aunque esté en inglés u otro idioma) y entrega TODO el resultado en español claro y profesional.</string>
-    <string name="ai_language_rule_match">IDIOMA DE RESPUESTA: Responde en el mismo idioma de la transcripción.</string>
-    <string name="ai_master_all_mode">Todo en 1</string>
+    <string name="ai_language_rule_es">IDIOMA DE RESPUESTA: Analiza fielmente el archivo .txt adjunto (aunque la fuente esté en inglés u otro idioma) y entrega TODO el resultado en español claro y profesional.</string>
+    <string name="ai_language_rule_match">IDIOMA DE RESPUESTA: Responde en el mismo idioma del guion del archivo .txt adjunto.</string>
     <string name="ai_mode_build_prompt">Armar prompt</string>
     <string name="ai_mode_diagrams">Diagramas</string>
     <string name="ai_mode_research">Investigar</string>
     <string name="ai_mode_study_quiz">Lección + quiz</string>
-    <string name="ai_source_header">--- FUENTE ---</string>
-    <string name="ai_transcript_header">--- TRANSCRIPCIÓN COMPLETA ---</string>
     <string name="allow">Permitir</string>
     <string name="always_on_label">Siempre en:</string>
     <string name="app_language_en">English</string>
@@ -628,8 +623,14 @@
     <string name="ai_mode_checklist">Lista interactiva</string>
     <string name="ai_group_analyze">Comprender y estudiar</string>
     <string name="ai_group_create">Crear contenido visual e interactivo</string>
-    <string name="ai_button_hint">Toca una acción para abrir tu IA. También se copia el prompt completo.</string>
-    <string name="ai_share_unavailable">El prompt está copiado. Abre tu IA y pégalo.</string>
+    <string name="ai_button_hint">Cada acción copia solo el prompt corto. Adjunta el .txt desde Descargas/KlipNote/Texto en tu IA.</string>
+    <string name="ai_prompt_copied_attach_txt">Prompt copiado. Adjunta el .txt desde Descargas/KlipNote/Texto y pega.</string>
+    <string name="ai_share_unavailable">El prompt está copiado. Abre tu IA, adjunta el .txt y pégalo.</string>
     <string name="ai_show_creative">Mostrar herramientas visuales</string>
     <string name="ai_hide_creative">Ocultar herramientas visuales</string>
+    <string name="save_txt">Guardar .txt</string>
+    <string name="share_txt">Compartir .txt</string>
+    <string name="share_txt_title">Compartir guion (.txt)</string>
+    <string name="save_txt_ok">Guardado en Descargas/KlipNote/Texto</string>
+    <string name="save_txt_failed">No se pudo guardar el archivo .txt</string>
 </resources>

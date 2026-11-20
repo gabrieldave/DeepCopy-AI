@@ -2007,6 +2007,7 @@ private fun ResultWorkspaceCard(
     onShare: () -> Unit,
     onClear: () -> Unit
 ) {
+    val context = LocalContext.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -2074,6 +2075,62 @@ private fun ResultWorkspaceCard(
             }
         }
         if (text.isNotBlank()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                TextButton(
+                    onClick = {
+                        val uri = saveTranscriptTxt(context, sourceTitleOrUrl, text)
+                        Toast.makeText(
+                            context,
+                            context.getString(
+                                if (uri != null) R.string.save_txt_ok else R.string.save_txt_failed
+                            ),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    },
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        stringResource(R.string.save_txt),
+                        color = Accent,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                TextButton(
+                    onClick = {
+                        val uri = saveOrShareTranscriptTxt(
+                            context = context,
+                            title = sourceTitleOrUrl,
+                            transcript = text,
+                            share = true
+                        )
+                        if (uri == null) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.save_txt_failed),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        stringResource(R.string.share_txt),
+                        color = Accent,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
             AiStudyActionsSection(
                 transcript = text,
                 sourceTitleOrUrl = sourceTitleOrUrl
@@ -2115,10 +2172,7 @@ private fun AiStudyActionsSection(
     if (transcript.isBlank()) return
 
     val context = LocalContext.current
-    /** null = nada; MASTER_ALL_8 o AiStudyMode.name */
     var lastCopiedId by remember { mutableStateOf<String?>(null) }
-    var lastCopiedLabel by remember { mutableStateOf<String?>(null) }
-    var lastCopiedPrompt by remember { mutableStateOf<String?>(null) }
     var showCreativeActions by remember { mutableStateOf(false) }
 
     LaunchedEffect(lastCopiedId) {
@@ -2127,14 +2181,19 @@ private fun AiStudyActionsSection(
         if (lastCopiedId == id) lastCopiedId = null
     }
 
-    fun markCopied(id: String, label: String, prompt: String) {
+    fun copyMode(mode: AiStudyMode) {
+        val prompt = AiStudyPrompts.build(
+            context = context,
+            mode = mode,
+            sourceTitleOrUrl = sourceTitleOrUrl
+        )
         copyToClipboard(context, prompt)
-        lastCopiedPrompt = prompt
-        lastCopiedLabel = label
-        lastCopiedId = id
-    }
-
-    fun openAiChooser(prompt: String) {
+        lastCopiedId = mode.name
+        Toast.makeText(
+            context,
+            context.getString(R.string.ai_prompt_copied_attach_txt),
+            Toast.LENGTH_LONG
+        ).show()
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_TEXT, prompt)
@@ -2144,33 +2203,12 @@ private fun AiStudyActionsSection(
                 Intent.createChooser(send, context.getString(R.string.send_to_ai))
             )
         }.onFailure {
-            Toast.makeText(context, context.getString(R.string.ai_share_unavailable), Toast.LENGTH_LONG).show()
+            Toast.makeText(
+                context,
+                context.getString(R.string.ai_share_unavailable),
+                Toast.LENGTH_LONG
+            ).show()
         }
-    }
-
-    fun copyMode(mode: AiStudyMode) {
-        val prompt = AiStudyPrompts.build(
-            context = context,
-            mode = mode,
-            transcript = transcript,
-            sourceTitleOrUrl = sourceTitleOrUrl
-        )
-        markCopied(mode.name, mode.modeName(context), prompt)
-        openAiChooser(prompt)
-    }
-
-    fun copyMasterAll8() {
-        val prompt = AiStudyPrompts.buildMasterAll8(
-            context = context,
-            transcript = transcript,
-            sourceTitleOrUrl = sourceTitleOrUrl
-        )
-        markCopied(
-            AiStudyPrompts.MASTER_ALL_8,
-            AiStudyPrompts.masterAll8ModeName(context),
-            prompt
-        )
-        openAiChooser(prompt)
     }
 
     Column(
@@ -2187,32 +2225,6 @@ private fun AiStudyActionsSection(
             fontWeight = FontWeight.SemiBold,
             fontSize = 14.sp
         )
-
-        val masterJustCopied = lastCopiedId == AiStudyPrompts.MASTER_ALL_8
-        Button(
-            onClick = { copyMasterAll8() },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (masterJustCopied) {
-                    Accent.copy(alpha = 0.85f)
-                } else {
-                    Accent
-                },
-                contentColor = OnAccent
-            )
-        ) {
-            Text(
-                if (masterJustCopied) {
-                    stringResource(R.string.copied_to_clipboard)
-                } else {
-                    AiStudyPrompts.masterAll8Label(context)
-                },
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-                maxLines = 2
-            )
-        }
 
         Text(
             stringResource(R.string.ai_button_hint),
@@ -2308,9 +2320,9 @@ private fun AiStudyActionsSection(
             }
         }
 
-        lastCopiedId?.let {
-            val prompt = lastCopiedPrompt
-            val label = lastCopiedLabel ?: stringResource(R.string.prompt_label)
+        lastCopiedId?.let { id ->
+            val mode = runCatching { AiStudyMode.valueOf(id) }.getOrNull()
+            val label = mode?.modeName(context) ?: stringResource(R.string.prompt_label)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2326,13 +2338,10 @@ private fun AiStudyActionsSection(
                     fontSize = 12.sp,
                     modifier = Modifier.weight(1f)
                 )
-                TextButton(
-                    onClick = {
-                        val sendText = prompt ?: return@TextButton
-                        openAiChooser(sendText)
+                if (mode != null) {
+                    TextButton(onClick = { copyMode(mode) }) {
+                        Text(stringResource(R.string.send_to_ai), color = Accent, fontSize = 12.sp)
                     }
-                ) {
-                    Text(stringResource(R.string.send_to_ai), color = Accent, fontSize = 12.sp)
                 }
             }
         }
@@ -2655,7 +2664,56 @@ private fun GuionesTab(
                                 Spacer(Modifier.size(4.dp))
                                 Text(stringResource(R.string.copy_plain), color = Accent)
                             }
+                            TextButton(
+                                onClick = {
+                                    val uri = saveTranscriptTxt(
+                                        context,
+                                        entry.sourceTitleOrUrl,
+                                        entry.text
+                                    )
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(
+                                            if (uri != null) {
+                                                R.string.save_txt_ok
+                                            } else {
+                                                R.string.save_txt_failed
+                                            }
+                                        ),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            ) {
+                                Text(
+                                    stringResource(R.string.save_txt),
+                                    color = Accent,
+                                    fontSize = 12.sp
+                                )
+                            }
                             if (expanded) {
+                                TextButton(
+                                    onClick = {
+                                        val uri = saveOrShareTranscriptTxt(
+                                            context = context,
+                                            title = entry.sourceTitleOrUrl,
+                                            transcript = entry.text,
+                                            share = true
+                                        )
+                                        if (uri == null) {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.save_txt_failed),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    }
+                                ) {
+                                    Text(
+                                        stringResource(R.string.share_txt),
+                                        color = Accent,
+                                        fontSize = 12.sp
+                                    )
+                                }
                                 TextButton(onClick = { onOpenLink(entry.sourceTitleOrUrl) }) {
                                     Text(stringResource(R.string.open_link), color = Accent)
                                 }
@@ -3507,6 +3565,8 @@ private suspend fun runTranscription(
                 text = result.transcript,
                 timestampMs = entry.timestampMs
             )
+            // Auto-guardar guion en Descargas/KlipNote/Texto
+            saveTranscriptTxt(context, fileName, result.transcript)
         }
         onHistoryChanged(BillingManager.loadHistory(context))
 

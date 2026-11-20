@@ -429,8 +429,6 @@
     <string name="ai_mode_infographic">Infographic</string>
     <string name="ai_mode_flashcards">Flashcards</string>
     <string name="ai_mode_clean_script">Clean script</string>
-    <string name="ai_master_all_label">8 in 1 · Create all 8 results</string>
-
     <!-- Client empty-key / misc user errors -->
     <string name="error_groq_key_empty">Groq API key is empty</string>
     <string name="error_inworld_key_empty">Inworld API key is empty</string>
@@ -451,15 +449,12 @@
     <string name="ai_chip_diagrams">🔀 Diagrams</string>
     <string name="ai_chip_research">🔍 Research</string>
     <string name="ai_chip_study_quiz">🎓 Lesson + quiz</string>
-    <string name="ai_language_rule_es">RESPONSE LANGUAGE: Faithfully analyze the original transcript (even if it is in English or another language) and deliver ALL results in clear, professional Spanish.</string>
-    <string name="ai_language_rule_match">RESPONSE LANGUAGE: Reply in the same language as the transcript.</string>
-    <string name="ai_master_all_mode">All in one</string>
+    <string name="ai_language_rule_es">RESPONSE LANGUAGE: Faithfully analyze the attached .txt (even if the source is in English or another language) and deliver ALL results in clear, professional Spanish.</string>
+    <string name="ai_language_rule_match">RESPONSE LANGUAGE: Reply in the same language as the attached .txt script.</string>
     <string name="ai_mode_build_prompt">Build prompt</string>
     <string name="ai_mode_diagrams">Diagrams</string>
     <string name="ai_mode_research">Research</string>
     <string name="ai_mode_study_quiz">Lesson + quiz</string>
-    <string name="ai_source_header">--- SOURCE ---</string>
-    <string name="ai_transcript_header">--- FULL TRANSCRIPT ---</string>
     <string name="allow">Allow</string>
     <string name="always_on_label">Always in:</string>
     <string name="app_language_en">English</string>
@@ -649,8 +644,14 @@
     <string name="ai_mode_checklist">Interactive checklist</string>
     <string name="ai_group_analyze">Understand and study</string>
     <string name="ai_group_create">Create visuals and interactive tools</string>
-    <string name="ai_button_hint">Tap an action to open your AI app. The complete prompt is copied too.</string>
-    <string name="ai_share_unavailable">The prompt was copied. Open your AI app and paste it.</string>
+    <string name="ai_button_hint">Each action copies only the short prompt. Attach the .txt from Downloads/KlipNote/Texto in your AI app.</string>
+    <string name="ai_prompt_copied_attach_txt">Prompt copied. Attach the .txt from Downloads/KlipNote/Texto and paste.</string>
+    <string name="ai_share_unavailable">The prompt was copied. Open your AI app, attach the .txt, and paste.</string>
     <string name="ai_show_creative">Show visual tools</string>
     <string name="ai_hide_creative">Hide visual tools</string>
+    <string name="save_txt">Save .txt</string>
+    <string name="share_txt">Share .txt</string>
+    <string name="share_txt_title">Share script (.txt)</string>
+    <string name="save_txt_ok">Saved in Downloads/KlipNote/Texto</string>
+    <string name="save_txt_failed">Could not save the .txt file</string>
 </resources>

@@ -1,5 +1,12 @@
 # Changelog — KlipNote
 
+## 1.9.0
+
+- **AI prompts without transcript:** the 16 AI actions copy only a short instruction prompt; attach the `.txt` from Downloads/KlipNote/Texto. Removed the «8 in 1» button.
+- **Downloads folders:** media goes to `KlipNote/Video` or `KlipNote/Audio`; scripts auto-save as UTF-8 `.txt` under `KlipNote/Texto`, with Save/Share `.txt` on results and Guiones.
+- **ES — Prompts sin guion:** las 16 acciones de IA copian solo el prompt corto; adjunta el `.txt` desde Descargas/KlipNote/Texto. Se eliminó el botón «8 en 1».
+- **ES — Carpetas de descarga:** vídeo/audio en `KlipNote/Video` o `KlipNote/Audio`; guiones en `.txt` bajo `KlipNote/Texto` (auto al extraer + Guardar/Compartir `.txt`).
+
 ## 1.8.1
 
 - **Backups:** JSON escape/unescape preserves Windows paths, quotes and newlines; export writes flush and report success only on full write; import size limits (512 KB keys / 10 MB scripts).
